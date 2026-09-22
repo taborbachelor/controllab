@@ -13,8 +13,10 @@ Control (the I/O image, device control modules, and the full
 in Auto mode); and Testing — a declarative `given`/`when`/`expect`
 scenario format, 13 scenarios covering 7 of 8 interlocks (the 8th needs
 the alarm system, Phase 4), and an interlock coverage matrix
-(`python scripts/scenario_report.py`). No telemetry, UI, or protocol
-support yet — see the roadmap below.
+(`python scripts/scenario_report.py`). Phase 4 in progress: alarm core
+(latching, first-out, acknowledge) is done, not yet wired into
+`LineController`. No telemetry, UI, or protocol support yet — see the
+roadmap below.
 
 ## Documentation
 
@@ -51,7 +53,7 @@ python scripts/scenario_report.py --out coverage_report.md
 | 1 | Simulation core | done |
 | 2 | Control (states, sequences, interlocks) | done |
 | 3 | Testing / commissioning scenarios | done |
-| 4 | Fault injection, alarms | not started |
+| 4 | Fault injection, alarms | in progress (step 1 of 3-4 done) |
 | 5 | Telemetry | not started |
 | 6 | Visualization | not started |
 | 7 | Protocols (Modbus, OPC UA, MQTT) | not started |

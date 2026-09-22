@@ -58,7 +58,8 @@ ControlLab/
 │   │   ├── interlocks.py             Interlocks — the §6.3 table as a query object
 │   │   ├── hopper_hysteresis.py      HopperHysteresis — §6.2's on/off feed cycle
 │   │   ├── line_state.py             LineState, StartStep enums
-│   │   └── line_controller.py        LineController — the whole state machine
+│   │   ├── line_controller.py        LineController — the whole state machine
+│   │   └── alarms.py                 Alarm, AlarmManager — latch/first-out/ack (Phase 4 step 1)
 │   ├── simulation/
 │   │   ├── engine/
 │   │   │   ├── clock.py             SimClock — fixed-step simulated time
@@ -109,11 +110,12 @@ ControlLab/
 ```
 
 This is deliberately smaller than the target layout in `CLAUDE.md` §17 and
-the initial layout sketched in the original project brief. Alarms
-(Phase 4) and `examples/` aren't created yet because they'd be empty —
-CLAUDE.md §17 itself says not to pre-create directories just to make the
-repository look larger than it is. They get
-added in the phase that gives them real content (see the roadmap below).
+the initial layout sketched in the original project brief. `examples/`
+isn't created yet because it would be empty — CLAUDE.md §17 itself says
+not to pre-create directories just to make the repository look larger
+than it is. It gets added in the phase that gives it real content (see
+the roadmap below). Alarms (Phase 4) no longer belongs on this list —
+`services/control/alarms.py` landed in step 1; see below.
 
 ## Module responsibilities (Phase 1)
 
@@ -341,6 +343,49 @@ issue and propose the change"):
   confirmed to surface correctly (including the non-zero exit code), then
   removed.
 
+## Module responsibilities (Phase 4 step 1)
+
+- **`Alarm` / `AlarmManager`** (`services/control/alarms.py`) — a small
+  generic engine (`register`/`scan`/`acknowledge`), unlike `Interlocks`'
+  stateless properties, because an alarm genuinely needs memory across
+  scans: it has to stay latched after its condition clears, which a
+  computed property can't do. The *set* of alarms is still hardcoded for
+  this exact line in `__init__`, the same way `Interlocks` and
+  `plant_io.py` are — nine `_register()` calls sitting directly on
+  `Interlocks`' already-computed conditions (`estop_healthy`,
+  `hopper_high_high`, `bin_low`, `conveyor_motion_confirmed`) and the
+  three device-control modules' own fault flags. No new detection logic
+  was needed — every condition already existed somewhere in Control; this
+  phase is purely about giving them latch/first-out/acknowledge behavior
+  a scenario or a future panel can observe.
+- **`latched` is computed, not stored**: `active or not acknowledged`.
+  That single expression gets the full behavior for free — an alarm
+  self-clears the instant it's both acknowledged and back to inactive, no
+  separate manual "clear" action, and acknowledging one that's still
+  physically active correctly leaves it latched (still a live problem)
+  without a second flag that could drift out of sync with `active`.
+- **First-out** is sticky per episode, not per scan: whichever alarm's
+  rising edge is observed first claims it and keeps it — even after that
+  alarm's own condition clears — until every alarm on the board is
+  inactive and acknowledged, so a diagnosing operator can still tell
+  which condition started a cascade after the symptoms are gone. The nine
+  alarms have a fixed registration-order tie-break (E-stop first, then
+  upstream-to-downstream) for the edge case of two conditions going
+  active on the exact same `scan()` call; any other case is decided by
+  whichever rising edge is actually observed first.
+- **Trip vs. warning**: `Alarm.is_warning` exists solely so
+  `any_unacknowledged_trip()` — what step 2 will wire into the "No active
+  latched alarms" start permissive — excludes bin-low. Bin-low already
+  has its own direct permissive row (`Interlocks.bin_low`) and
+  `CONTROL-LAB.md` §6.3 is explicit it's "warning only while running,"
+  not a hard block; latching it as a trip-class alarm too would silently
+  turn a warning into exactly the block the spec says it isn't.
+- **Not yet done** (step 2): wiring `AlarmManager` into `LineController`
+  (the `acknowledge()` operator command, the new start permissive), and
+  resolving `fault_reason`'s relationship to the alarm that caused it.
+  `LineController` doesn't call `AlarmManager.scan()` yet — see
+  `docs/CONTROL-LAB.md` §10's Phase 4 entry.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |
@@ -349,7 +394,7 @@ issue and propose the change"):
 | 1 | Simulation core | done |
 | 2 | Control | done |
 | 3 | Testing / commissioning scenarios | done |
-| 4 | Fault injection, alarms | not started |
+| 4 | Fault injection, alarms | in progress — step 1 done (alarm core: latch/first-out/acknowledge) |
 | 5 | Telemetry | not started |
 | 6 | Visualization | not started |
 | 7 | Protocols | not started |
