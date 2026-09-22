@@ -14,7 +14,9 @@ Full reasoning in `CONTROL-LAB.md` §3. In short:
   sequences, and interlocks — Auto mode only so far.
 - **Testing** (`tests/` for hand-written pytest; `services/testing/` +
   `scenarios/` for declarative commissioning scenarios) verifies behavior.
-- **Telemetry** and **Visualization** come later (Phases 5–6).
+- **Telemetry** (`services/telemetry/`, Phase 5, in progress) observes
+  Simulation and Control from outside, pull/diff, the same non-invasive
+  relationship Testing already has. **Visualization** comes later (Phase 6).
 
 Control must only ever observe and command Simulation through a shared I/O
 tag table (the "I/O image") — never by reaching into simulation objects
@@ -73,27 +75,31 @@ ControlLab/
 │   │       ├── conveyor.py          Conveyor (Motor + transport-delay belt queue)
 │   │       ├── estop.py             EStop (plant-wide safety trip)
 │   │       └── plant.py             Plant — wires the line together
-│   └── testing/
-│       ├── rig.py                    build_rig()/tick()/run() -- the canonical
-│       │                             Control-driven rig, shared by pytest and
-│       │                             the scenario runner
-│       ├── invariants.py             Invariants -- §7 item 6, checked every scan
-│       ├── vocabulary.py             the closed given/when/expect field set
-│       ├── scenario.py               Scenario -- YAML loader
-│       ├── runner.py                 run_scenario() -- executes one Scenario
-│       └── report.py                 the interlock coverage matrix (pure logic)
+│   ├── testing/
+│   │   ├── rig.py                    build_rig()/tick()/run() -- the canonical
+│   │   │                             Control-driven rig, shared by pytest and
+│   │   │                             the scenario runner
+│   │   ├── invariants.py             Invariants -- §7 item 6, checked every scan
+│   │   ├── vocabulary.py             the closed given/when/expect field set
+│   │   ├── scenario.py               Scenario -- YAML loader
+│   │   ├── runner.py                 run_scenario() -- executes one Scenario
+│   │   └── report.py                 the interlock coverage matrix (pure logic)
+│   └── telemetry/
+│       └── tag_history.py            TagHistory -- generic IOImage tag-value sampler
+│                                      (Phase 5 step 1); write_csv() exports it
 ├── scenarios/
 │   ├── startup/normal_start.yaml
 │   ├── shutdown/normal_stop.yaml
 │   ├── safety/                       estop_from_running.yaml (CLAUDE.md §10's
 │   │                                  own example, made real), estop_blocks_start.yaml
-│   └── faults/                       9 files -- one or more per §6.3 interlock row
+│   └── faults/                       10 files -- one or more per §6.3 interlock row
 │                                      (gate_travel_timeout.yaml, hopper_high_high_
 │                                      blocks_start.yaml, bin_low_blocks_start.yaml,
 │                                      belt_slip_stops_feeder.yaml, hopper_high_high_
 │                                      trips_running.yaml, conveyor_fail_to_start.yaml,
 │                                      feeder_fail_to_start.yaml, conveyor_trip_while_
-│                                      running.yaml, feeder_trip_while_running.yaml)
+│                                      running.yaml, feeder_trip_while_running.yaml,
+│                                      unacknowledged_alarm_blocks_start.yaml)
 ├── scripts/
 │   └── scenario_report.py            thin CLI: runs every scenario, prints
 │                                      report.py's coverage matrix, --out FILE.md
@@ -454,6 +460,46 @@ issue and propose the change"):
 - **Coverage matrix now reports 8/8**, 0 not-applicable, 0 real gaps —
   `scripts/scenario_report.py` output confirms it.
 
+## Module responsibilities (Phase 5 step 1)
+
+- **`TagHistory`** (`services/telemetry/tag_history.py`) — the sampled
+  "CSV tag history" half of Phase 5. Deliberately as generic as `IOImage`
+  itself: the constructor takes only an `IOImage`, `record(t)` calls only
+  `names()`/`read()`, and nothing here knows this line's tag names or
+  even that a `Plant` exists. Proven by the same test pattern already
+  established for `MotorControl`/`GateControl` (build a bare 2-tag
+  `IOImage`, not `build_line_io_image()`) — see `tests/unit/
+  test_tag_history.py`.
+- **Pull, not push, confirmed as the Phase 5 architecture**: nothing in
+  `services/simulation/` or `services/control/` calls into this or knows
+  it exists. A caller — a test, the scenario runner, a future
+  telemetry-enabled driver — calls `record(t)` once per tick, the same
+  tick boundary `services/testing/rig.py`'s `tick()` already uses. Zero
+  lines changed in any Phase 2-4 file for this step.
+- **`t` (the timestamp) is supplied by the caller**, not tracked
+  internally — `TagHistory` stays ignorant of `SimClock`/`dt` the same
+  way `IOImage` itself is ignorant of simulated time. Whatever drives the
+  tick loop already has that number; duplicating a clock here would be
+  exactly the "second thing that could drift" pattern this codebase
+  keeps deliberately avoiding elsewhere (`rig.py`, `plant_io.py`).
+- **File output is a separate, standalone function** (`write_csv()`),
+  not a method — `TagHistory` itself never imports `csv` or `pathlib`.
+  Mirrors the `services/testing/report.py` (pure logic) /
+  `scripts/scenario_report.py` (the thing that writes a file) split.
+  Nothing calls `write_csv()` during a normal `pytest` run; no file is
+  written as a side effect of anything in this step.
+- **Columns are the union of every tag ever recorded**, not `IOImage`'s
+  tag list at export time — so `write_csv()` doesn't need a live
+  `IOImage` reference, and a tag defined partway through a run gets its
+  own column (blank for samples before it existed) instead of either
+  crashing or silently vanishing.
+- **Fixed `services/control/__init__.py`** while in the area: `Alarm`/
+  `AlarmManager` were never added to its `__all__` re-exports when Phase
+  4 built them, unlike every other Control module. Real gap, not
+  intentional — every other package's `__init__.py` (`testing`, and now
+  `telemetry`) re-exports its public symbols this way; `control`'s had
+  quietly fallen behind.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |
@@ -463,7 +509,7 @@ issue and propose the change"):
 | 2 | Control | done |
 | 3 | Testing / commissioning scenarios | done |
 | 4 | Fault injection, alarms | done (steps 1-3: alarm core; wired into `LineController`; surfaced through Testing, 8/8 interlocks covered). Step 4 (feeder jam + sensor failure hooks) deliberately deferred — see `CONTROL-LAB.md` §10 |
-| 5 | Telemetry | not started |
+| 5 | Telemetry | in progress — step 1 done (generic sampled tag history: `TagHistory` + `write_csv()`) |
 | 6 | Visualization | not started |
 | 7 | Protocols | not started |
 | 8 | AI engineering assistance | not started |

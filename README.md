@@ -17,8 +17,11 @@ gaps; and alarm management — latching, first-out, and acknowledge, wired
 into `LineController` so a start is refused while any trip-class alarm
 is latched and unacknowledged, independent of `reset()`. Two additional
 fault hooks from the original spec (feeder jam, sensor failure) are
-deliberately deferred — see the roadmap below. No telemetry, UI, or
-protocol support yet.
+deliberately deferred — see the roadmap below. Phase 5 (Telemetry) in
+progress: a generic, IOImage-only sampled tag-value recorder
+(`TagHistory` + `write_csv()`, an additional observation layer, not a
+replacement for the existing direct-state test assertions). No event
+log, UI, or protocol support yet.
 
 ## Documentation
 
@@ -56,7 +59,7 @@ python scripts/scenario_report.py --out coverage_report.md
 | 2 | Control (states, sequences, interlocks) | done |
 | 3 | Testing / commissioning scenarios | done |
 | 4 | Fault injection, alarms | done (feeder jam / sensor failure hooks deferred) |
-| 5 | Telemetry | not started |
+| 5 | Telemetry | in progress (step 1 of 4 done: generic sampled tag history) |
 | 6 | Visualization | not started |
 | 7 | Protocols (Modbus, OPC UA, MQTT) | not started |
 | 8 | AI engineering assistance | not started |
