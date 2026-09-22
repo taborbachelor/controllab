@@ -26,6 +26,14 @@ set), `write_output()` only accepts DO/AO tags (Control's to set), and
 table has. `Plant` still has zero knowledge of this module; `plant_io.py`
 is the only thing that bridges the two (see Module responsibilities below).
 
+Phase 2's step 2 added the first real Control-layer code, `services/
+control/`, and with it the first mechanical proof that the boundary
+actually holds: `tests/unit/test_control_boundary.py` scans every file in
+that directory for a reference to `services.simulation.equipment` and
+fails if it finds one. This was verified to actually catch a violation —
+not just assumed to — by temporarily adding a forbidden import, watching
+the test fail, then reverting it.
+
 ## Current repository layout
 
 ```
@@ -35,6 +43,10 @@ ControlLab/
 │   ├── CONTROL-LAB.md               project specification
 │   └── ARCHITECTURE.md              this file
 ├── services/
+│   ├── control/
+│   │   ├── errors.py                 ControlError + tag-binding validation
+│   │   ├── motor_control.py          MotorControl (run/speed command, start-proof)
+│   │   └── gate_control.py           GateControl (open/close command, travel-timeout)
 │   └── simulation/
 │       ├── engine/
 │       │   ├── clock.py             SimClock — fixed-step simulated time
@@ -49,20 +61,20 @@ ControlLab/
 │           ├── estop.py             EStop (plant-wide safety trip)
 │           └── plant.py             Plant — wires the line together
 ├── tests/
-│   ├── unit/                        one test module per equipment/engine class
+│   ├── unit/                        one test module per equipment/engine/control
+│   │                                 class, plus test_control_boundary.py
 │   └── integration/                 full-line scenarios (test_plant.py,
-│                                     test_plant_io.py)
+│                                     test_plant_io.py, test_device_control.py)
 ├── pyproject.toml
 └── README.md
 ```
 
 This is deliberately smaller than the target layout in `CLAUDE.md` §17 and
 the initial layout sketched in the original project brief.
-`services/control/`, `services/testing/`, `scenarios/`, and `examples/`
-aren't created yet because they'd be empty — CLAUDE.md §17 itself says not
-to pre-create directories just to make the repository look larger than it
-is. They get added in the phase that gives them real content (see the
-roadmap below).
+`services/testing/`, `scenarios/`, and `examples/` aren't created yet
+because they'd be empty — CLAUDE.md §17 itself says not to pre-create
+directories just to make the repository look larger than it is. They get
+added in the phase that gives them real content (see the roadmap below).
 
 ## Module responsibilities (Phase 1)
 
@@ -119,6 +131,33 @@ scan (`CONTROL-LAB.md` §3.3) — it's a one-tick lag, not a bug.
   setting internal attributes directly, so the I/O boundary can't bypass
   validation the device itself already enforces.
 
+## Module responsibilities (Phase 2 step 2)
+
+- **`MotorControl` / `GateControl`** (`services/control/`) — the
+  Control-side counterparts to `Motor`/`Gate`, but they know nothing
+  about those classes; they only read/write tags on the `IOImage` they're
+  given. Each takes tag names in its constructor (not hardcoded to this
+  line's actual tags — the unit tests build them against a bare two-
+  tag/three-tag `IOImage` to prove that), and validates each bound tag's
+  type immediately via `errors.require_tag_type()`, so a wiring mistake
+  fails at construction, not partway through a scenario.
+- Each supervises exactly one thing its device can't report about
+  itself, by timing: `MotorControl.start_proof_fault` (commanded to run,
+  `RUNNING` never confirms) and `GateControl.travel_fault` (commanded to
+  a position, the matching limit switch never makes) — both default to
+  the 3s/5s windows `CONTROL-LAB.md` §6.2 already specifies. Both also
+  pass through a fault the device *does* report itself
+  (`MotorControl.faulted`) with no timing involved.
+- Both fault flags **latch** until the command changes or `clear_fault()`
+  is called — deliberately not auto-cleared just because the device
+  eventually confirms/arrives late while still commanded. Tested
+  explicitly in both directions (`test_dropping_the_run_command_clears_
+  the_fault` vs. `test_late_confirmation_does_not_clear_an_already_
+  raised_fault`), since it's an easy behavior to get backwards silently.
+- Detecting a fault is these modules' whole job. Deciding what to do
+  about one — stop the line, go to FAULTED — belongs to line control
+  (Phase 2 step 3), kept out of these modules on purpose.
+
 ## Reconciliation notes
 
 Two places this implementation deliberately diverges from the original
@@ -151,7 +190,7 @@ issue and propose the change"):
 |---|---|---|
 | 0 | Foundation | done |
 | 1 | Simulation core | done |
-| 2 | Control | in progress — step 1/4 done (I/O image) |
+| 2 | Control | in progress — steps 1-2/4 done (I/O image, device control modules) |
 | 3 | Testing / commissioning scenarios | not started |
 | 4 | Fault injection, alarms | not started |
 | 5 | Telemetry | not started |

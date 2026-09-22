@@ -8,8 +8,9 @@ against it and tested: startup, shutdown, interlocks, fault injection, and
 recovery, before any physical equipment exists.
 
 **Status:** early development (Phase 1 — simulation core — complete; Phase 2
-— Control — in progress, I/O image done). No control logic, UI, or
-protocol support yet — see the roadmap below.
+— Control — in progress: I/O image and device control modules done, line
+control/sequencing not yet). No UI or protocol support yet — see the
+roadmap below.
 
 ## Documentation
 
@@ -36,7 +37,7 @@ pytest
 |---|---|---|
 | 0 | Foundation | done |
 | 1 | Simulation core | done |
-| 2 | Control (states, sequences, interlocks) | in progress — I/O image done |
+| 2 | Control (states, sequences, interlocks) | in progress — I/O image + device control modules done |
 | 3 | Testing / commissioning scenarios | not started |
 | 4 | Fault injection, alarms | not started |
 | 5 | Telemetry | not started |
