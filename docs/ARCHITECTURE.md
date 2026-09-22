@@ -85,8 +85,10 @@ ControlLab/
 │   │   ├── runner.py                 run_scenario() -- executes one Scenario
 │   │   └── report.py                 the interlock coverage matrix (pure logic)
 │   └── telemetry/
-│       └── tag_history.py            TagHistory -- generic IOImage tag-value sampler
-│                                      (Phase 5 step 1); write_csv() exports it
+│       ├── tag_history.py            TagHistory -- generic IOImage tag-value sampler
+│       │                             (Phase 5 step 1); write_csv() exports it
+│       └── events.py                 EventLog -- state/alarm diffing observer
+│                                      (Phase 5 step 2); write_jsonl() exports it
 ├── scenarios/
 │   ├── startup/normal_start.yaml
 │   ├── shutdown/normal_stop.yaml
@@ -105,12 +107,12 @@ ControlLab/
 │                                      report.py's coverage matrix, --out FILE.md
 ├── tests/
 │   ├── unit/                        one test module per equipment/engine/control/
-│   │                                 testing class, plus test_control_boundary.py
+│   │                                 testing/telemetry class, plus test_control_boundary.py
 │   └── integration/                 full-line scenarios (test_plant.py,
 │                                     test_plant_io.py, test_device_control.py,
 │                                     test_line_controller.py, test_scenarios.py
 │                                     -- discovers and runs everything under
-│                                     scenarios/)
+│                                     scenarios/ -- and test_event_log.py)
 ├── pyproject.toml
 └── README.md
 ```
@@ -500,6 +502,53 @@ issue and propose the change"):
   `telemetry`) re-exports its public symbols this way; `control`'s had
   quietly fallen behind.
 
+## Module responsibilities (Phase 5 step 2)
+
+- **`EventLog`** (`services/telemetry/events.py`) — unlike `TagHistory`,
+  this is inherently line-specific (it reads `LineController.state`/
+  `fault_reason` and `AlarmManager`'s alarm set, both already
+  line-specific themselves), so its tests use the real rig, the same
+  tier `test_line_controller.py` already established, not a bare
+  fixture the way `test_tag_history.py` does.
+- **Exactly two diffable primitives per alarm — `active` and
+  `acknowledged`** — not `latched`/`first_out`. `latched` is itself
+  only ever a function of those two (`services/control/alarms.py`:
+  `latched = active or not acknowledged`), so any transition in it
+  always coincides with one already captured by `alarm_activated`/
+  `alarm_cleared`/`alarm_acknowledged`; recording it separately would be
+  the same fact a third time, not new information. `first_out` only
+  ever changes at the same moment `active` does (the rising edge that
+  claims it) or the same moment an episode fully resets (already
+  captured by whichever event closes it out), so it rides along as a
+  field on `alarm_activated` instead of needing its own event type.
+- **A real, non-obvious finding from writing the tests**, not a
+  contrived edge case: the first scenario tried for "clear then
+  acknowledge" used a stuck gate (`plant.gate.stuck = True`, same fault
+  as several Phase 4 tests) and produced *two* activate/clear pairs for
+  `XV-102.TRAVEL_FAULT` before `acknowledge()` was ever called. Real
+  behavior, not a bug: `FAULTED` continuously re-commands the gate
+  closed; the moment that command changes, `GateControl.scan()`'s own
+  "latches until the command changes" rule (Phase 2 step 2) resets
+  `travel_fault` to `False` — but the gate is still physically `stuck`,
+  so it can never reach `CLOSED` either, and `GateControl`'s own
+  2-second timeout starts accumulating again from zero and re-fires on
+  its own, with no new command and no new line-state transition. Phase
+  4's own tests never hit this because they only ever asserted
+  `Alarm.latched` (correctly true throughout, since `acknowledged`
+  never became true), never the raw `active` flag's path getting there.
+  Fixed by choosing hopper high-high (a pure level condition, no
+  Control-driven fault-latching involved) for that specific test instead
+  of redesigning `GateControl` — nothing in Phase 2-4 needed to change,
+  this is `EventLog` correctly observing a real, already-existing
+  interaction between two independent timing mechanisms.
+- **Confirms the Phase 5 architecture decision**: zero lines changed in
+  `line_controller.py` or `alarms.py` for this step. `EventLog` only
+  ever reads already-public attributes, at the same tick boundary
+  `TagHistory` and `rig.py`'s own `tick()` already use.
+- **File output** (`write_jsonl()`) is again a standalone function, not
+  a method, for the same reason `write_csv()` is — mirrors
+  `services/testing/report.py`/`scripts/scenario_report.py`'s split.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |
@@ -509,7 +558,7 @@ issue and propose the change"):
 | 2 | Control | done |
 | 3 | Testing / commissioning scenarios | done |
 | 4 | Fault injection, alarms | done (steps 1-3: alarm core; wired into `LineController`; surfaced through Testing, 8/8 interlocks covered). Step 4 (feeder jam + sensor failure hooks) deliberately deferred — see `CONTROL-LAB.md` §10 |
-| 5 | Telemetry | in progress — step 1 done (generic sampled tag history: `TagHistory` + `write_csv()`) |
+| 5 | Telemetry | in progress — steps 1-2 done (generic sampled tag history; state/alarm diffing observer) |
 | 6 | Visualization | not started |
 | 7 | Protocols | not started |
 | 8 | AI engineering assistance | not started |
