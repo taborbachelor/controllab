@@ -97,6 +97,58 @@ def test_expectation_never_met_times_out_as_a_failed_result_not_an_error(tmp_pat
     assert "line_state" in result.detail
 
 
+def test_given_level_precondition_does_not_trigger_a_false_conservation_violation(tmp_path):
+    """given.hopper_level_pct is a deliberate precondition, settled and
+    rebaselined (Invariants.rebaseline()) before `when` is ever applied
+    -- must not be mistaken for a physics violation."""
+    s = load(
+        tmp_path,
+        """
+        name: Hopper preset as a precondition
+        given:
+          line_state: idle
+          hopper_level_pct: 97.5
+        when:
+          start: true
+        expect:
+          line_state: idle
+        within:
+          seconds: 0.3
+        """,
+    )
+    result = run_scenario(s)
+    assert result.passed is True
+    assert result.detail == "all expectations met"
+
+
+def test_level_precondition_modeled_as_when_instead_of_given_behaves_differently(tmp_path):
+    """The given-vs-when distinction documented in scenario.py is
+    load-bearing, not stylistic: the SAME hopper level, applied as part
+    of `when` instead of `given`, gets no settle tick before the polling
+    loop starts checking against it -- so start() (also in `when`, same
+    atomic batch) is evaluated against a stale reading and briefly
+    begins the sequence before the continuous high-high trip check
+    catches it one tick later, landing in FAULTED rather than staying
+    IDLE. Documented here so a future change to the settle/rebaseline
+    mechanics has a test that would catch it moving the wrong way."""
+    s = load(
+        tmp_path,
+        """
+        name: Hopper set within when, not given
+        when:
+          hopper_level_pct: 97.5
+          start: true
+        expect:
+          line_state: idle
+        within:
+          seconds: 0.3
+        """,
+    )
+    result = run_scenario(s)
+    assert result.passed is False
+    assert result.detail == "timed out after 0.3s -- unmet: {'line_state': {'expected': 'idle', 'actual': 'faulted'}}"
+
+
 def test_passing_scenario_reports_elapsed_time_less_than_the_window(tmp_path):
     s = load(
         tmp_path,

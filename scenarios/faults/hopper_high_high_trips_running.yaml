@@ -1,0 +1,18 @@
+name: Hopper High-High Faults The Line While Running
+
+given:
+  line_state: running
+
+when:
+  hopper_level_pct: 97.5
+
+expect:
+  line_state: faulted
+  fault_reason: "hopper high-high"
+  feeder_running: false
+  gate_open: false
+
+within:
+  seconds: 0.5
+
+interlock: "Hopper high-high"

@@ -16,6 +16,14 @@ Two distinct kinds of "not passing," on purpose:
   *system* didn't do what was expected, or an invariant tripped. This is
   a legitimate finding, not an error, and is what the coverage report
   (Phase 3 step 3) counts.
+
+Conservation is checked against a baseline that's reset after each setup
+phase (`given`, then `when`), not the mass the rig started with at raw
+construction. `given`/`when` fields like `hopper_level_pct` deliberately
+preset a vessel level as a Testing stimulus (docs/CONTROL-LAB.md §3.3) —
+that's a legitimate setup action, not a physical event, and checking it
+against the pristine starting mass would flag every such scenario as
+"material appeared from nowhere." See `Invariants.rebaseline()`.
 """
 from __future__ import annotations
 
@@ -48,10 +56,22 @@ def run_scenario(scenario: Scenario) -> ScenarioResult:
     if setup_failure is not None:
         return setup_failure
 
+    # Settle: one tick so given's effects (e.g. a direct level write)
+    # are fully published through the I/O image before `when` is
+    # applied and before anything polls for it -- same reasoning as the
+    # tick-before-check rule below, one level up.
+    tick(rig, DT)
+    try:
+        invariants.check()
+    except InvariantViolation as e:
+        return ScenarioResult(scenario, False, DT, f"invariant violated settling given: {e}")
+
     try:
         _apply_when(rig, scenario)
     except ScenarioError as e:
         raise ScenarioLoadError(f"{scenario.path}: {e}") from e
+
+    invariants.rebaseline()  # when's own fields are ALSO deliberate setup, not a violation
 
     # Tick BEFORE checking, every iteration -- not the reverse. Per
     # docs/CONTROL-LAB.md §3.3's scan cycle, Testing applies a stimulus
@@ -94,6 +114,8 @@ def _apply_given(rig: Rig, scenario: Scenario, invariants: Invariants) -> Scenar
             apply_field(rig, key, value)
     except ScenarioError as e:
         raise ScenarioLoadError(f"{scenario.path}: {e}") from e
+
+    invariants.rebaseline()  # given's own fields are deliberate setup, not a violation
 
     if line_state == "idle":
         return None

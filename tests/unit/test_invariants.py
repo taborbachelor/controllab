@@ -20,6 +20,33 @@ def test_material_conservation_detects_material_appearing_from_nowhere():
         inv.check()
 
 
+def test_rebaseline_accepts_a_deliberate_precondition_without_raising():
+    """A scenario's given/when can preset a vessel level as a Testing
+    stimulus (services/testing/vocabulary.py's hopper_level_pct/
+    bin_level_pct) -- that's a legitimate setup action, not a physical
+    event. Without rebaseline(), this would look identical to the
+    "material appeared from nowhere" case above."""
+    rig = build_rig()
+    inv = Invariants(rig)
+    inv.check()
+
+    rig.plant.hopper.level_kg += 500.0  # a deliberate precondition, not a physics event
+    inv.rebaseline()
+    inv.check()  # must not raise -- the new total is now the accepted baseline
+
+
+def test_rebaseline_does_not_mask_a_real_violation_afterward():
+    rig = build_rig()
+    inv = Invariants(rig)
+    rig.plant.hopper.level_kg += 500.0
+    inv.rebaseline()
+    inv.check()
+
+    rig.plant.bin.level_kg += 100.0  # a second, un-baselined change -- this one's real
+    with pytest.raises(InvariantViolation):
+        inv.check()
+
+
 def test_material_conservation_is_unaffected_by_legitimate_transfer():
     """Moving mass between bin/belt/hopper/spilled without changing the
     total must NOT trip the check -- only an actual imbalance should."""

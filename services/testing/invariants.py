@@ -41,6 +41,20 @@ class Invariants:
         self.starting_mass_kg = rig.plant.total_mass_kg()
         self._feeder_unconfirmed_ticks = 0
 
+    def rebaseline(self) -> None:
+        """Reset the conservation baseline to the plant's CURRENT total.
+
+        A scenario's `given`/`when` can deliberately preset a vessel
+        level (hopper_level_pct, bin_level_pct) as a Testing stimulus --
+        that's a legitimate setup action, not a physical event, and
+        checking it against the mass the rig started with at raw
+        construction would flag every such scenario as "material
+        appeared from nowhere." The runner calls this once after each
+        setup phase (given, then when) completes, so conservation is
+        checked against "as configured for this scenario," not "as
+        originally built" -- see runner.py."""
+        self.starting_mass_kg = self.rig.plant.total_mass_kg()
+
     def check(self) -> None:
         self._check_material_conserved()
         self._check_feeder_not_running_unconfirmed()

@@ -79,12 +79,23 @@ ControlLab/
 │       ├── invariants.py             Invariants -- §7 item 6, checked every scan
 │       ├── vocabulary.py             the closed given/when/expect field set
 │       ├── scenario.py               Scenario -- YAML loader
-│       └── runner.py                 run_scenario() -- executes one Scenario
+│       ├── runner.py                 run_scenario() -- executes one Scenario
+│       └── report.py                 the interlock coverage matrix (pure logic)
 ├── scenarios/
 │   ├── startup/normal_start.yaml
 │   ├── shutdown/normal_stop.yaml
-│   ├── safety/estop_from_running.yaml    (CLAUDE.md §10's own example, made real)
-│   └── faults/gate_travel_timeout.yaml
+│   ├── safety/                       estop_from_running.yaml (CLAUDE.md §10's
+│   │                                  own example, made real), estop_blocks_start.yaml
+│   └── faults/                       9 files -- one or more per §6.3 interlock row
+│                                      (gate_travel_timeout.yaml, hopper_high_high_
+│                                      blocks_start.yaml, bin_low_blocks_start.yaml,
+│                                      belt_slip_stops_feeder.yaml, hopper_high_high_
+│                                      trips_running.yaml, conveyor_fail_to_start.yaml,
+│                                      feeder_fail_to_start.yaml, conveyor_trip_while_
+│                                      running.yaml, feeder_trip_while_running.yaml)
+├── scripts/
+│   └── scenario_report.py            thin CLI: runs every scenario, prints
+│                                      report.py's coverage matrix, --out FILE.md
 ├── tests/
 │   ├── unit/                        one test module per equipment/engine/control/
 │   │                                 testing class, plus test_control_boundary.py
@@ -99,9 +110,8 @@ ControlLab/
 
 This is deliberately smaller than the target layout in `CLAUDE.md` §17 and
 the initial layout sketched in the original project brief. Alarms
-(Phase 4), `scripts/` (the interlock coverage report, Phase 3 step 3),
-and `examples/` aren't created yet because they'd be empty — CLAUDE.md
-§17 itself says not to pre-create directories just to make the
+(Phase 4) and `examples/` aren't created yet because they'd be empty —
+CLAUDE.md §17 itself says not to pre-create directories just to make the
 repository look larger than it is. They get
 added in the phase that gives them real content (see the roadmap below).
 
@@ -285,7 +295,7 @@ issue and propose the change"):
    tests in `tests/` assert on equipment state directly. `CONTROL-LAB.md`
    §10 has been updated to match this document's phase numbering.
 
-## Module responsibilities (Phase 3 step 1)
+## Module responsibilities (Phase 3, complete)
 
 - **`services/testing/rig.py`** — the single canonical Control-driven
   rig builder. `tests/integration/test_line_controller.py` and the
@@ -310,7 +320,26 @@ issue and propose the change"):
   and Simulation's reaction happen within the same tick; checking first
   observes a moment that exists only in this function's call order, not
   one the real system passes through. Found by the first scenario ever
-  run against this code, not designed in up front.
+  run against this code, not designed in up front. The second subtlety,
+  found by the first Phase 3 *step 2* scenario: `given` gets one settle
+  tick before `when` is applied; `when` doesn't get one before the
+  polling loop starts. A precondition belongs in `given` for exactly
+  this reason — see `scenario.py`'s docstring for the full given-vs-when
+  contract, and `Invariants.rebaseline()` for the matching conservation
+  fix (a deliberate level-preset in either phase is setup, not a
+  violation, but only once the baseline is reset to account for it).
+- **`services/testing/report.py`** — pure logic (no I/O), so the
+  coverage-matrix categorization is unit-tested directly rather than only
+  exercised incidentally through the CLI. Four states per §6.3 row, not
+  two: `not_covered` and `not_applicable` are different findings (a real
+  gap vs. a row nothing can test yet) and collapsing them would hide
+  which one actually needs work. `covered_but_failing` is its own state
+  too — a row whose only scenario currently fails is not "covered."
+- **`scripts/scenario_report.py`** — the thin CLI wrapper. Verified to
+  actually catch problems, not just demonstrated passing: a deliberately
+  failing scenario and a typo'd `interlock:` tag were both added,
+  confirmed to surface correctly (including the non-zero exit code), then
+  removed.
 
 ## Roadmap (current phase status)
 
@@ -319,7 +348,7 @@ issue and propose the change"):
 | 0 | Foundation | done |
 | 1 | Simulation core | done |
 | 2 | Control | done |
-| 3 | Testing / commissioning scenarios | in progress — step 1/3 done (scenario format, runner, invariants) |
+| 3 | Testing / commissioning scenarios | done |
 | 4 | Fault injection, alarms | not started |
 | 5 | Telemetry | not started |
 | 6 | Visualization | not started |

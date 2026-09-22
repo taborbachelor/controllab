@@ -1,0 +1,16 @@
+name: Conveyor Trip While Running Faults The Line
+
+given:
+  line_state: running
+
+when:
+  conveyor_trip: true
+
+expect:
+  line_state: faulted
+  fault_reason: "conveyor trip"
+
+within:
+  seconds: 0.5
+
+interlock: "Any motor fail-to-start / trip"

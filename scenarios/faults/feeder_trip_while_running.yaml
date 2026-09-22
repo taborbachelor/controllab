@@ -1,0 +1,16 @@
+name: Feeder Trip While Running Faults The Line
+
+given:
+  line_state: running
+
+when:
+  feeder_trip: true
+
+expect:
+  line_state: faulted
+  fault_reason: "feeder trip"
+
+within:
+  seconds: 0.5
+
+interlock: "Any motor fail-to-start / trip"

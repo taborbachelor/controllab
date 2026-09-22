@@ -7,13 +7,13 @@ feeder → conveyor → hopper — so deterministic control logic can be run
 against it and tested: startup, shutdown, interlocks, fault injection, and
 recovery, before any physical equipment exists.
 
-**Status:** early development. Phases 0-2 complete: simulation core, and
-Control — the I/O image, device control modules, and the full
+**Status:** early development. Phases 0-3 complete: simulation core;
+Control (the I/O image, device control modules, and the full
 `IDLE/STARTING/RUNNING/STOPPING/FAULTED/ESTOPPED` line state machine, all
-in Auto mode. Phase 3 in progress: a declarative `given`/`when`/`expect`
-scenario format with a runner and continuous invariant checking, plus
-four scenarios (see `scenarios/`) — full interlock coverage and a
-coverage-matrix report still to come. No telemetry, UI, or protocol
+in Auto mode); and Testing — a declarative `given`/`when`/`expect`
+scenario format, 13 scenarios covering 7 of 8 interlocks (the 8th needs
+the alarm system, Phase 4), and an interlock coverage matrix
+(`python scripts/scenario_report.py`). No telemetry, UI, or protocol
 support yet — see the roadmap below.
 
 ## Documentation
@@ -35,6 +35,14 @@ pip install -e ".[dev]"
 pytest
 ```
 
+`pytest` runs everything, including every scenario under `scenarios/`.
+For the interlock coverage matrix specifically:
+
+```bash
+python scripts/scenario_report.py            # print
+python scripts/scenario_report.py --out coverage_report.md
+```
+
 ## Roadmap
 
 | Phase | Focus | Status |
@@ -42,7 +50,7 @@ pytest
 | 0 | Foundation | done |
 | 1 | Simulation core | done |
 | 2 | Control (states, sequences, interlocks) | done |
-| 3 | Testing / commissioning scenarios | in progress — scenario format + runner done |
+| 3 | Testing / commissioning scenarios | done |
 | 4 | Fault injection, alarms | not started |
 | 5 | Telemetry | not started |
 | 6 | Visualization | not started |

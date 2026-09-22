@@ -1,0 +1,17 @@
+name: Feeder Fails To Prove Running
+
+given:
+  line_state: idle
+  feeder_fail_to_start: true
+
+when:
+  start: true
+
+expect:
+  line_state: faulted
+  fault_reason: "feeder failed to prove running"
+
+within:
+  seconds: 5.0
+
+interlock: "Any motor fail-to-start / trip"

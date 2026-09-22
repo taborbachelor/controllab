@@ -1,0 +1,17 @@
+name: Belt Slip Stops The Feeder And Faults The Line
+
+given:
+  line_state: running
+
+when:
+  belt_slip: true
+
+expect:
+  line_state: faulted
+  fault_reason: "conveyor lost confirmation"
+  feeder_running: false
+
+within:
+  seconds: 0.5
+
+interlock: "Conveyor proven running"

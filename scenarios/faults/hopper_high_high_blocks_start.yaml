@@ -1,0 +1,16 @@
+name: Start Refused When Hopper High-High
+
+given:
+  line_state: idle
+  hopper_level_pct: 97.5
+
+when:
+  start: true
+
+expect:
+  line_state: idle
+
+within:
+  seconds: 0.3
+
+interlock: "Hopper not high-high"

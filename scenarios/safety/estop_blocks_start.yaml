@@ -1,0 +1,16 @@
+name: Start Blocked While E-stop Tripped
+
+given:
+  line_state: idle
+  estop: tripped
+
+when:
+  start: true
+
+expect:
+  line_state: estopped
+
+within:
+  seconds: 0.3
+
+interlock: "E-stop healthy"

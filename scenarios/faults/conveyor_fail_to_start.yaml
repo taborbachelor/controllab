@@ -1,0 +1,17 @@
+name: Conveyor Fails To Prove Running
+
+given:
+  line_state: idle
+  conveyor_fail_to_start: true
+
+when:
+  start: true
+
+expect:
+  line_state: faulted
+  fault_reason: "conveyor failed to prove running"
+
+within:
+  seconds: 3.0
+
+interlock: "Any motor fail-to-start / trip"

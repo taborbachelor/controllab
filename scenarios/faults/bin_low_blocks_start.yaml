@@ -1,0 +1,16 @@
+name: Start Refused When Bin Low
+
+given:
+  line_state: idle
+  bin_level_pct: 5.0
+
+when:
+  start: true
+
+expect:
+  line_state: idle
+
+within:
+  seconds: 0.3
+
+interlock: "Bin not low"
