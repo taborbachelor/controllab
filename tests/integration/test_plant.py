@@ -5,6 +5,7 @@ CLAUDE.md, which is Phase 3 (Testing) work.
 """
 import pytest
 
+from services.simulation.equipment.motor import MotorState
 from services.simulation.equipment.plant import Plant, PlantConfig
 
 DT = 0.1
@@ -96,8 +97,6 @@ def test_estop_trips_all_motors_and_holds_until_reset():
     plant.estop.trip()
     plant.step(DT)
 
-    from services.simulation.equipment.motor import MotorState
-
     assert plant.conveyor.motor.state == MotorState.ESTOP
     assert plant.feeder.motor.state == MotorState.ESTOP
 
@@ -116,6 +115,36 @@ def test_estop_trips_all_motors_and_holds_until_reset():
     run(plant, 0.1)
     assert plant.conveyor.motor.state == MotorState.STOPPED  # no auto-restart
     assert plant.feeder.motor.state == MotorState.STOPPED
+
+
+def test_manual_motor_estop_reset_does_not_stick_while_plant_estop_still_tripped():
+    """The ordering matters: releasing the PLANT-level E-stop is what
+    lets a motor leave ESTOP (see Plant.step()'s auto-reset). Calling
+    Motor.estop_reset() directly on a motor while plant.estop is still
+    tripped doesn't stick -- Plant.step()'s tripped branch re-asserts
+    ESTOP on every subsequent tick regardless, since it runs
+    unconditionally whenever estop.tripped is true. This is what makes
+    it safe for LineController to have no path to this call at all
+    (docs/CONTROL-LAB.md §3.2): even if something else got a motor out
+    of ESTOP early, the plant-level trip alone holds it there."""
+    plant = make_plant()
+    plant.conveyor.command(True)
+    run(plant, 1.5)
+    assert plant.conveyor.motor.running
+
+    plant.estop.trip()
+    plant.step(DT)
+    assert plant.conveyor.motor.state == MotorState.ESTOP
+
+    plant.conveyor.motor.estop_reset()  # jumps the gun -- estop is still tripped
+    assert plant.conveyor.motor.state == MotorState.STOPPED  # takes effect immediately...
+
+    plant.step(DT)  # ...but the very next tick re-asserts ESTOP regardless
+    assert plant.conveyor.motor.state == MotorState.ESTOP
+
+    plant.estop.reset()  # now release it for real
+    run(plant, 0.1)
+    assert plant.conveyor.motor.state == MotorState.STOPPED  # sticks this time
 
 
 def test_run_is_deterministic_across_repeated_runs():

@@ -16,6 +16,7 @@ from services.control.line_state import LineState, StartStep
 from services.control.motor_control import MotorControl
 from services.simulation.engine.plant_io import build_line_io_image, publish_plant_inputs
 from services.simulation.engine.plant_io import scan as plant_scan
+from services.simulation.equipment.gate import GateState
 from services.simulation.equipment.motor import MotorState
 from services.simulation.equipment.plant import Plant, PlantConfig
 
@@ -229,6 +230,52 @@ def test_starting_fault_conveyor_fails_to_prove_running():
     assert line.state == LineState.FAULTED
     assert line.fault_reason == "conveyor failed to prove running"
 
+    # The actual proof for the "spillage from wrong order" scenario
+    # (docs/CONTROL-LAB.md's original Phase 1 test): even when the
+    # conveyor never proves running at all, the gate and feeder are
+    # NEVER commanded -- not "commanded, then dropped," never touched.
+    # There's no code path in LineController that can reach StartStep.GATE
+    # or StartStep.FEEDER without StartStep.CONVEYOR succeeding first, so
+    # "feeder runs onto an unconfirmed conveyor" isn't a race to lose --
+    # it's structurally unreachable. See
+    # test_wrong_order_spillage_is_structurally_unreachable_through_control
+    # for the direct, deliberate demonstration of the same claim.
+    assert plant.gate.state == GateState.CLOSED
+    assert plant.feeder.motor.state == MotorState.STOPPED
+
+
+def test_wrong_order_spillage_is_structurally_unreachable_through_control():
+    """The direct contrast for the "spillage from wrong order" scenario
+    docs/CONTROL-LAB.md's Phase 1 tests (test_plant.py, test_plant_io.py)
+    both demonstrate: real physical spillage when the feeder runs onto a
+    stopped conveyor. LineController doesn't prevent that by checking for
+    it -- it prevents it by never being ABLE to produce that command
+    sequence. Its only public entry points are start()/stop()/reset();
+    nothing lets a caller ask it to open the gate or run the feeder ahead
+    of the conveyor proving running.
+
+    Proven two ways: (1) start() run to completion, however Testing
+    prods it, always reaches RUNNING with zero spillage -- covered by
+    every other test in this file that calls start(). (2) reaching around
+    LineController and driving the SAME device-control objects it owns
+    directly -- exactly what a hostile or buggy caller bypassing it might
+    do -- reproduces the spillage instantly. That contrast is the actual
+    proof the sequencing is real, not a fluke of the happy path never
+    having tried anything else.
+    """
+    plant, io, line = make_rig()
+    line.gate_ctrl.command_open(True)
+    line.feeder_ctrl.command_run(True)
+    line.feeder_ctrl.command_speed(100.0)
+    for _ in range(20):
+        line.gate_ctrl.scan(DT)
+        line.feeder_ctrl.scan(DT)
+        line.conveyor_ctrl.scan(DT)  # never commanded -- conveyor stays stopped
+        plant_scan(plant, io, DT)
+
+    assert plant.spilled_kg > 0.0
+    assert plant.hopper.level_kg == 0.0
+
 
 def test_starting_fault_gate_travel_timeout():
     plant, io, line = make_rig()
@@ -441,6 +488,32 @@ def test_start_while_estopped_does_nothing():
     line.start()
     tick(plant, io, line)
     assert line.state == LineState.ESTOPPED  # e-stop still tripped
+
+
+def test_reset_alone_does_not_recover_from_estopped_without_the_estop_released():
+    """docs/CONTROL-LAB.md §6.2's diagram requires BOTH: "E-stop released
+    + Reset". reset() before the physical E-stop is released must be a
+    no-op, not just "released before reset" (the order
+    test_estop_holds_everything_off_and_requires_explicit_restart already
+    covers) -- this is the reverse order, and the more likely mistake for
+    an impatient operator to make."""
+    plant, io, line = make_rig()
+    plant.estop.trip()
+    run(plant, io, line, 0.2)
+    assert line.state == LineState.ESTOPPED
+
+    line.reset()  # pressed before the E-stop button is released
+    run(plant, io, line, 0.5)
+    assert line.state == LineState.ESTOPPED  # refused -- e-stop still tripped
+    assert plant.conveyor.motor.run_command is False
+
+    plant.estop.reset()  # now release it -- reset() was already consumed as a one-shot...
+    run(plant, io, line, 0.5)
+    assert line.state == LineState.ESTOPPED  # ...so it does NOT recover on its own
+
+    line.reset()  # a fresh reset() is required
+    tick(plant, io, line)
+    assert line.state == LineState.IDLE
 
 
 def test_estop_holds_everything_off_and_requires_explicit_restart():
