@@ -1,6 +1,6 @@
 # ControlLab — Project Specification
 
-*Living document and source of truth for the project. Last updated: 2026-09-21. Status: pre-V0.1 (specification only, no code yet).*
+*Living document and source of truth for the project. Last updated: 2026-09-21. Status: Phase 0–1 complete (`services/simulation/`, 33 tests passing) — see `docs/ARCHITECTURE.md` for what's actually implemented.*
 
 ---
 
@@ -110,7 +110,7 @@ bin         gate       feeder       conveyor    hopper
 
 The slide gate is included because it is the simplest device with travel time and limit switches, which is the classic source of "commanded but never arrived" faults.
 
-### 5.2 Device behavior (V0.1)
+### 5.2 Device behavior (Phase 1 — implemented)
 
 | Device | Behavior modeled | Key parameters (initial) |
 |---|---|---|
@@ -147,7 +147,7 @@ The slide gate is included because it is the simplest device with travel time an
 
 Tag naming loosely follows ISA-5.1 conventions. This table is the first commissioning artifact the project produces, and it should stay in sync with the code.
 
-### 5.4 Injectable faults (V0.1–V0.2)
+### 5.4 Injectable faults (Phase 1 hooks exist; Phase 4 surfaces them)
 
 | Fault | Where it shows up |
 |---|---|
@@ -214,7 +214,7 @@ Trips cascade **upstream**: if a device stops, everything feeding it stops, and 
 1. **Tests read like commissioning procedures.** A scenario states initial conditions, operator actions, injected faults, and expected observable results, in that order. An engineer who has never read the code should be able to follow it.
 2. **Tests observe the way a commissioning engineer does:** through I/O tags, line state, alarms, and the event log. They do not reach into internal variables.
 3. **Deterministic by construction.** Simulated time and seeded randomness mean a failing test fails the same way every run.
-4. **Every interlock gets a test that trips it.** An interlock without a test is an untested claim. V0.3 adds a coverage matrix that makes gaps visible.
+4. **Every interlock gets a test that trips it.** An interlock without a test is an untested claim. Phase 3 adds a coverage matrix that makes gaps visible.
 5. **Timing is asserted, not assumed.** Expectations come with windows ("feeder stops within 200 ms of conveyor motion loss"), because timing is where real control bugs hide.
 6. **Invariants run on every scan of every test,** not just in dedicated tests. Initial invariants:
    - Material is conserved (§5.2).
@@ -231,7 +231,7 @@ Test tiers, in the order they get built:
 | Control module | Motor module raises fail-to-start after 3 s without `RUNNING` |
 | Sequence | Normal start reaches RUNNING in the correct order; normal stop leaves an empty belt |
 | Fault | Conveyor overload mid-run → feeder stops, gate closes, line FAULTED, zero spillage beyond transit contents |
-| Commissioning suite | The full ordered set, producing a report (V0.3) |
+| Commissioning suite | The full ordered set, producing a report (Phase 3) |
 
 ## 8. Design Principles
 

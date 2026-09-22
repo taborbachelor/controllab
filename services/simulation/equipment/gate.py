@@ -2,6 +2,14 @@
 
 Limit switches only make at the end of travel — modeling the classic
 "commanded but never arrived" gate fault (docs/CONTROL-LAB.md §5.4).
+
+Known simplification: there's no continuous position, only time-in-state.
+Reversing direction mid-travel (OPENING -> CLOSING or back) resets the
+timer and takes the *full* nominal travel time from wherever it reversed,
+not just the distance already covered. Real gates would close faster from
+a half-open position. Acceptable for Phase 1-3 (commissioning tests care
+about "did it reach the limit switch," not the exact reversal transient);
+revisit with a real position variable if a test ever needs one.
 """
 from __future__ import annotations
 
