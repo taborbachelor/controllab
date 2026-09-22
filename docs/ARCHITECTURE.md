@@ -10,29 +10,37 @@ Update it whenever the real structure changes.*
 Full reasoning in `CONTROL-LAB.md` §3. In short:
 
 - **Simulation** (`services/simulation/`) models the physical plant.
-- **Control** (not yet built) will operate it through states, sequences,
-  and interlocks.
-- **Testing** (`tests/`, plus declarative scenarios once they exist) verifies
-  behavior.
+- **Control** (`services/control/`) operates it through states,
+  sequences, and interlocks — Auto mode only so far.
+- **Testing** (`tests/` for hand-written pytest; `services/testing/` +
+  `scenarios/` for declarative commissioning scenarios) verifies behavior.
 - **Telemetry** and **Visualization** come later (Phases 5–6).
 
 Control must only ever observe and command Simulation through a shared I/O
 tag table (the "I/O image") — never by reaching into simulation objects
-directly. That table now exists (`services/simulation/engine/io_image.py`),
-built as Phase 2's first step. The write direction each tag allows is
-enforced in code: `write_input()` only accepts DI/AI tags (Simulation's to
-set), `write_output()` only accepts DO/AO tags (Control's to set), and
-`read()` works for either side on any tag — the same asymmetry a real I/O
-table has. `Plant` still has zero knowledge of this module; `plant_io.py`
-is the only thing that bridges the two (see Module responsibilities below).
+directly. That table lives at `services/simulation/engine/io_image.py`
+(Phase 2 step 1). The write direction each tag allows is enforced in
+code: `write_input()` only accepts DI/AI tags (Simulation's to set),
+`write_output()` only accepts DO/AO tags (Control's to set), and `read()`
+works for either side on any tag — the same asymmetry a real I/O table
+has. `Plant` still has zero knowledge of this module; `plant_io.py` is
+the only thing that bridges the two (see Module responsibilities below).
 
-Phase 2's step 2 added the first real Control-layer code, `services/
-control/`, and with it the first mechanical proof that the boundary
-actually holds: `tests/unit/test_control_boundary.py` scans every file in
-that directory for a reference to `services.simulation.equipment` and
-fails if it finds one. This was verified to actually catch a violation —
-not just assumed to — by temporarily adding a forbidden import, watching
-the test fail, then reverting it.
+`services/control/`'s adherence to this boundary is mechanically
+enforced, not just conventional: `tests/unit/test_control_boundary.py`
+scans every file in that directory for a reference to
+`services.simulation.equipment` and fails if it finds one — verified to
+actually catch a violation, not just assumed to, by temporarily adding a
+forbidden import, watching the test fail, then reverting it.
+
+**Testing is different from Control here on purpose**: `CONTROL-LAB.md`
+§3.3's scan-cycle diagram has Testing apply stimuli (operator commands,
+fault injections) directly — so `services/testing/vocabulary.py`
+legitimately reaches into `Plant` objects (`plant.conveyor.motor.
+trip_now = True`, and so on) the same way a real commissioning test bench
+has hooks into the plant it's testing. That's not a boundary violation;
+it's a different, and differently-scoped, relationship with Simulation
+than Control has.
 
 ## Current repository layout
 
@@ -51,34 +59,50 @@ ControlLab/
 │   │   ├── hopper_hysteresis.py      HopperHysteresis — §6.2's on/off feed cycle
 │   │   ├── line_state.py             LineState, StartStep enums
 │   │   └── line_controller.py        LineController — the whole state machine
-│   └── simulation/
-│       ├── engine/
-│       │   ├── clock.py             SimClock — fixed-step simulated time
-│       │   ├── io_image.py          IOImage — the generic I/O tag table
-│       │   └── plant_io.py          the line's tags + Plant<->IOImage glue
-│       └── equipment/
-│           ├── motor.py             Motor + MotorState (shared by feeder/conveyor)
-│           ├── gate.py              Gate + GateState (travel time, timeout fault)
-│           ├── vessel.py            MaterialBin, Hopper (passive mass accumulators)
-│           ├── feeder.py            Feeder (Motor + rate output)
-│           ├── conveyor.py          Conveyor (Motor + transport-delay belt queue)
-│           ├── estop.py             EStop (plant-wide safety trip)
-│           └── plant.py             Plant — wires the line together
+│   ├── simulation/
+│   │   ├── engine/
+│   │   │   ├── clock.py             SimClock — fixed-step simulated time
+│   │   │   ├── io_image.py          IOImage — the generic I/O tag table
+│   │   │   └── plant_io.py          the line's tags + Plant<->IOImage glue
+│   │   └── equipment/
+│   │       ├── motor.py             Motor + MotorState (shared by feeder/conveyor)
+│   │       ├── gate.py              Gate + GateState (travel time, timeout fault)
+│   │       ├── vessel.py            MaterialBin, Hopper (passive mass accumulators)
+│   │       ├── feeder.py            Feeder (Motor + rate output)
+│   │       ├── conveyor.py          Conveyor (Motor + transport-delay belt queue)
+│   │       ├── estop.py             EStop (plant-wide safety trip)
+│   │       └── plant.py             Plant — wires the line together
+│   └── testing/
+│       ├── rig.py                    build_rig()/tick()/run() -- the canonical
+│       │                             Control-driven rig, shared by pytest and
+│       │                             the scenario runner
+│       ├── invariants.py             Invariants -- §7 item 6, checked every scan
+│       ├── vocabulary.py             the closed given/when/expect field set
+│       ├── scenario.py               Scenario -- YAML loader
+│       └── runner.py                 run_scenario() -- executes one Scenario
+├── scenarios/
+│   ├── startup/normal_start.yaml
+│   ├── shutdown/normal_stop.yaml
+│   ├── safety/estop_from_running.yaml    (CLAUDE.md §10's own example, made real)
+│   └── faults/gate_travel_timeout.yaml
 ├── tests/
-│   ├── unit/                        one test module per equipment/engine/control
-│   │                                 class, plus test_control_boundary.py
+│   ├── unit/                        one test module per equipment/engine/control/
+│   │                                 testing class, plus test_control_boundary.py
 │   └── integration/                 full-line scenarios (test_plant.py,
 │                                     test_plant_io.py, test_device_control.py,
-│                                     test_line_controller.py)
+│                                     test_line_controller.py, test_scenarios.py
+│                                     -- discovers and runs everything under
+│                                     scenarios/)
 ├── pyproject.toml
 └── README.md
 ```
 
 This is deliberately smaller than the target layout in `CLAUDE.md` §17 and
-the initial layout sketched in the original project brief.
-`services/testing/`, `scenarios/`, and `examples/` aren't created yet
-because they'd be empty — CLAUDE.md §17 itself says not to pre-create
-directories just to make the repository look larger than it is. They get
+the initial layout sketched in the original project brief. Alarms
+(Phase 4), `scripts/` (the interlock coverage report, Phase 3 step 3),
+and `examples/` aren't created yet because they'd be empty — CLAUDE.md
+§17 itself says not to pre-create directories just to make the
+repository look larger than it is. They get
 added in the phase that gives them real content (see the roadmap below).
 
 ## Module responsibilities (Phase 1)
@@ -261,6 +285,33 @@ issue and propose the change"):
    tests in `tests/` assert on equipment state directly. `CONTROL-LAB.md`
    §10 has been updated to match this document's phase numbering.
 
+## Module responsibilities (Phase 3 step 1)
+
+- **`services/testing/rig.py`** — the single canonical Control-driven
+  rig builder. `tests/integration/test_line_controller.py` and the
+  scenario runner both use it now; before this step, the former had its
+  own inline copy of the same config, which is exactly the kind of thing
+  that quietly drifts.
+- **`services/testing/vocabulary.py`** — the closed field vocabulary.
+  Every `given`/`when` key maps to a real, direct action on the rig
+  (mirroring the exact fault-injection hooks already proven throughout
+  `tests/`); every `expect` key maps to a real observation. An unknown
+  key is a hard `ScenarioError` — this module has no silent fallback.
+- **`services/testing/invariants.py`** — continuous checks, distinct in
+  kind from a scenario's own `expect`: a tripped invariant means the
+  system did something actively wrong, not just "not yet right," so it
+  fails the run immediately rather than waiting out the timeout.
+  Deliberately covers only 3 of §7 item 6's 4 invariants — see the file's
+  own docstring for why "no spillage during normal start/stop" belongs
+  in a scenario's `expect` instead of here.
+- **`services/testing/runner.py`** — the one subtlety worth remembering:
+  every check (invariants and `expect` alike) happens *after* a tick,
+  never before. `CONTROL-LAB.md` §3.3's scan cycle has Testing's stimulus
+  and Simulation's reaction happen within the same tick; checking first
+  observes a moment that exists only in this function's call order, not
+  one the real system passes through. Found by the first scenario ever
+  run against this code, not designed in up front.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |
@@ -268,7 +319,7 @@ issue and propose the change"):
 | 0 | Foundation | done |
 | 1 | Simulation core | done |
 | 2 | Control | done |
-| 3 | Testing / commissioning scenarios | not started |
+| 3 | Testing / commissioning scenarios | in progress — step 1/3 done (scenario format, runner, invariants) |
 | 4 | Fault injection, alarms | not started |
 | 5 | Telemetry | not started |
 | 6 | Visualization | not started |
@@ -281,6 +332,12 @@ Full detail and "done when" criteria per phase: `CONTROL-LAB.md` §10.
 ## Technology stack
 
 - **Python 3.12+**, no framework. `pytest` for testing.
+- **`pyyaml`** (Phase 3 step 1) — the first real dependency beyond
+  pytest. Justified, not reflexive: it matches `CLAUDE.md` §10's own
+  illustrative scenario format, and is meaningfully more readable than
+  JSON for hand-authored commissioning-style test files (comments,
+  less punctuation noise). "Minimal dependencies" (`CONTROL-LAB.md`
+  §3.4) means justified, not zero.
 - No database, API server, or frontend yet — those are later phases per
   the roadmap above. FastAPI and React+TypeScript are the current intent
   for when that work starts, not a commitment made now.

@@ -1,0 +1,17 @@
+name: Gate Fails To Prove Open
+
+given:
+  line_state: idle
+
+when:
+  gate_stuck: true
+  start: true
+
+expect:
+  line_state: faulted
+  fault_reason: "gate failed to prove open"
+
+within:
+  seconds: 5.0
+
+interlock: "Gate travel timeout"

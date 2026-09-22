@@ -7,10 +7,13 @@ feeder → conveyor → hopper — so deterministic control logic can be run
 against it and tested: startup, shutdown, interlocks, fault injection, and
 recovery, before any physical equipment exists.
 
-**Status:** early development (Phases 0-2 complete: simulation core, and
+**Status:** early development. Phases 0-2 complete: simulation core, and
 Control — the I/O image, device control modules, and the full
 `IDLE/STARTING/RUNNING/STOPPING/FAULTED/ESTOPPED` line state machine, all
-in Auto mode). No formal scenario runner, telemetry, UI, or protocol
+in Auto mode. Phase 3 in progress: a declarative `given`/`when`/`expect`
+scenario format with a runner and continuous invariant checking, plus
+four scenarios (see `scenarios/`) — full interlock coverage and a
+coverage-matrix report still to come. No telemetry, UI, or protocol
 support yet — see the roadmap below.
 
 ## Documentation
@@ -39,7 +42,7 @@ pytest
 | 0 | Foundation | done |
 | 1 | Simulation core | done |
 | 2 | Control (states, sequences, interlocks) | done |
-| 3 | Testing / commissioning scenarios | not started |
+| 3 | Testing / commissioning scenarios | in progress — scenario format + runner done |
 | 4 | Fault injection, alarms | not started |
 | 5 | Telemetry | not started |
 | 6 | Visualization | not started |

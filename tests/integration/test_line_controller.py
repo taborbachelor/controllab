@@ -10,59 +10,21 @@ real for that.
 """
 import pytest
 
-from services.control.gate_control import GateControl
-from services.control.line_controller import LineController
 from services.control.line_state import LineState, StartStep
-from services.control.motor_control import MotorControl
-from services.simulation.engine.plant_io import build_line_io_image, publish_plant_inputs
 from services.simulation.engine.plant_io import scan as plant_scan
 from services.simulation.equipment.gate import GateState
 from services.simulation.equipment.motor import MotorState
-from services.simulation.equipment.plant import Plant, PlantConfig
-
-DT = 0.1
+from services.testing.rig import DT, build_rig
 
 
 def make_rig(**plant_overrides):
-    defaults = dict(
-        bin_capacity_kg=10_000.0,
-        bin_level_kg=2_000.0,  # 20% -- comfortably above the 10% low threshold
-        bin_low_pct=10.0,
-        gate_travel_time_s=1.0,
-        feeder_max_rate_kg_s=5.0,
-        feeder_start_delay_s=0.2,
-        conveyor_length_m=4.0,
-        conveyor_speed_m_s=2.0,
-        conveyor_start_delay_s=0.2,
-        hopper_capacity_kg=2_000.0,
-        hopper_draw_rate_kg_s=0.0,
-        hopper_high_pct=80.0,
-        hopper_high_high_pct=95.0,
-    )
-    defaults.update(plant_overrides)
-    cfg = PlantConfig(**defaults)
-    plant = Plant(cfg)
-    io = build_line_io_image()
-    publish_plant_inputs(plant, io)
-
-    feeder_ctrl = MotorControl(
-        io, "M-103.RUN", "M-103.RUNNING", "M-103.FAULT", speed_tag="SC-103", start_proof_timeout_s=1.0
-    )
-    conveyor_ctrl = MotorControl(io, "M-104.RUN", "M-104.RUNNING", "M-104.OL", start_proof_timeout_s=1.0)
-    gate_ctrl = GateControl(io, "XV-102.CMD_OPEN", "ZSO-102", "ZSC-102", travel_timeout_s=2.0)
-
-    line = LineController(
-        io,
-        feeder_ctrl,
-        conveyor_ctrl,
-        gate_ctrl,
-        hopper_capacity_kg=cfg.hopper_capacity_kg,
-        feed_speed_pct=100.0,
-        restart_below_pct=60.0,
-        conveyor_proof_timeout_s=1.0,
-        purge_time_s=2.0,  # real default is 15.0 -- shortened so tests run fast
-    )
-    return plant, io, line
+    """Thin wrapper preserving this file's existing (plant, io, line)
+    tuple-unpacking shape across all its tests -- the actual rig
+    construction and config now live in services/testing/rig.py, shared
+    with the Phase 3 scenario runner, so there's one canonical rig
+    definition instead of two that could quietly drift apart."""
+    rig = build_rig(plant_overrides=plant_overrides)
+    return rig.plant, rig.io, rig.line
 
 
 def tick(plant, io, line, dt: float = DT) -> None:

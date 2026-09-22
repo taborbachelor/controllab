@@ -1,0 +1,17 @@
+name: Normal Stop Returns To Idle
+
+given:
+  line_state: running
+
+when:
+  stop: true
+
+expect:
+  line_state: idle
+  conveyor_running: false
+  feeder_running: false
+  gate_open: false
+  spilled: false
+
+within:
+  seconds: 3.0

@@ -1,0 +1,20 @@
+# The illustrative example from CLAUDE.md §10, made real: same name,
+# same given/when/expect/within shape, now executable against the
+# actual line instead of being conceptual.
+name: Conveyor Emergency Stop
+
+given:
+  line_state: running
+
+when:
+  estop: tripped
+
+expect:
+  line_state: estopped
+  conveyor_running: false
+  feeder_running: false
+
+within:
+  milliseconds: 500
+
+interlock: "E-stop healthy"

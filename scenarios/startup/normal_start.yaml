@@ -1,0 +1,17 @@
+name: Normal Start Reaches Running
+
+given:
+  line_state: idle
+
+when:
+  start: true
+
+expect:
+  line_state: running
+  conveyor_running: true
+  gate_open: true
+  feeder_running: true
+  spilled: false
+
+within:
+  seconds: 3.0
