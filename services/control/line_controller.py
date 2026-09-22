@@ -17,6 +17,7 @@ RUNNING).
 """
 from __future__ import annotations
 
+from services.control.alarms import AlarmManager
 from services.control.gate_control import GateControl
 from services.control.hopper_hysteresis import HopperHysteresis
 from services.control.interlocks import Interlocks
@@ -44,6 +45,10 @@ class LineController:
         self.gate_ctrl = gate_ctrl
         self.interlocks = Interlocks(io, feeder_ctrl, conveyor_ctrl, gate_ctrl, hopper_capacity_kg)
         self.hysteresis = HopperHysteresis(restart_below_pct)
+        # Built here, not injected, same as self.hysteresis -- AlarmManager
+        # hardcodes this line's 9 alarms the same way Interlocks hardcodes
+        # this line's tags, so it's not something a caller configures.
+        self.alarms = AlarmManager(self.interlocks)
 
         self.feed_speed_pct = feed_speed_pct
         self.conveyor_proof_timeout_s = conveyor_proof_timeout_s
@@ -59,6 +64,7 @@ class LineController:
         self._start_requested = False
         self._stop_requested = False
         self._reset_requested = False
+        self._acknowledge_requested = False
 
     # ---- operator/HMI-style commands ----------------------------------
 
@@ -71,15 +77,30 @@ class LineController:
     def reset(self) -> None:
         self._reset_requested = True
 
+    def acknowledge(self) -> None:
+        """Acks every currently latched alarm (a real annunciator panel's
+        "ack all" button) -- deliberately independent of line state and
+        of reset(): acknowledging an alarm means an operator has seen it,
+        not that whatever tripped it is fixed. See
+        docs/CONTROL-LAB.md §10's Phase 4 entry for why these stay two
+        separate operator actions."""
+        self._acknowledge_requested = True
+
     # ---- the scan cycle -------------------------------------------------
 
     def scan(self, dt: float) -> None:
         """Call once per tick. Scans the three device-control modules
         first (so their own supervision timing runs exactly once per
-        tick, same as everything else), then this state machine."""
+        tick, same as everything else), then the alarm set (so it reads
+        this tick's fresh fault flags, not last tick's), then this state
+        machine."""
         self.feeder_ctrl.scan(dt)
         self.conveyor_ctrl.scan(dt)
         self.gate_ctrl.scan(dt)
+        self.alarms.scan()
+
+        if self._acknowledge_requested:
+            self.alarms.acknowledge()
 
         if not self.interlocks.estop_healthy and self.state != LineState.ESTOPPED:
             self._enter_estopped()
@@ -100,6 +121,7 @@ class LineController:
         self._start_requested = False
         self._stop_requested = False
         self._reset_requested = False
+        self._acknowledge_requested = False
 
     # ---- IDLE -----------------------------------------------------------
 
@@ -113,8 +135,18 @@ class LineController:
             return
 
         check = self.interlocks.start_permissives_ok()
-        self.last_start_refusal = check.reasons
-        if check.ok:
+        reasons = list(check.reasons)
+        # "No active latched alarms" (docs/CONTROL-LAB.md §6.3) lives here,
+        # not inside Interlocks.start_permissives_ok() -- AlarmManager is
+        # built ON TOP of Interlocks (services/control/alarms.py), so
+        # Interlocks checking AlarmManager back would be circular.
+        # LineController is where the two are already combined for every
+        # other decision, so it's the natural place for this one too.
+        unacked_trips = [a.id for a in self.alarms.all_alarms if not a.is_warning and not a.acknowledged]
+        if unacked_trips:
+            reasons.append(f"unacknowledged alarm: {', '.join(unacked_trips)}")
+        self.last_start_refusal = reasons
+        if not reasons:
             self._begin_start_sequence()
 
     def _begin_start_sequence(self) -> None:

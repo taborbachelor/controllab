@@ -45,6 +45,11 @@ def _apply_reset(rig: Rig, value: bool) -> None:
         rig.line.reset()
 
 
+def _apply_acknowledge(rig: Rig, value: bool) -> None:
+    if value:
+        rig.line.acknowledge()
+
+
 def _apply_estop(rig: Rig, value: str) -> None:
     if value == "tripped":
         rig.plant.estop.trip()
@@ -90,6 +95,7 @@ APPLY_ACTIONS: dict[str, Callable[[Rig, object], None]] = {
     "start": _apply_start,
     "stop": _apply_stop,
     "reset": _apply_reset,
+    "acknowledge": _apply_acknowledge,
     "estop": _apply_estop,
     "conveyor_trip": _apply_conveyor_trip,
     "feeder_trip": _apply_feeder_trip,
@@ -112,6 +118,8 @@ READ_FIELDS: dict[str, Callable[[Rig], object]] = {
     "spilled_kg": lambda rig: rig.plant.spilled_kg,
     "spilled": lambda rig: rig.plant.spilled_kg > 1e-9,
     "hopper_level_kg": lambda rig: rig.plant.hopper.level_kg,
+    "any_unacknowledged_trip": lambda rig: rig.line.alarms.any_unacknowledged_trip(),
+    "latched_alarm_ids": lambda rig: sorted(a.id for a in rig.line.alarms.latched_alarms),
 }
 
 

@@ -7,16 +7,18 @@ feeder → conveyor → hopper — so deterministic control logic can be run
 against it and tested: startup, shutdown, interlocks, fault injection, and
 recovery, before any physical equipment exists.
 
-**Status:** early development. Phases 0-3 complete: simulation core;
+**Status:** early development. Phases 0-4 complete: simulation core;
 Control (the I/O image, device control modules, and the full
 `IDLE/STARTING/RUNNING/STOPPING/FAULTED/ESTOPPED` line state machine, all
-in Auto mode); and Testing — a declarative `given`/`when`/`expect`
-scenario format, 13 scenarios covering 7 of 8 interlocks (the 8th needs
-the alarm system, Phase 4), and an interlock coverage matrix
-(`python scripts/scenario_report.py`). Phase 4 in progress: alarm core
-(latching, first-out, acknowledge) is done, not yet wired into
-`LineController`. No telemetry, UI, or protocol support yet — see the
-roadmap below.
+in Auto mode); Testing — a declarative `given`/`when`/`expect` scenario
+format, 14 scenarios covering all 8 interlocks, and an interlock
+coverage matrix (`python scripts/scenario_report.py`) reporting 8/8, 0
+gaps; and alarm management — latching, first-out, and acknowledge, wired
+into `LineController` so a start is refused while any trip-class alarm
+is latched and unacknowledged, independent of `reset()`. Two additional
+fault hooks from the original spec (feeder jam, sensor failure) are
+deliberately deferred — see the roadmap below. No telemetry, UI, or
+protocol support yet.
 
 ## Documentation
 
@@ -53,7 +55,7 @@ python scripts/scenario_report.py --out coverage_report.md
 | 1 | Simulation core | done |
 | 2 | Control (states, sequences, interlocks) | done |
 | 3 | Testing / commissioning scenarios | done |
-| 4 | Fault injection, alarms | in progress (step 1 of 3-4 done) |
+| 4 | Fault injection, alarms | done (feeder jam / sensor failure hooks deferred) |
 | 5 | Telemetry | not started |
 | 6 | Visualization | not started |
 | 7 | Protocols (Modbus, OPC UA, MQTT) | not started |

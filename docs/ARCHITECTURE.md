@@ -380,11 +380,79 @@ issue and propose the change"):
   `CONTROL-LAB.md` §6.3 is explicit it's "warning only while running,"
   not a hard block; latching it as a trip-class alarm too would silently
   turn a warning into exactly the block the spec says it isn't.
-- **Not yet done** (step 2): wiring `AlarmManager` into `LineController`
-  (the `acknowledge()` operator command, the new start permissive), and
-  resolving `fault_reason`'s relationship to the alarm that caused it.
-  `LineController` doesn't call `AlarmManager.scan()` yet — see
-  `docs/CONTROL-LAB.md` §10's Phase 4 entry.
+## Module responsibilities (Phase 4 step 2)
+
+- **`LineController` owns an `AlarmManager`**, built internally right
+  after `self.interlocks` (`self.alarms = AlarmManager(self.interlocks)`
+  — not injected, same reasoning as `self.hysteresis`: the alarm set is
+  hardcoded for this line, not something a caller configures), and scans
+  it every tick immediately after the three device-control modules, so
+  every condition it evaluates reads that tick's fresh fault flags.
+- **`acknowledge()`** is a fourth one-shot operator command
+  (`start()`/`stop()`/`reset()`'s existing shape) that acks every
+  currently latched alarm. Deliberately independent of line state and of
+  `reset()`, ISA-18.2-style: an operator acknowledging an alarm means
+  they've seen it, not that whatever tripped it is fixed — `reset()`
+  keeps deciding whether the line itself can leave `FAULTED`, on its own
+  existing two-tier rule, untouched by this step.
+- **The "no active latched alarms" permissive lives in
+  `LineController._scan_idle()`**, combined with `Interlocks.
+  start_permissives_ok()`'s existing reasons — not inside `Interlocks`
+  itself, which is what that method's own docstring assumed before
+  `AlarmManager` existed. Since `AlarmManager` is built on top of
+  `Interlocks`, having `Interlocks` check back into it would be circular;
+  `LineController` is already the one place every other permissive/trip
+  decision gets combined, so it's the natural home once the real
+  dependency shape was clear. `Interlocks`' docstring was corrected to
+  point here instead of describing a stub that was never going to be
+  filled in the place it originally said.
+- **`fault_reason` was deliberately left alone**, not merged into the
+  alarm system. It stays the short, already-tested, per-transition
+  reason string every existing test and scenario already keys off;
+  `AlarmManager` is a richer, latched, acknowledgeable view sitting
+  alongside it. The two stay consistent because both read the same
+  tick's underlying conditions (`AlarmManager.scan()` runs before the
+  state dispatch that sets `fault_reason`), not because either is
+  derived from the other — a deliberate choice to add the new system
+  without touching or risking the old one (`CLAUDE.md`'s own "don't
+  rewrite working systems unnecessarily").
+- **A real behavior change, not just new code**: three existing tests'
+  fault→reset→start-again sequences needed an explicit `acknowledge()`
+  added, because a bare `reset()` no longer being sufficient to restart
+  is exactly the point of this step — previously nothing stopped a
+  restart without an operator having seen what tripped it.
+
+## Module responsibilities (Phase 4 step 3)
+
+- **`services/testing/vocabulary.py`** gained one new `given`/`when`
+  action (`acknowledge`, mirroring `start`/`stop`/`reset`) and two new
+  `expect` read fields: `any_unacknowledged_trip` (bool) and
+  `latched_alarm_ids` (a sorted list of alarm ids, comparable directly
+  against a YAML list literal).
+- **One new scenario**, `scenarios/faults/unacknowledged_alarm_blocks_
+  start.yaml`, closes §6.3's 8th interlock row. It's deliberately
+  single-stage (hopper high-high, the same shape as every other
+  scenario) rather than attempting the full "trip → reset →
+  retry-refused → acknowledge → retry-allowed" lifecycle: `given`/`when`
+  are each one setup phase with one settle tick apiece, not an arbitrary
+  sequence of stages, and forcing a multi-stage story through them would
+  reproduce the exact stale-reading class of bug Phase 3 already found
+  twice (`scenario.py`'s given-vs-when docstring, `runner.py`'s
+  tick-before-check fix). The row's coverage `note` instead points at the
+  three pytest tests from step 2 for the full lifecycle proof — the same
+  split already established for the "Conveyor proven running" row, not a
+  new pattern invented for this one.
+- **`services/testing/report.py`**'s "No active latched alarms" row
+  flipped from a permanent `applicable=False` stub to the default
+  `applicable=True`, now that the mechanism it describes actually exists.
+  Two existing tests in `test_report.py` had baked in `len(INTERLOCKS) -
+  1` arithmetic assuming exactly one not-applicable row would always
+  exist — replaced with a synthetic `CoverageReport`/`RowCoverage`
+  fixture built directly, decoupled from the real table's current
+  contents, so a future table change can't silently break an aggregate-
+  count test the way this one did.
+- **Coverage matrix now reports 8/8**, 0 not-applicable, 0 real gaps —
+  `scripts/scenario_report.py` output confirms it.
 
 ## Roadmap (current phase status)
 
@@ -394,7 +462,7 @@ issue and propose the change"):
 | 1 | Simulation core | done |
 | 2 | Control | done |
 | 3 | Testing / commissioning scenarios | done |
-| 4 | Fault injection, alarms | in progress — step 1 done (alarm core: latch/first-out/acknowledge) |
+| 4 | Fault injection, alarms | done (steps 1-3: alarm core; wired into `LineController`; surfaced through Testing, 8/8 interlocks covered). Step 4 (feeder jam + sensor failure hooks) deliberately deferred — see `CONTROL-LAB.md` §10 |
 | 5 | Telemetry | not started |
 | 6 | Visualization | not started |
 | 7 | Protocols | not started |

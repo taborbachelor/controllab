@@ -44,8 +44,13 @@ INTERLOCKS: list[InterlockRow] = [
     InterlockRow(
         "No active latched alarms",
         "Permissive",
-        applicable=False,
-        note="no alarm system exists yet -- Phase 4",
+        note="the full latch/acknowledge lifecycle (blocked after reset, allowed once "
+        "acknowledged, a recovered-but-unacknowledged warning never blocking) is proven "
+        "at the pytest level, not by a single declarative scenario -- the given/when "
+        "format has no way to express a multi-stage fault-then-reset-then-retry sequence "
+        "without a settle tick smearing the stages together; see tests/integration/"
+        "test_line_controller.py::test_start_is_refused_after_reset_until_the_alarm_is_"
+        "acknowledged and the two tests immediately after it",
     ),
     InterlockRow("Hopper not high-high", "Permissive"),
     InterlockRow(

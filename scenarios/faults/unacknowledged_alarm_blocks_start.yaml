@@ -1,0 +1,18 @@
+name: Start Refused While An Alarm Is Unacknowledged
+
+given:
+  line_state: idle
+  hopper_level_pct: 97.5
+
+when:
+  start: true
+
+expect:
+  line_state: idle
+  any_unacknowledged_trip: true
+  latched_alarm_ids: ["WT-105.HIGH_HIGH"]
+
+within:
+  seconds: 0.3
+
+interlock: "No active latched alarms"

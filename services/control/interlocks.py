@@ -94,9 +94,13 @@ class Interlocks:
         check, so by the time this runs, e-stop is guaranteed healthy —
         including it here would be dead code that's always true.
 
-        "No active latched alarms" is also NOT checked here: no alarm
-        system exists yet (Phase 4). Add it here when it does, rather
-        than faking an always-true stub now."""
+        "No active latched alarms" is also NOT checked here, and never
+        will be: AlarmManager (services/control/alarms.py, Phase 4 step 1)
+        is built on top of this class, so this class checking it back
+        would be circular. LineController._scan_idle() combines this
+        check with the alarm set's own unacknowledged-trip state itself,
+        the same way it's already the one place every other
+        permissive/trip decision gets combined."""
         reasons: list[str] = []
         if self.hopper_high_high:
             reasons.append("hopper at high-high")

@@ -113,7 +113,15 @@ def test_start_refusal_reports_multiple_reasons_together():
     line.start()
     tick(plant, io, line)
     assert line.state == LineState.IDLE
-    assert set(line.last_start_refusal) == {"bin low", "hopper at high-high"}
+    # "hopper at high-high" is Interlocks' own direct permissive; the WT-105
+    # alarm shows up too, since it latched (and hasn't been acknowledged)
+    # the same tick -- both are accurate, not a bug (docs/CONTROL-LAB.md
+    # §10's Phase 4 step 2 entry).
+    assert set(line.last_start_refusal) == {
+        "bin low",
+        "hopper at high-high",
+        "unacknowledged alarm: WT-105.HIGH_HIGH",
+    }
 
 
 # ---- no-op requests -----------------------------------------------------
@@ -409,10 +417,92 @@ def test_reset_from_a_latched_fault_gives_a_fresh_chance_but_a_persistent_proble
     run(plant, io, line, 0.3)
     assert line.state == LineState.IDLE
 
+    # reset() and acknowledge() are deliberately separate (docs/CONTROL-LAB.md
+    # §10's Phase 4 step 2 entry) -- without this, the retry below would be
+    # refused outright by the new "no unacknowledged alarm" permissive,
+    # never reaching STARTING to re-fault on its own.
+    line.acknowledge()
     line.start()
     run(plant, io, line, 5.0)
     assert line.state == LineState.FAULTED
     assert line.fault_reason == "gate failed to prove open"
+
+
+def test_start_is_refused_after_reset_until_the_alarm_is_acknowledged():
+    """Phase 4 step 2 (docs/CONTROL-LAB.md §6.3, "No active latched
+    alarms"): reset() alone clears FAULTED, but the alarm it left behind
+    still blocks a fresh start on its own -- an operator has to have
+    actually acknowledged what tripped, not just cleared the state
+    machine. Once acknowledged, a start is allowed to proceed -- and, gate
+    still stuck, re-faults on its own exactly like the reset()-only test
+    above, just reached the long way round."""
+    plant, io, line = make_rig()
+    plant.gate.stuck = True
+    line.start()
+    run(plant, io, line, 5.0)
+    assert line.state == LineState.FAULTED
+
+    line.reset()
+    run(plant, io, line, 0.3)
+    assert line.state == LineState.IDLE
+    assert line.alarms.get("XV-102.TRAVEL_FAULT").latched is True
+
+    line.start()
+    tick(plant, io, line)
+    assert line.state == LineState.IDLE  # refused -- never even reaches STARTING
+    assert any(r.startswith("unacknowledged alarm") for r in line.last_start_refusal)
+
+    line.acknowledge()
+    tick(plant, io, line)
+    assert line.alarms.get("XV-102.TRAVEL_FAULT").latched is False
+
+    line.start()
+    run(plant, io, line, 5.0)
+    assert line.state == LineState.FAULTED  # gate is still stuck
+
+
+def test_acknowledge_is_one_shot_and_does_not_suppress_a_later_alarm():
+    """acknowledge() is a one-shot request, like start()/stop()/reset()
+    (LineController's own class docstring) -- it must not keep silently
+    re-acknowledging every alarm that latches afterward."""
+    plant, io, line = make_rig()
+    plant.gate.stuck = True
+    line.start()
+    run(plant, io, line, 5.0)
+    assert line.state == LineState.FAULTED
+
+    line.reset()
+    line.acknowledge()
+    run(plant, io, line, 0.3)
+    assert line.alarms.get("XV-102.TRAVEL_FAULT").latched is False
+
+    # A second, independent trip afterward must latch fresh -- unacknowledged
+    # -- not be silently pre-acked by the earlier one-shot request.
+    plant.hopper.level_kg = 1_950.0  # 97.5% -- above the 95% high-high threshold
+    run(plant, io, line, 0.2)
+    assert line.alarms.get("WT-105.HIGH_HIGH").acknowledged is False
+
+
+def test_unacknowledged_warning_alarm_does_not_block_a_start():
+    """Bin low is a warning, not a trip (docs/CONTROL-LAB.md §6.3: "warning
+    only while running") -- it already has its own direct permissive row
+    for while it's genuinely low (test_interlocks.py::
+    test_start_permissives_refused_on_bin_low). The new alarm-based
+    permissive must not turn a recovered-but-unacknowledged warning into a
+    second, redundant hard block once the bin is no longer actually low."""
+    plant, io, line = make_rig()
+    plant.bin.level_kg = 100.0  # well under the 10% low threshold
+    run(plant, io, line, 0.2)
+    assert line.alarms.get("LSL-101.LOW").latched is True
+
+    plant.bin.level_kg = 5_000.0  # recovers -- comfortably above low
+    run(plant, io, line, 0.2)
+    assert line.alarms.get("LSL-101.LOW").active is False
+    assert line.alarms.get("LSL-101.LOW").latched is True  # still unacknowledged
+
+    line.start()
+    run(plant, io, line, 5.0)
+    assert line.state == LineState.RUNNING  # the warning alone never refuses a start
 
 
 # ---- E-stop (docs/CONTROL-LAB.md §6.2: from any state; needs release AND reset) --
@@ -515,6 +605,10 @@ def test_estop_holds_everything_off_and_requires_explicit_restart():
     assert line.state == LineState.IDLE
     assert plant.conveyor.motor.running is False
 
+    # reset() and acknowledge() are deliberately separate (docs/CONTROL-LAB.md
+    # §10's Phase 4 step 2 entry) -- the ES-001.TRIP alarm is still latched
+    # and unacknowledged, which would otherwise refuse this start outright.
+    line.acknowledge()
     line.start()
     run(plant, io, line, 5.0)
     assert line.state == LineState.RUNNING
