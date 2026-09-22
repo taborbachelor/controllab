@@ -18,9 +18,13 @@ Full reasoning in `CONTROL-LAB.md` §3. In short:
 
 Control must only ever observe and command Simulation through a shared I/O
 tag table (the "I/O image") — never by reaching into simulation objects
-directly. **That module doesn't exist yet.** Building it now, with only one
-side of the contract in existence, would mean guessing at a shape Control
-hasn't actually demanded yet — it's the first thing built in Phase 2.
+directly. That table now exists (`services/simulation/engine/io_image.py`),
+built as Phase 2's first step. The write direction each tag allows is
+enforced in code: `write_input()` only accepts DI/AI tags (Simulation's to
+set), `write_output()` only accepts DO/AO tags (Control's to set), and
+`read()` works for either side on any tag — the same asymmetry a real I/O
+table has. `Plant` still has zero knowledge of this module; `plant_io.py`
+is the only thing that bridges the two (see Module responsibilities below).
 
 ## Current repository layout
 
@@ -33,7 +37,9 @@ ControlLab/
 ├── services/
 │   └── simulation/
 │       ├── engine/
-│       │   └── clock.py             SimClock — fixed-step simulated time
+│       │   ├── clock.py             SimClock — fixed-step simulated time
+│       │   ├── io_image.py          IOImage — the generic I/O tag table
+│       │   └── plant_io.py          the line's tags + Plant<->IOImage glue
 │       └── equipment/
 │           ├── motor.py             Motor + MotorState (shared by feeder/conveyor)
 │           ├── gate.py              Gate + GateState (travel time, timeout fault)
@@ -43,8 +49,9 @@ ControlLab/
 │           ├── estop.py             EStop (plant-wide safety trip)
 │           └── plant.py             Plant — wires the line together
 ├── tests/
-│   ├── unit/                        one test module per equipment class
-│   └── integration/                 full-line scenarios (test_plant.py)
+│   ├── unit/                        one test module per equipment/engine class
+│   └── integration/                 full-line scenarios (test_plant.py,
+│                                     test_plant_io.py)
 ├── pyproject.toml
 └── README.md
 ```
@@ -89,6 +96,29 @@ and motors then advance, and only then does the belt move and the hopper
 draw. That mirrors reading inputs before executing logic in a real PLC
 scan (`CONTROL-LAB.md` §3.3) — it's a one-tick lag, not a bug.
 
+## Module responsibilities (Phase 2 step 1)
+
+- **`IOImage`** (`engine/io_image.py`) — generic, reusable, knows nothing
+  about the bulk-material line specifically. `Tag` (name, `TagType`,
+  units, description, value) is the record; `TagType` (`DI`/`DO`/`AI`/`AO`)
+  carries the write-direction rule as a property (`is_input`), not a
+  separate flag, so the enforcement can't drift out of sync with the type
+  itself. Every tag must be `define()`d before it can be read or written —
+  an undefined-tag access is an `IOImageError`, the same as a wrong-
+  direction write or a wrong-type value (bool vs. float, including the
+  Python gotcha that `bool` is an `int` subclass — rejected explicitly).
+- **`plant_io.py`** — the only module that imports both `Plant` and
+  `IOImage`. `build_line_io_image()` defines the 17 tags from
+  `CONTROL-LAB.md` §5.3 (a unit test asserts the two stay identical);
+  `publish_plant_inputs()`/`apply_plant_commands()` are the one-directional
+  halves of the bridge, and `scan()` composes them around one
+  `plant.step()` call in the correct order — commands applied before the
+  step, inputs published after, so nothing sees stale data one tick early
+  or late. `apply_plant_commands()` goes through each device's own
+  `command()` method (e.g. `Feeder.command()`'s 0–100 clamp) rather than
+  setting internal attributes directly, so the I/O boundary can't bypass
+  validation the device itself already enforces.
+
 ## Reconciliation notes
 
 Two places this implementation deliberately diverges from the original
@@ -119,9 +149,9 @@ issue and propose the change"):
 
 | Phase | Focus | Status |
 |---|---|---|
-| 0 | Foundation | done — this session |
-| 1 | Simulation core | done — this session |
-| 2 | Control | not started |
+| 0 | Foundation | done |
+| 1 | Simulation core | done |
+| 2 | Control | in progress — step 1/4 done (I/O image) |
 | 3 | Testing / commissioning scenarios | not started |
 | 4 | Fault injection, alarms | not started |
 | 5 | Telemetry | not started |

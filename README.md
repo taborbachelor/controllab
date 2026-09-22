@@ -7,8 +7,9 @@ feeder → conveyor → hopper — so deterministic control logic can be run
 against it and tested: startup, shutdown, interlocks, fault injection, and
 recovery, before any physical equipment exists.
 
-**Status:** early development (Phase 1 — simulation core, complete). No
-control layer, UI, or protocol support yet — see the roadmap below.
+**Status:** early development (Phase 1 — simulation core — complete; Phase 2
+— Control — in progress, I/O image done). No control logic, UI, or
+protocol support yet — see the roadmap below.
 
 ## Documentation
 
@@ -35,7 +36,7 @@ pytest
 |---|---|---|
 | 0 | Foundation | done |
 | 1 | Simulation core | done |
-| 2 | Control (states, sequences, interlocks) | not started |
+| 2 | Control (states, sequences, interlocks) | in progress — I/O image done |
 | 3 | Testing / commissioning scenarios | not started |
 | 4 | Fault injection, alarms | not started |
 | 5 | Telemetry | not started |
