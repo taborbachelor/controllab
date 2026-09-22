@@ -1,0 +1,337 @@
+"""The line state machine (docs/CONTROL-LAB.md §6.2): Auto-mode sequencing,
+interlocks, and hopper hysteresis, wired together. Manual mode isn't built
+yet — see §6.1's own "Auto first; Manual once Auto is proven" plan; this
+class IS Auto mode for now, not Auto-with-a-mode-switch-around-it.
+
+Owns nothing from Simulation directly — only the three device-control
+modules (MotorControl x2, GateControl) built in Phase 2 step 2, and the
+Interlocks query object built on top of them. This file is automatically
+covered by the architecture boundary guard test (tests/unit/test_control_
+boundary.py), which scans every module in services/control/.
+
+Start()/Stop()/Reset() are one-shot requests, like real momentary
+pushbuttons: call the method to raise the request, scan() consumes it (at
+most once) on however many scans it takes to become relevant, and it's a
+no-op if the current state doesn't act on it (e.g. start() while already
+RUNNING).
+"""
+from __future__ import annotations
+
+from services.control.gate_control import GateControl
+from services.control.hopper_hysteresis import HopperHysteresis
+from services.control.interlocks import Interlocks
+from services.control.line_state import LineState, StartStep
+from services.control.motor_control import MotorControl
+from services.simulation.engine.io_image import IOImage
+
+
+class LineController:
+    def __init__(
+        self,
+        io: IOImage,
+        feeder_ctrl: MotorControl,
+        conveyor_ctrl: MotorControl,
+        gate_ctrl: GateControl,
+        hopper_capacity_kg: float,
+        feed_speed_pct: float = 100.0,
+        restart_below_pct: float = 60.0,
+        conveyor_proof_timeout_s: float = 3.0,
+        purge_time_s: float = 15.0,
+    ) -> None:
+        self.io = io
+        self.feeder_ctrl = feeder_ctrl
+        self.conveyor_ctrl = conveyor_ctrl
+        self.gate_ctrl = gate_ctrl
+        self.interlocks = Interlocks(io, feeder_ctrl, conveyor_ctrl, gate_ctrl, hopper_capacity_kg)
+        self.hysteresis = HopperHysteresis(restart_below_pct)
+
+        self.feed_speed_pct = feed_speed_pct
+        self.conveyor_proof_timeout_s = conveyor_proof_timeout_s
+        self.purge_time_s = purge_time_s
+
+        self.state = LineState.IDLE
+        self.fault_reason: str | None = None
+        self.last_start_refusal: list[str] = []
+        self.start_step: StartStep | None = None
+
+        self._step_elapsed_s = 0.0
+        self._purge_elapsed_s = 0.0
+        self._start_requested = False
+        self._stop_requested = False
+        self._reset_requested = False
+
+    # ---- operator/HMI-style commands ----------------------------------
+
+    def start(self) -> None:
+        self._start_requested = True
+
+    def stop(self) -> None:
+        self._stop_requested = True
+
+    def reset(self) -> None:
+        self._reset_requested = True
+
+    # ---- the scan cycle -------------------------------------------------
+
+    def scan(self, dt: float) -> None:
+        """Call once per tick. Scans the three device-control modules
+        first (so their own supervision timing runs exactly once per
+        tick, same as everything else), then this state machine."""
+        self.feeder_ctrl.scan(dt)
+        self.conveyor_ctrl.scan(dt)
+        self.gate_ctrl.scan(dt)
+
+        if not self.interlocks.estop_healthy and self.state != LineState.ESTOPPED:
+            self._enter_estopped()
+
+        if self.state == LineState.IDLE:
+            self._scan_idle()
+        elif self.state == LineState.STARTING:
+            self._scan_starting(dt)
+        elif self.state == LineState.RUNNING:
+            self._scan_running()
+        elif self.state == LineState.STOPPING:
+            self._scan_stopping(dt)
+        elif self.state == LineState.FAULTED:
+            self._scan_faulted()
+        elif self.state == LineState.ESTOPPED:
+            self._scan_estopped()
+
+        self._start_requested = False
+        self._stop_requested = False
+        self._reset_requested = False
+
+    # ---- IDLE -----------------------------------------------------------
+
+    def _scan_idle(self) -> None:
+        # Continuously enforced, not just assumed -- IDLE means off.
+        self.feeder_ctrl.command_run(False)
+        self.conveyor_ctrl.command_run(False)
+        self.gate_ctrl.command_open(False)
+
+        if not self._start_requested:
+            return
+
+        check = self.interlocks.start_permissives_ok()
+        self.last_start_refusal = check.reasons
+        if check.ok:
+            self._begin_start_sequence()
+
+    def _begin_start_sequence(self) -> None:
+        self.state = LineState.STARTING
+        self.start_step = StartStep.CONVEYOR
+        self._step_elapsed_s = 0.0
+        self.conveyor_ctrl.command_run(True)
+
+    # ---- STARTING ---------------------------------------------------------
+
+    def _scan_starting(self, dt: float) -> None:
+        reason = self._starting_trip_reason()
+        if reason is not None:
+            self._enter_faulted(reason)
+            return
+
+        if self._stop_requested:
+            # A real operator pressing Stop mid-startup expects the
+            # sequence to abort, not to be silently ignored.
+            # _begin_stop_sequence() is safe to call from any start step:
+            # it unconditionally drops feeder/gate (a no-op if they were
+            # never started yet) and purges with the conveyor, which is
+            # either already running or about to be commanded to stop
+            # from wherever it currently is.
+            self._begin_stop_sequence()
+            return
+
+        if self.start_step == StartStep.CONVEYOR:
+            self._step_elapsed_s = round(self._step_elapsed_s + dt, 9)
+            if self.interlocks.conveyor_confirmed_running:
+                self.start_step = StartStep.GATE
+                self._step_elapsed_s = 0.0
+                self.gate_ctrl.command_open(True)
+            elif self._step_elapsed_s >= self.conveyor_proof_timeout_s:
+                self._enter_faulted("conveyor failed to prove running")
+
+        elif self.start_step == StartStep.GATE:
+            if self.gate_ctrl.is_open:
+                self.start_step = StartStep.FEEDER
+                self._step_elapsed_s = 0.0
+                self.feeder_ctrl.command_run(True)
+                self.feeder_ctrl.command_speed(self.feed_speed_pct)
+            # gate_ctrl.travel_fault (checked above, via
+            # _starting_trip_reason) is what catches "never opened" --
+            # its own 5s window is already running via gate_ctrl.scan(),
+            # called once per tick from this class's own scan().
+
+        elif self.start_step == StartStep.FEEDER:
+            if self.feeder_ctrl.running:
+                self._enter_running()
+            # feeder_ctrl.start_proof_fault (checked above) is what
+            # catches "never confirmed running."
+
+    def _starting_trip_reason(self) -> str | None:
+        if self.interlocks.hopper_high_high:
+            return "hopper high-high"
+        if self.conveyor_ctrl.faulted:
+            return "conveyor trip"
+        if self.feeder_ctrl.faulted:
+            return "feeder trip"
+        if self.conveyor_ctrl.start_proof_fault:
+            return "conveyor failed to prove running"
+        if self.feeder_ctrl.start_proof_fault:
+            return "feeder failed to prove running"
+        if self.gate_ctrl.travel_fault:
+            return "gate failed to prove open"
+        return None
+
+    def _enter_running(self) -> None:
+        self.state = LineState.RUNNING
+        self.start_step = None
+
+    # ---- RUNNING ----------------------------------------------------------
+
+    def _scan_running(self) -> None:
+        reason = self._running_trip_reason()
+        if reason is not None:
+            self._enter_faulted(reason)
+            return
+
+        if self._stop_requested:
+            self._begin_stop_sequence()
+            return
+
+        # The only thing that modulates during normal RUNNING
+        # (docs/CONTROL-LAB.md §6.2): the conveyor and gate stay as they
+        # are: the feeder cycles on and off with hopper level.
+        want_feed = self.hysteresis.evaluate(self.interlocks.hopper_high, self.interlocks.hopper_level_pct)
+        if want_feed:
+            self.feeder_ctrl.command_run(True)
+            self.feeder_ctrl.command_speed(self.feed_speed_pct)
+        else:
+            self.feeder_ctrl.command_run(False)
+
+        # bin_low is a WARNING while running, not a trip
+        # (docs/CONTROL-LAB.md §6.3) -- there's nothing to actively DO
+        # with it yet (no alarm/notification system exists before Phase
+        # 4/5). self.interlocks.bin_low is already queryable by anything
+        # that wants it; deliberately not acted on here.
+
+    def _running_trip_reason(self) -> str | None:
+        if self.interlocks.hopper_high_high:
+            return "hopper high-high"
+        if self.feeder_ctrl.faulted:
+            return "feeder trip"
+        if self.conveyor_ctrl.faulted:
+            return "conveyor trip"
+        if not self.interlocks.conveyor_confirmed_running:
+            return "conveyor lost confirmation"
+        if self.gate_ctrl.travel_fault:
+            return "gate travel fault"
+        return None
+
+    # ---- STOPPING (upstream first) -----------------------------------
+
+    def _begin_stop_sequence(self) -> None:
+        self.state = LineState.STOPPING
+        self.feeder_ctrl.command_run(False)
+        self.gate_ctrl.command_open(False)
+        self._purge_elapsed_s = 0.0
+
+    def _scan_stopping(self, dt: float) -> None:
+        reason = self._stopping_trip_reason()
+        if reason is not None:
+            self._enter_faulted(reason)
+            return
+
+        # Conveyor keeps running through the purge so the belt clears
+        # (docs/CONTROL-LAB.md §6.2) -- feeder and gate are already
+        # commanded off from _begin_stop_sequence(), so nothing new is
+        # being fed onto it regardless of gate position.
+        self._purge_elapsed_s = round(self._purge_elapsed_s + dt, 9)
+        if self._purge_elapsed_s >= self.purge_time_s:
+            self.conveyor_ctrl.command_run(False)
+            self.state = LineState.IDLE
+            self._purge_elapsed_s = 0.0
+
+    def _stopping_trip_reason(self) -> str | None:
+        if self.interlocks.hopper_high_high:
+            return "hopper high-high"
+        if self.conveyor_ctrl.faulted:
+            return "conveyor trip"
+        if self.feeder_ctrl.faulted:
+            return "feeder trip"
+        if self.gate_ctrl.travel_fault:
+            return "gate travel fault"
+        return None
+
+    # ---- FAULTED ------------------------------------------------------
+
+    def _enter_faulted(self, reason: str) -> None:
+        self.feeder_ctrl.command_run(False)
+        self.conveyor_ctrl.command_run(False)
+        self.gate_ctrl.command_open(False)
+        self.state = LineState.FAULTED
+        self.fault_reason = reason
+        self.start_step = None
+
+    def _scan_faulted(self) -> None:
+        self.feeder_ctrl.command_run(False)
+        self.conveyor_ctrl.command_run(False)
+        self.gate_ctrl.command_open(False)
+
+        if not self._reset_requested:
+            return
+        if self._fault_cause_cleared():
+            self._clear_all_device_faults()
+            self.state = LineState.IDLE
+            self.fault_reason = None
+        # else: refused, stays FAULTED, fault_reason unchanged
+
+    def _fault_cause_cleared(self) -> bool:
+        """Whether the underlying condition is still directly observable
+        as active. Only covers PASS-THROUGH/level conditions Control can
+        check independently (hopper high-high, a motor's own fault tag)
+        -- NOT the latched timing diagnostics (start_proof_fault,
+        travel_fault), which have no independent "still broken" signal to
+        check: Control can only re-test them by trying again.
+        clear_fault() on those happens unconditionally in
+        _clear_all_device_faults() once this passes; if the underlying
+        problem is still there, the next start attempt fails again on
+        its own."""
+        return not (
+            self.interlocks.hopper_high_high
+            or self.conveyor_ctrl.faulted
+            or self.feeder_ctrl.faulted
+        )
+
+    def _clear_all_device_faults(self) -> None:
+        self.feeder_ctrl.clear_fault()
+        self.conveyor_ctrl.clear_fault()
+        self.gate_ctrl.clear_fault()
+
+    # ---- ESTOPPED -------------------------------------------------------
+
+    def _enter_estopped(self) -> None:
+        self.feeder_ctrl.command_run(False)
+        self.conveyor_ctrl.command_run(False)
+        self.gate_ctrl.command_open(False)
+        self.state = LineState.ESTOPPED
+        self.fault_reason = "e-stop"
+        self.start_step = None
+
+    def _scan_estopped(self) -> None:
+        # Continuously enforced -- a stale command sitting in the I/O
+        # image must never be allowed to restart anything the instant
+        # the motor itself is reset (docs/CONTROL-LAB.md §10's Phase 2
+        # entry flags exactly this gap from step 1's I/O-image-only
+        # testing; this is what closes it).
+        self.feeder_ctrl.command_run(False)
+        self.conveyor_ctrl.command_run(False)
+        self.gate_ctrl.command_open(False)
+
+        if self.interlocks.estop_healthy and self._reset_requested:
+            self._clear_all_device_faults()
+            self.state = LineState.IDLE
+            self.fault_reason = None
+        # else: stays ESTOPPED -- either e-stop is still tripped, or no
+        # reset yet. Both conditions are required
+        # (docs/CONTROL-LAB.md §6.2's diagram).

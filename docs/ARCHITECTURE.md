@@ -46,7 +46,11 @@ ControlLab/
 │   ├── control/
 │   │   ├── errors.py                 ControlError + tag-binding validation
 │   │   ├── motor_control.py          MotorControl (run/speed command, start-proof)
-│   │   └── gate_control.py           GateControl (open/close command, travel-timeout)
+│   │   ├── gate_control.py           GateControl (open/close command, travel-timeout)
+│   │   ├── interlocks.py             Interlocks — the §6.3 table as a query object
+│   │   ├── hopper_hysteresis.py      HopperHysteresis — §6.2's on/off feed cycle
+│   │   ├── line_state.py             LineState, StartStep enums
+│   │   └── line_controller.py        LineController — the whole state machine
 │   └── simulation/
 │       ├── engine/
 │       │   ├── clock.py             SimClock — fixed-step simulated time
@@ -64,7 +68,8 @@ ControlLab/
 │   ├── unit/                        one test module per equipment/engine/control
 │   │                                 class, plus test_control_boundary.py
 │   └── integration/                 full-line scenarios (test_plant.py,
-│                                     test_plant_io.py, test_device_control.py)
+│                                     test_plant_io.py, test_device_control.py,
+│                                     test_line_controller.py)
 ├── pyproject.toml
 └── README.md
 ```
@@ -158,6 +163,78 @@ scan (`CONTROL-LAB.md` §3.3) — it's a one-tick lag, not a bug.
   about one — stop the line, go to FAULTED — belongs to line control
   (Phase 2 step 3), kept out of these modules on purpose.
 
+## Module responsibilities (Phase 2 step 3 — Control complete)
+
+- **`Interlocks`** (`services/control/interlocks.py`) — a query object,
+  not a state machine: no memory, no opinion about what to do with a
+  trip. Reads the six field-I/O tags device-control doesn't cover
+  (`ES-001`, `LSL-101`, `LSH-105`, `LSHH-105`, `WT-105`, `ZSS-104`)
+  directly, and combines `MotorControl.running` with `ZSS-104` into
+  `conveyor_confirmed_running` — the one check that specifically catches
+  a belt slip (`CONTROL-LAB.md` §5.4), which `MotorControl` alone can't
+  see since the motor genuinely is energized. `hopper_level_pct` is
+  computed from `WT-105` (raw weight) and a configured `hopper_capacity_kg`
+  constant, the same way a real control program is commissioned with a
+  vessel's known engineering capacity rather than reading it off a tag.
+- **`HopperHysteresis`** (`hopper_hysteresis.py`) — pure logic, zero I/O
+  dependency: floats and bools in, a bool out. The whole "controller" for
+  now is on/off with two setpoints; `CONTROL-LAB.md` §6.2 is explicit that
+  a real rate controller is a later refinement, not an oversight.
+- **`LineController`** (`line_controller.py`) — owns the three
+  device-control objects and an `Interlocks`/`HopperHysteresis` pair, and
+  is the only thing a driver needs to call once per tick
+  (`line.scan(dt)`, which itself scans the three device-control modules
+  first). Every state handler continuously re-asserts its own safe output
+  set every scan (all-off in `IDLE`/`FAULTED`/`ESTOPPED`, not just once on
+  entry) — cheap, and it means a stray write from anywhere else can't
+  survive a tick undetected.
+- **The two-tier fault-clearing rule in `reset()`** is the most
+  deliberate decision in this module: a *pass-through* condition (hopper
+  high-high, a motor's own fault tag) blocks `reset()` until it's
+  genuinely no longer true, because Control can check it directly. A
+  *latched timing diagnostic* (`MotorControl.start_proof_fault`,
+  `GateControl.travel_fault`) has no such independent signal — Control
+  can only re-test it by trying again — so `reset()` clears those
+  unconditionally and lets the next start attempt fail on its own if the
+  real problem is still there. Tested explicitly in both directions, plus
+  a dedicated "reset succeeds, retry re-faults" test proving the second
+  half isn't a loophole.
+- **`stop()` mid-`STARTING`** aborts the sequence rather than being
+  silently dropped — a real gap found writing tests for this, not
+  designed in from the start. The fix reuses `_begin_stop_sequence()`
+  unchanged: it already drops feeder/gate unconditionally (a no-op if
+  they were never commanded) and purges with the conveyor, so it's safe
+  to call from any start step.
+
+## Retroactive Phase 1 fix (found building Phase 2 step 3)
+
+`LineController.ESTOPPED` needs to hold every command at `False` while an
+E-stop is active — straightforward. But bringing a motor's *state* back
+from `ESTOP` to `STOPPED` once the E-stop physically releases turned out
+to have nowhere correct to live: `Motor.estop_reset()` is a raw
+simulation-object call, and Control may only ever touch Simulation
+through the I/O image (`CONTROL-LAB.md` §3.2) — so `LineController`
+architecturally *cannot* call it, no matter how the state machine is
+written.
+
+The fix belongs in `Plant.step()`: a real E-stop's safety relay re-arms
+the motor starters automatically the instant the button releases,
+independent of whatever a PLC program does or doesn't do. `Plant.step()`
+now calls `estop_reset()` on both motors unconditionally whenever
+`estop.healthy` — it's a no-op if a motor isn't in `ESTOP`, and it never
+restarts anything (`estop_reset()` only ever leaves `ESTOP` for
+`STOPPED`; a run command is still required separately). This is the
+correct split of responsibility, not a workaround: Simulation handles the
+hardware-realistic "available again," Control handles the
+operator-realistic "not running again without being asked."
+
+Two Phase 1/step-1 tests previously did this by hand
+(`plant.<device>.motor.estop_reset()`, standing in for "Testing" since no
+Control layer existed yet to do it properly). Both calls were removed and
+the tests re-verified to produce identical outcomes — the auto-reset
+doesn't change behavior, it just moves who's responsible for it to where
+it actually belongs.
+
 ## Reconciliation notes
 
 Two places this implementation deliberately diverges from the original
@@ -190,7 +267,7 @@ issue and propose the change"):
 |---|---|---|
 | 0 | Foundation | done |
 | 1 | Simulation core | done |
-| 2 | Control | in progress — steps 1-2/4 done (I/O image, device control modules) |
+| 2 | Control | done |
 | 3 | Testing / commissioning scenarios | not started |
 | 4 | Fault injection, alarms | not started |
 | 5 | Telemetry | not started |

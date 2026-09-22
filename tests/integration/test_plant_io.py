@@ -101,6 +101,20 @@ def test_material_conservation_holds_driven_through_io_image():
 
 
 def test_estop_via_io_image_holds_motors_until_explicit_reset():
+    """Demonstrates the gap at THIS layer alone (I/O image + Plant, no
+    line control): Plant.step() brings a motor's STATE back to STOPPED
+    automatically the instant the physical E-stop releases (a real safety
+    relay re-arms the starters on its own — see plant.py), but that says
+    nothing about what's still asserted in the I/O image. Nothing at this
+    layer clears a stale run command, so if one's still sitting there,
+    the motor restarts the moment it becomes available again.
+
+    That's exactly the gap Phase 2 step 3 closes: LineController.ESTOPPED
+    continuously holds every command at False, so this can't happen once
+    it's driving the line — see
+    tests/integration/test_line_controller.py::
+    test_estop_holds_everything_off_and_requires_explicit_restart.
+    """
     plant, io = make_rig()
     io.write_output("M-104.RUN", True)
     io.write_output("XV-102.CMD_OPEN", True)
@@ -122,30 +136,14 @@ def test_estop_via_io_image_holds_motors_until_explicit_reset():
     assert plant.feeder.motor.state == MotorState.ESTOP
 
     # The run commands are still asserted True in the I/O image — nothing
-    # has cleared them, because no Control/interlock logic exists yet to
-    # do it (that's Phase 2 step 3: "no automatic restart after a trip").
-    # At this layer alone, resetting the motor while a stale run command
-    # is still asserted DOES let it restart on the very next scan — the
-    # I/O image just reflects whatever's asserted in it; it has no opinion
-    # about whether that's safe. This is exactly the gap interlocks close.
+    # at this layer has cleared them. Releasing the E-stop alone is
+    # enough to bring the motor STATE back to STOPPED automatically, but
+    # the stale command is still sitting there, so the very next scan
+    # restarts it. The I/O image has no opinion about whether that's
+    # safe — it just reflects whatever's asserted in it.
     plant.estop.reset()  # no I/O tag for this either — see module docstring
-    plant.conveyor.motor.estop_reset()
-    plant.feeder.motor.estop_reset()
     scan(plant, io, DT)
 
     assert io.read("ES-001") is True
     assert plant.conveyor.motor.state == MotorState.RUNNING  # stale command wins, at this layer
     assert plant.feeder.motor.state == MotorState.RUNNING
-
-    # The safe reset sequence at this layer: drop the commands too, THEN
-    # reset. Once Phase 2's interlocks exist, this becomes their job.
-    io.write_output("M-104.RUN", False)
-    io.write_output("M-103.RUN", False)
-    plant.conveyor.motor.estop()
-    plant.feeder.motor.estop()
-    plant.conveyor.motor.estop_reset()
-    plant.feeder.motor.estop_reset()
-    scan(plant, io, DT)
-
-    assert plant.conveyor.motor.state == MotorState.STOPPED
-    assert plant.feeder.motor.state == MotorState.STOPPED

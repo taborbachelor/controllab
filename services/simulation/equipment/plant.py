@@ -82,6 +82,23 @@ class Plant:
             self.gate.open_command = False
             self.feeder.motor.estop()
             self.conveyor.motor.estop()
+        else:
+            # A real E-stop's safety relay re-arms the motor starters the
+            # instant the button releases -- automatically, at the
+            # hardware level, independent of whatever Control does or
+            # doesn't do. estop_reset() only leaves ESTOP for STOPPED
+            # (never restarts anything -- a run command is still
+            # required) and no-ops if the motor isn't in ESTOP, so this
+            # is safe to call unconditionally every tick. Control-layer
+            # code (services/control/) can't do this itself: it's a raw
+            # simulation-object call, and Control may only ever touch
+            # Simulation through the I/O image (docs/CONTROL-LAB.md
+            # §3.2) -- see LineController's ESTOPPED handling for the
+            # other half of this: continuously holding every command at
+            # False so a stale one can't exploit the motor becoming
+            # available again to restart it on its own.
+            self.feeder.motor.estop_reset()
+            self.conveyor.motor.estop_reset()
 
         # Feeder discharges from the bin onto the belt, gated by the slide
         # gate. Gate/feeder state used here is start-of-scan (this tick's

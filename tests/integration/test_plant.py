@@ -108,9 +108,11 @@ def test_estop_trips_all_motors_and_holds_until_reset():
     assert plant.conveyor.motor.state == MotorState.ESTOP
     assert plant.feeder.motor.state == MotorState.ESTOP
 
+    # Releasing the E-stop alone is enough -- Plant.step() brings the
+    # motors back to STOPPED automatically the moment estop.healthy is
+    # true again (a real safety relay re-arms the starters on its own;
+    # no separate estop_reset() call needed here).
     plant.estop.reset()
-    plant.conveyor.motor.estop_reset()
-    plant.feeder.motor.estop_reset()
     run(plant, 0.1)
     assert plant.conveyor.motor.state == MotorState.STOPPED  # no auto-restart
     assert plant.feeder.motor.state == MotorState.STOPPED

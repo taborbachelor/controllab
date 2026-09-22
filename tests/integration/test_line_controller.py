@@ -1,0 +1,485 @@
+"""Full-line scenarios driven entirely through LineController against a
+real simulated Plant -- the first tests in the repo where nothing calls
+Plant's devices, or even the I/O image, directly to make things happen.
+Only Testing-style stimuli (fault injection, forcing a level) touch Plant
+directly, exactly as docs/CONTROL-LAB.md §3.3 says Testing may.
+
+Every interlock in docs/CONTROL-LAB.md §6.3 gets a test that trips it
+(§7, item 4) -- ahead of Phase 3's formal coverage matrix, but no less
+real for that.
+"""
+import pytest
+
+from services.control.gate_control import GateControl
+from services.control.line_controller import LineController
+from services.control.line_state import LineState, StartStep
+from services.control.motor_control import MotorControl
+from services.simulation.engine.plant_io import build_line_io_image, publish_plant_inputs
+from services.simulation.engine.plant_io import scan as plant_scan
+from services.simulation.equipment.motor import MotorState
+from services.simulation.equipment.plant import Plant, PlantConfig
+
+DT = 0.1
+
+
+def make_rig(**plant_overrides):
+    defaults = dict(
+        bin_capacity_kg=10_000.0,
+        bin_level_kg=2_000.0,  # 20% -- comfortably above the 10% low threshold
+        bin_low_pct=10.0,
+        gate_travel_time_s=1.0,
+        feeder_max_rate_kg_s=5.0,
+        feeder_start_delay_s=0.2,
+        conveyor_length_m=4.0,
+        conveyor_speed_m_s=2.0,
+        conveyor_start_delay_s=0.2,
+        hopper_capacity_kg=2_000.0,
+        hopper_draw_rate_kg_s=0.0,
+        hopper_high_pct=80.0,
+        hopper_high_high_pct=95.0,
+    )
+    defaults.update(plant_overrides)
+    cfg = PlantConfig(**defaults)
+    plant = Plant(cfg)
+    io = build_line_io_image()
+    publish_plant_inputs(plant, io)
+
+    feeder_ctrl = MotorControl(
+        io, "M-103.RUN", "M-103.RUNNING", "M-103.FAULT", speed_tag="SC-103", start_proof_timeout_s=1.0
+    )
+    conveyor_ctrl = MotorControl(io, "M-104.RUN", "M-104.RUNNING", "M-104.OL", start_proof_timeout_s=1.0)
+    gate_ctrl = GateControl(io, "XV-102.CMD_OPEN", "ZSO-102", "ZSC-102", travel_timeout_s=2.0)
+
+    line = LineController(
+        io,
+        feeder_ctrl,
+        conveyor_ctrl,
+        gate_ctrl,
+        hopper_capacity_kg=cfg.hopper_capacity_kg,
+        feed_speed_pct=100.0,
+        restart_below_pct=60.0,
+        conveyor_proof_timeout_s=1.0,
+        purge_time_s=2.0,  # real default is 15.0 -- shortened so tests run fast
+    )
+    return plant, io, line
+
+
+def tick(plant, io, line, dt: float = DT) -> None:
+    line.scan(dt)
+    plant_scan(plant, io, dt)
+
+
+def run(plant, io, line, seconds: float, dt: float = DT) -> None:
+    for _ in range(round(seconds / dt)):
+        tick(plant, io, line, dt)
+
+
+# ---- normal cycle -----------------------------------------------------
+
+
+def test_full_normal_cycle_conserves_material():
+    plant, io, line = make_rig()
+    starting_total = plant.total_mass_kg()
+
+    line.start()
+    run(plant, io, line, 3.0)
+    assert line.state == LineState.RUNNING
+
+    run(plant, io, line, 5.0)  # let material actually reach the hopper
+    assert plant.hopper.level_kg > 0.0
+    assert plant.spilled_kg == 0.0
+    assert plant.accounted_mass_kg() == pytest.approx(starting_total)
+
+    line.stop()
+    run(plant, io, line, 5.0)  # purge_time_s=2.0 on this rig, plenty of margin
+    assert line.state == LineState.IDLE
+    assert plant.conveyor.motor.running is False
+    assert plant.spilled_kg == 0.0
+    assert plant.accounted_mass_kg() == pytest.approx(starting_total)
+
+
+def test_full_cycle_is_deterministic():
+    def run_scenario():
+        plant, io, line = make_rig()
+        line.start()
+        run(plant, io, line, 3.0)
+        run(plant, io, line, 5.0)
+        line.stop()
+        run(plant, io, line, 5.0)
+        return plant.hopper.level_kg, plant.spilled_kg, plant.bin.level_kg, line.state
+
+    assert run_scenario() == run_scenario()
+
+
+def test_start_sequence_is_downstream_first():
+    plant, io, line = make_rig()
+    line.start()
+    tick(plant, io, line)
+    assert line.start_step == StartStep.CONVEYOR
+    assert plant.conveyor.motor.run_command is True
+    assert plant.gate.open_command is False
+    assert plant.feeder.motor.run_command is False
+
+
+# ---- start permissives (docs/CONTROL-LAB.md §6.3) ----------------------
+
+
+def test_start_refused_when_bin_low():
+    plant, io, line = make_rig(bin_level_kg=500.0)  # 5% of 10,000 kg -- under the 10% threshold
+    line.start()
+    tick(plant, io, line)
+    assert line.state == LineState.IDLE
+    assert "bin low" in line.last_start_refusal
+    assert plant.conveyor.motor.run_command is False
+
+
+def test_start_refused_when_hopper_high_high():
+    plant, io, line = make_rig()
+    plant.hopper.level_kg = 1_950.0  # 97.5% -- above the 95% high-high threshold
+    tick(plant, io, line)  # publish this reading before requesting a start
+    line.start()
+    tick(plant, io, line)
+    assert line.state == LineState.IDLE
+    assert "hopper at high-high" in line.last_start_refusal
+
+
+def test_start_refusal_reports_multiple_reasons_together():
+    plant, io, line = make_rig(bin_level_kg=500.0)
+    plant.hopper.level_kg = 1_950.0
+    tick(plant, io, line)
+    line.start()
+    tick(plant, io, line)
+    assert line.state == LineState.IDLE
+    assert set(line.last_start_refusal) == {"bin low", "hopper at high-high"}
+
+
+# ---- no-op requests -----------------------------------------------------
+
+
+def test_stop_while_idle_is_a_noop():
+    plant, io, line = make_rig()
+    line.stop()
+    tick(plant, io, line)
+    assert line.state == LineState.IDLE
+
+
+def test_start_while_already_running_is_a_noop():
+    plant, io, line = make_rig()
+    line.start()
+    run(plant, io, line, 3.0)
+    assert line.state == LineState.RUNNING
+
+    line.start()
+    tick(plant, io, line)
+    assert line.state == LineState.RUNNING
+
+
+# ---- hopper hysteresis (RUNNING only) -----------------------------------
+
+
+def test_hysteresis_pauses_and_resumes_the_feeder_while_running():
+    plant, io, line = make_rig()
+    line.start()
+    run(plant, io, line, 3.0)
+    assert line.state == LineState.RUNNING
+
+    # Forcing the level directly tests the hysteresis DECISION, not fill
+    # physics -- that's already covered by the Phase 1 conservation tests.
+    plant.hopper.level_kg = 1_700.0  # 85% -- above LSH-105's 80%
+    tick(plant, io, line)  # this tick: scan() still sees the OLD reading;
+    #                        plant_scan() publishes the new one at the end
+    assert io.read("LSH-105") is True
+    tick(plant, io, line)  # NOW scan() reacts to it
+    assert plant.feeder.motor.run_command is False
+    assert plant.conveyor.motor.running is True  # conveyor keeps running
+    assert plant.gate.is_open is True  # gate stays open
+
+    plant.hopper.level_kg = 1_000.0  # 50% -- below the 60% restart point
+    tick(plant, io, line)
+    tick(plant, io, line)
+    assert io.read("LSH-105") is False
+    assert plant.feeder.motor.run_command is True
+    assert line.state == LineState.RUNNING  # never left RUNNING for any of this
+
+
+# ---- STARTING faults ----------------------------------------------------
+
+
+def test_stop_during_starting_aborts_the_sequence():
+    plant, io, line = make_rig()
+    line.start()
+    run(plant, io, line, 0.5)
+    assert line.state == LineState.STARTING
+    assert line.start_step == StartStep.GATE  # conveyor already proven, gate opening
+
+    line.stop()
+    tick(plant, io, line)
+    assert line.state == LineState.STOPPING
+
+    run(plant, io, line, 3.0)  # purge_time_s=2.0 on this rig
+    assert line.state == LineState.IDLE
+    assert plant.conveyor.motor.running is False
+
+
+def test_starting_fault_conveyor_fails_to_prove_running():
+    plant, io, line = make_rig()
+    plant.conveyor.motor.fail_to_start = True
+    line.start()
+    run(plant, io, line, 3.0)  # conveyor_proof_timeout_s=1.0
+    assert line.state == LineState.FAULTED
+    assert line.fault_reason == "conveyor failed to prove running"
+
+
+def test_starting_fault_gate_travel_timeout():
+    plant, io, line = make_rig()
+    plant.gate.stuck = True
+    line.start()
+    run(plant, io, line, 5.0)  # gate_ctrl travel_timeout_s=2.0
+    assert line.state == LineState.FAULTED
+    assert line.fault_reason == "gate failed to prove open"
+    assert plant.conveyor.motor.run_command is False  # was running -- proves the drop, not just "never was on"
+
+
+def test_starting_fault_feeder_fails_to_prove_running():
+    plant, io, line = make_rig()
+    plant.feeder.motor.fail_to_start = True
+    line.start()
+    run(plant, io, line, 5.0)  # conveyor + gate succeed first, then feeder proof times out
+    assert line.state == LineState.FAULTED
+    assert line.fault_reason == "feeder failed to prove running"
+    # By now conveyor was running and the gate was open -- prove
+    # _enter_faulted() actually dropped them, not that they were never on.
+    assert plant.conveyor.motor.run_command is False
+    assert plant.gate.open_command is False
+    assert plant.feeder.motor.run_command is False
+
+
+def test_starting_fault_trip_mid_sequence():
+    plant, io, line = make_rig()
+    line.start()
+    run(plant, io, line, 0.5)
+    assert line.start_step == StartStep.GATE  # conveyor already proven, gate opening
+
+    plant.conveyor.motor.trip_now = True
+    run(plant, io, line, 0.2)
+    assert line.state == LineState.FAULTED
+    assert line.fault_reason == "conveyor trip"
+
+
+# ---- RUNNING faults -----------------------------------------------------
+
+
+def test_running_fault_hopper_high_high():
+    plant, io, line = make_rig()
+    line.start()
+    run(plant, io, line, 3.0)
+    assert line.state == LineState.RUNNING
+
+    plant.hopper.level_kg = 1_950.0  # 97.5% -- above 95%
+    run(plant, io, line, 0.3)
+    assert line.state == LineState.FAULTED
+    assert line.fault_reason == "hopper high-high"
+    assert plant.feeder.motor.run_command is False
+    assert plant.gate.open_command is False
+
+
+def test_running_fault_feeder_trip():
+    plant, io, line = make_rig()
+    line.start()
+    run(plant, io, line, 3.0)
+    assert line.state == LineState.RUNNING
+
+    plant.feeder.motor.trip_now = True
+    run(plant, io, line, 0.3)
+    assert line.state == LineState.FAULTED
+    assert line.fault_reason == "feeder trip"
+
+
+def test_running_fault_conveyor_trip():
+    plant, io, line = make_rig()
+    line.start()
+    run(plant, io, line, 3.0)
+    assert line.state == LineState.RUNNING
+
+    plant.conveyor.motor.trip_now = True
+    run(plant, io, line, 0.3)
+    assert line.state == LineState.FAULTED
+    assert line.fault_reason == "conveyor trip"
+
+
+def test_running_fault_conveyor_confirmation_loss():
+    """Belt slip (docs/CONTROL-LAB.md §5.4): the motor itself is fine,
+    but the belt isn't moving. The one fault that specifically proves
+    Interlocks.conveyor_confirmed_running's ZSS-104 combination is real,
+    not just running-only."""
+    plant, io, line = make_rig()
+    line.start()
+    run(plant, io, line, 3.0)
+    assert line.state == LineState.RUNNING
+
+    plant.conveyor.motion_switch_stuck_false = True
+    run(plant, io, line, 0.3)
+    assert line.state == LineState.FAULTED
+    assert line.fault_reason == "conveyor lost confirmation"
+    assert plant.conveyor.motor.fault is False  # the motor itself never tripped
+    assert plant.feeder.motor.run_command is False
+
+
+# ---- STOPPING faults ------------------------------------------------------
+
+
+def test_stopping_fault_trip_during_purge():
+    plant, io, line = make_rig()
+    line.start()
+    run(plant, io, line, 3.0)
+    assert line.state == LineState.RUNNING
+
+    line.stop()
+    tick(plant, io, line)
+    assert line.state == LineState.STOPPING
+
+    plant.conveyor.motor.trip_now = True
+    run(plant, io, line, 0.3)
+    assert line.state == LineState.FAULTED
+    assert line.fault_reason == "conveyor trip"
+
+
+# ---- reset (docs/CONTROL-LAB.md §6.2: cause cleared AND an operator reset) --
+
+
+def test_reset_refused_while_cause_still_active():
+    plant, io, line = make_rig()
+    line.start()
+    run(plant, io, line, 3.0)
+    plant.hopper.level_kg = 1_950.0
+    run(plant, io, line, 0.3)
+    assert line.state == LineState.FAULTED
+
+    line.reset()
+    tick(plant, io, line)
+    assert line.state == LineState.FAULTED  # still high-high -- refused
+    assert line.fault_reason == "hopper high-high"
+
+
+def test_reset_succeeds_once_a_passthrough_cause_clears():
+    plant, io, line = make_rig()
+    line.start()
+    run(plant, io, line, 3.0)
+    plant.feeder.motor.trip_now = True
+    run(plant, io, line, 0.3)
+    assert line.state == LineState.FAULTED
+
+    # Fixing a real trip means both: the root cause (trip_now) AND the
+    # device's own fault latch (clear_fault()) -- clearing only one and
+    # not the other would either re-trip immediately or never publish
+    # as cleared.
+    plant.feeder.motor.trip_now = False
+    plant.feeder.motor.clear_fault()
+    tick(plant, io, line)  # let the cleared fault tag publish
+
+    line.reset()
+    run(plant, io, line, 0.3)
+    assert line.state == LineState.IDLE
+    assert line.fault_reason is None
+
+
+def test_reset_from_a_latched_fault_gives_a_fresh_chance_but_a_persistent_problem_refaults():
+    """A latched timing diagnostic (gate travel_fault) has no independent
+    "still broken" signal Control can check -- reset() clears it
+    unconditionally, and if the underlying problem is still there, the
+    next start attempt simply fails again on its own. Proves reset()
+    doesn't silently paper over a persistent problem."""
+    plant, io, line = make_rig()
+    plant.gate.stuck = True
+    line.start()
+    run(plant, io, line, 5.0)
+    assert line.state == LineState.FAULTED
+    assert line.fault_reason == "gate failed to prove open"
+
+    line.reset()
+    run(plant, io, line, 0.3)
+    assert line.state == LineState.IDLE
+
+    line.start()
+    run(plant, io, line, 5.0)
+    assert line.state == LineState.FAULTED
+    assert line.fault_reason == "gate failed to prove open"
+
+
+# ---- E-stop (docs/CONTROL-LAB.md §6.2: from any state; needs release AND reset) --
+
+
+def test_estop_from_idle():
+    plant, io, line = make_rig()
+    plant.estop.trip()
+    # Two ticks: the first is when plant_scan()'s publish step makes the
+    # trip visible on ES-001 (it runs after line.scan() within a tick);
+    # the second is when line.scan() actually reacts to it.
+    run(plant, io, line, 0.2)
+    assert line.state == LineState.ESTOPPED
+    assert line.fault_reason == "e-stop"
+
+
+def test_estop_during_starting_aborts_the_sequence():
+    plant, io, line = make_rig()
+    line.start()
+    run(plant, io, line, 0.5)
+    assert line.state == LineState.STARTING
+
+    plant.estop.trip()
+    run(plant, io, line, 0.2)  # one tick for ES-001 to publish, one to react
+    assert line.state == LineState.ESTOPPED
+    assert line.start_step is None
+
+
+def test_start_while_estopped_does_nothing():
+    plant, io, line = make_rig()
+    plant.estop.trip()
+    run(plant, io, line, 0.2)  # one tick for ES-001 to publish, one to react
+    assert line.state == LineState.ESTOPPED
+
+    line.start()
+    tick(plant, io, line)
+    assert line.state == LineState.ESTOPPED  # e-stop still tripped
+
+
+def test_estop_holds_everything_off_and_requires_explicit_restart():
+    """Proves LineController closes the gap demonstrated in
+    tests/integration/test_plant_io.py::
+    test_estop_via_io_image_holds_motors_until_explicit_reset: at the raw
+    I/O-image layer, a stale run command restarts a motor the instant
+    it's reset. Here, with LineController actually driving the line, it
+    can't -- ESTOPPED holds every command at False continuously."""
+    plant, io, line = make_rig()
+    line.start()
+    run(plant, io, line, 3.0)
+    assert line.state == LineState.RUNNING
+    assert plant.conveyor.motor.running is True
+
+    plant.estop.trip()
+    run(plant, io, line, 0.2)  # one tick for ES-001 to publish, one to react
+    assert line.state == LineState.ESTOPPED
+    assert plant.conveyor.motor.state == MotorState.ESTOP
+    assert plant.feeder.motor.state == MotorState.ESTOP
+
+    # Releasing the E-stop alone brings the motors back to STOPPED
+    # (Plant's own auto-reset -- see plant.py) but must NOT restart them.
+    plant.estop.reset()
+    run(plant, io, line, 1.0)
+    assert line.state == LineState.ESTOPPED  # no reset() yet
+    assert plant.conveyor.motor.state == MotorState.STOPPED  # available again...
+    assert plant.conveyor.motor.run_command is False  # ...but not commanded -- this is the fix
+    assert plant.feeder.motor.run_command is False
+
+    line.reset()
+    tick(plant, io, line)
+    assert line.state == LineState.IDLE
+
+    # Recovering does NOT auto-restart -- a fresh start() is required.
+    run(plant, io, line, 1.0)
+    assert line.state == LineState.IDLE
+    assert plant.conveyor.motor.running is False
+
+    line.start()
+    run(plant, io, line, 5.0)
+    assert line.state == LineState.RUNNING
