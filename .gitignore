@@ -11,3 +11,5 @@ venv/
 
 # AI-generated scenario proposals: reviewed, then moved into scenarios/ by an engineer
 candidates/
+# AI run analyses (hypotheses for an engineer)
+analyses/

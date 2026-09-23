@@ -99,6 +99,13 @@ ControlLab/
 │   │   └── events.py                 EventLog -- state/alarm diffing observer
 │   │                                  (Phase 5 step 2) + command capture (step 3);
 │   │                                  write_jsonl() exports it
+│   ├── ai/                           OPTIONAL (Phase 8; the [ai] extra): nothing else imports it
+│   │   ├── provider.py               Provider protocol + AnthropicProvider (lazy SDK import,
+│   │   │                              key only from ANTHROPIC_API_KEY, per call)
+│   │   ├── limits.py                 every hard limit, as constants
+│   │   ├── context.py                bounded, deterministic line description for generation
+│   │   ├── generate.py               proposals -> candidates/ -> the review gate
+│   │   └── analyze.py                bounded run digest -> unverified hypotheses
 │   ├── protocols/
 │   │   ├── modbus.py                 stdlib Modbus TCP server: DataStore interface,
 │   │   │                              pure PDU/ADU handling, ModbusServer (Phase 7 step 1)
@@ -147,6 +154,8 @@ ControlLab/
 │   │                                  (--modbus-port also serves the I/O image)
 │   ├── register_map.py               writes docs/MODBUS-MAP.md from line_map.py
 │   ├── review_candidates.py          reviews candidate scenario files (Phase 8 step 1)
+│   ├── ai_generate.py                AI-proposed candidates, reviewed (optional)
+│   ├── ai_analyze.py                 AI hypotheses about a failed run (optional)
 │   └── external_controller.py        runs the reference external controller against
 │                                      dashboard.py --external
 ├── tests/
@@ -837,6 +846,26 @@ issue and propose the change"):
   HR 7 (appended after the HMI ack word), `controller_status`,
   `RemoteLine`, and the OpenPLC program's `%QW107`.
 
+## Module responsibilities (Phase 8 steps 2-3: optional AI)
+
+- **The flow is fixed:** AI proposal → deterministic review gate →
+  engineer approval → deterministic execution. `generate_candidates()`
+  does the first two and stops; only an engineer moves a candidate
+  into `scenarios/`. AI never runs control logic and never bypasses the
+  gate, which runs on every candidate in the same call.
+- **`provider.py`**: one interface, `complete_json(system, user,
+  schema, max_tokens)`. A new provider is a class plus a registry
+  entry, with no change to core layers. An import-line test keeps
+  every core package free of `services.ai` and `anthropic`, and a
+  subprocess test runs ControlLab with the SDK blocked.
+- **`generate.py`**: the output schema's keys are an enum of the real
+  vocabulary; limits (1-5 candidates, request ≤ 2,000 chars, 8,000
+  output tokens) are checked in code, before and after the call.
+- **`analyze.py`**: a bounded digest (events nearest the failure,
+  discrete transitions in a window, analog summaries, a char cap, and
+  omissions stated) in; unverified, evidence-cited hypotheses out, in
+  one Markdown file. Nothing is changed.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |
@@ -849,7 +878,7 @@ issue and propose the change"):
 | 5 | Telemetry | done — generic sampled tag history; state/alarm diffing observer; optional command sink; generated Markdown commissioning report |
 | 6 | Visualization | done — tag history in every scenario run; HTML replay viewer; live localhost dashboard with operator commands, fault injection, and replay download |
 | 7 | Protocols | done — Modbus server + client; register map (five PLC-master ranges); external-controller mode with the full scenario suite passing across Modbus; OpenPLC running a Structured Text port of the controller against the plant |
-| 8 | AI engineering assistance | in progress — step 1 done (deterministic candidate review gate); steps 2-3 (model-dependent) await decisions |
+| 8 | AI engineering assistance | done — deterministic candidate review gate; start inhibit; optional AI (provider abstraction, Anthropic first): gated scenario generation, bounded failed-run analysis |
 | 9 | Virtual commissioning | not started |
 
 Full detail and "done when" criteria per phase: `CONTROL-LAB.md` §10.
@@ -857,6 +886,9 @@ Full detail and "done when" criteria per phase: `CONTROL-LAB.md` §10.
 ## Technology stack
 
 - **Python 3.12+**, no framework. `pytest` for testing.
+- **`anthropic`** (Phase 8) — **optional** (`pip install -e ".[ai]"`),
+  imported only inside an AI call. The core (simulation, control,
+  testing, protocols, dashboard) never needs it or an API key.
 - **`pymodbus`** (Phase 7 step 1) — **dev-only**, for interoperability
   tests against our own stdlib Modbus server. Never imported at runtime.
 - **`pyyaml`** (Phase 3 step 1) — the first real dependency beyond

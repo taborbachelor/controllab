@@ -43,6 +43,24 @@ the built-in run. And a real PLC runtime drives it too: OpenPLC in Docker,
 running a Structured Text port of the controller, passes a real-time
 commissioning check over Modbus ([`examples/openplc/`](examples/openplc/README.md)).
 
+### Optional AI assistance (Phase 8)
+
+Not needed for anything above. With `pip install -e ".[ai]"` and
+`ANTHROPIC_API_KEY` set:
+
+```bash
+python scripts/ai_generate.py "cover gate faults during shutdown" --count 3
+python scripts/ai_analyze.py path/to/failing_scenario.yaml
+```
+
+Generated scenarios are *proposals*: they land in `candidates/` and every
+one goes through a deterministic review gate (`scripts/review_candidates.py`)
+that rejects broken, duplicate, non-deterministic, and vacuous tests. A
+candidate becomes a test only when an engineer moves it into `scenarios/`.
+Run analysis sends a bounded digest of a failed run, never the full
+telemetry, and returns hypotheses marked unverified. The API key is read
+from the environment per call and never stored.
+
 ## Documentation
 
 - [`docs/CONTROL-LAB.md`](docs/CONTROL-LAB.md) — full project specification:
@@ -117,7 +135,7 @@ watchdog stops the plant within a second.
 | 5 | Telemetry | done |
 | 6 | Visualization | done |
 | 7 | Protocols (Modbus + external controller mode) | done |
-| 8 | AI engineering assistance | in progress (step 1: a deterministic review gate for candidate scenarios) |
+| 8 | AI engineering assistance | done (optional) |
 | 9 | Virtual commissioning | not started |
 
 Full detail: `docs/CONTROL-LAB.md` §10.
