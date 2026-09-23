@@ -96,8 +96,11 @@ ControlLab/
 │   │                                  (Phase 5 step 2) + command capture (step 3);
 │   │                                  write_jsonl() exports it
 │   ├── protocols/
-│   │   └── modbus.py                 stdlib Modbus TCP server: DataStore interface,
-│   │                                  pure PDU/ADU handling, ModbusServer (Phase 7 step 1)
+│   │   ├── modbus.py                 stdlib Modbus TCP server: DataStore interface,
+│   │   │                              pure PDU/ADU handling, ModbusServer (Phase 7 step 1)
+│   │   ├── register_map.py           generic: Point/HmiCoil/RegisterMap.validate(),
+│   │   │                              IOImageDataStore, render_markdown() (step 2)
+│   │   └── line_map.py               this line's hand-written addresses (step 2)
 │   └── visualization/
 │       ├── replay.py                 build_frames()/build_replay()/render_html() --
 │       │                             replay reconstructed from telemetry (Phase 6 step 2)
@@ -128,7 +131,9 @@ ControlLab/
 │   │                                  --markdown FILE.md (commissioning report)
 │   ├── replay.py                     runs one scenario, writes a self-contained
 │   │                                  HTML replay of it
-│   └── dashboard.py                  starts the live dashboard on 127.0.0.1
+│   ├── dashboard.py                  starts the live dashboard on 127.0.0.1
+│   │                                  (--modbus-port also serves the I/O image)
+│   └── register_map.py               writes docs/MODBUS-MAP.md from line_map.py
 ├── tests/
 │   ├── unit/                        one test module per equipment/engine/control/
 │   │                                 testing/telemetry class, plus test_control_boundary.py
@@ -710,6 +715,28 @@ issue and propose the change"):
   tests use the spec's own example bytes and drive the server with
   `pymodbus`'s client, a **dev-only** dependency.
 
+## Module responsibilities (Phase 7 step 2)
+
+- **`register_map.py`** (generic) — `RegisterMap.validate(io)` runs
+  before anything is served and reports every problem at once: each
+  tag mapped exactly once, the table matches the tag type
+  (DI→discrete input, DO→coil, AI→input register, AO→holding
+  register), no address collisions (HMI block included), and analog
+  full scale fits in 16 bits. `IOImageDataStore` implements the step-1
+  `DataStore` over an `IOImage`. Reads scale and clamp. Writes are
+  validated whole before applying. Unmapped spans are refused. Outputs
+  are writable only when `outputs_writable` is set. HMI coils call
+  `on_command` and always read 0. It takes a `get_io` callable, not an
+  `IOImage`, so the owner can swap in a fresh image.
+- **`line_map.py`** — the line's addresses, written out explicitly: each
+  table from 0 in §5.3 order, HMI coils at 100-103, 0.01 % / 0.1 kg
+  resolution. `scripts/register_map.py` renders `docs/MODBUS-MAP.md`
+  from it; a test fails on drift.
+- **Wiring** — `scripts/dashboard.py --modbus-port` serves the
+  `LiveSession`'s I/O image under `session.lock`, now an `RLock`
+  because an HMI coil write re-enters `session.command()` while the
+  server already holds it.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |
@@ -721,7 +748,7 @@ issue and propose the change"):
 | 4 | Fault injection, alarms | done (steps 1-3: alarm core; wired into `LineController`; surfaced through Testing, 8/8 interlocks covered). Step 4 (feeder jam + sensor failure hooks) deliberately deferred — see `CONTROL-LAB.md` §10 |
 | 5 | Telemetry | done — generic sampled tag history; state/alarm diffing observer; optional command sink; generated Markdown commissioning report |
 | 6 | Visualization | done — tag history in every scenario run; HTML replay viewer; live localhost dashboard with operator commands, fault injection, and replay download |
-| 7 | Protocols | in progress — step 1 done (stdlib Modbus TCP server) |
+| 7 | Protocols | in progress — steps 1-2 done (stdlib Modbus TCP server; the line's register map, served live) |
 | 8 | AI engineering assistance | not started |
 | 9 | Virtual commissioning | not started |
 

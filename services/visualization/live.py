@@ -89,8 +89,24 @@ PLANT = {
 
 class LiveSession:
     def __init__(self) -> None:
-        self._lock = threading.Lock()
+        # Re-entrant because the Modbus server (Phase 7 step 2) holds this
+        # same lock while serving a request, and an HMI coil write calls
+        # back into command() from inside that request -- a plain Lock
+        # would deadlock there.
+        self._lock = threading.RLock()
         self._fresh()
+
+    @property
+    def lock(self) -> threading.RLock:
+        """Shared with anything else serving this session's I/O image
+        (the Modbus server), so it never observes a half-applied scan."""
+        return self._lock
+
+    @property
+    def io(self):
+        """The current I/O image -- replaced on restart(), so callers
+        should ask for it each time rather than keep a reference."""
+        return self.rig.io
 
     def _fresh(self) -> None:
         self.rig = build_rig()

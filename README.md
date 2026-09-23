@@ -31,8 +31,9 @@ live localhost dashboard: the line running in real time, operator
 commands, a separate fault-injection panel, and one-click download of
 the session as a replay. Phase 7 (Protocols) in progress: a
 stdlib Modbus TCP server, tested against the Modbus spec's own examples
-and against `pymodbus`'s client; the register map and external-controller
-mode come next.
+and against `pymodbus`'s client, serving the line's I/O over a documented
+register map ([`docs/MODBUS-MAP.md`](docs/MODBUS-MAP.md)); external-controller
+mode comes next.
 
 ## Documentation
 
@@ -82,7 +83,9 @@ python scripts/dashboard.py        # then open http://127.0.0.1:8000
 Start it, inject a fault, and walk through the recovery (clear the
 fault, reset the device at the field, acknowledge, reset, start) the
 way a commissioning engineer would. Localhost only, no dependencies
-beyond the standard library.
+beyond the standard library. Add `--modbus-port 5020` to also expose the
+line to any Modbus TCP client (a SCADA package, Modbus Poll, a PLC):
+sensors and outputs readable, operator commands on HMI coils 100-103.
 
 ## Roadmap
 
@@ -95,7 +98,7 @@ beyond the standard library.
 | 4 | Fault injection, alarms | done (feeder jam / sensor failure hooks deferred) |
 | 5 | Telemetry | done |
 | 6 | Visualization | done |
-| 7 | Protocols (Modbus + external controller mode) | in progress (step 1 of 4 done: Modbus TCP server) |
+| 7 | Protocols (Modbus + external controller mode) | in progress (steps 1-2 of 4 done: Modbus TCP server; register map) |
 | 8 | AI engineering assistance | not started |
 | 9 | Virtual commissioning | not started |
 

@@ -4,6 +4,7 @@ the simulated line running in real time, served on localhost.
 
     python scripts/dashboard.py              # http://127.0.0.1:8000
     python scripts/dashboard.py --port 8080 --speed 2
+    python scripts/dashboard.py --modbus-port 5020   # also serve the I/O image over Modbus TCP
 
 Localhost only, no authentication -- a local engineering tool, not a
 network service. All the logic lives in services/visualization/live.py.
@@ -11,8 +12,12 @@ network service. All the logic lives in services/visualization/live.py.
 from __future__ import annotations
 
 import argparse
+import threading
 from http.server import ThreadingHTTPServer
 
+from services.protocols.line_map import LINE_REGISTER_MAP
+from services.protocols.modbus import ModbusServer
+from services.protocols.register_map import IOImageDataStore
 from services.visualization.live import SPEEDS, LiveSession, Pacer, make_handler
 
 
@@ -20,11 +25,23 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--speed", type=float, default=1.0, choices=SPEEDS, help="simulated seconds per real second")
+    parser.add_argument(
+        "--modbus-port", type=int, default=None,
+        help="also serve the I/O image over Modbus TCP on 127.0.0.1 (read-only outputs; HMI coils 100-103)",
+    )
     args = parser.parse_args()
 
     session = LiveSession()
     pacer = Pacer(session, speed=args.speed)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(session, pacer))
+    modbus = None
+    if args.modbus_port is not None:
+        # Built-in controller mode: outputs stay read-only over Modbus (the
+        # LineController owns them); HMI coils issue operator commands.
+        store = IOImageDataStore(LINE_REGISTER_MAP, lambda: session.io, on_command=session.command)
+        modbus = ModbusServer(store, port=args.modbus_port, lock=session.lock)
+        threading.Thread(target=modbus.serve_forever, daemon=True, name="controllab-modbus").start()
+        print(f"Modbus TCP: 127.0.0.1:{modbus.server_address[1]}  (map: docs/MODBUS-MAP.md)")
     pacer.start()
     print(f"ControlLab live dashboard: http://127.0.0.1:{server.server_port}  (Ctrl+C to stop)")
     try:
@@ -34,6 +51,9 @@ def main() -> int:
     finally:
         pacer.stop()
         server.server_close()
+        if modbus is not None:
+            modbus.shutdown()
+            modbus.server_close()
     return 0
 
 
