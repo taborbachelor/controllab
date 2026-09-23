@@ -7,6 +7,12 @@ feeder → conveyor → hopper — so deterministic control logic can be run
 against it and tested: startup, shutdown, interlocks, fault injection, and
 recovery, before any physical equipment exists.
 
+![The ControlLab live dashboard: the line stopped and ready, with a plain-English status card and five guided walkthroughs](docs/images/dashboard-overview.jpg)
+
+*The live dashboard (`python scripts/dashboard.py`). The card at the top
+says what the line is doing and what to do next; the walkthroughs on the
+right run short stories step by step.*
+
 **Status:** all ten roadmap phases (0-9) complete; 625 tests passing.
 
 What's in it:
@@ -138,6 +144,20 @@ the line in plain words, and five guided walkthroughs (a normal start and
 stop, a refused start, an emergency stop, a motor fault and its recovery,
 overfill protection with a broken sensor) run step by step, each with a
 "Do it for me" button.
+
+![The line running mid-walkthrough: material moving along the feeder and up the conveyor, the next step highlighting the Stop button](docs/images/dashboard-running.jpg)
+
+*Running, partway through "A normal start and stop". Material is moving
+along the feeder and up the conveyor; the walkthrough says what just
+happened and highlights the next button to press.*
+
+![The line tripped on hopper high-high with the high-high switch stuck: the status card explains the trip and lists the recovery steps](docs/images/dashboard-overfill-trip.jpg)
+
+*"Overfill protection with a broken sensor". The hopper's high-high
+switch has been made to stick (highlighted red under Engineer tools), and
+the hopper was overfilled to 97 %. The line tripped anyway, because the
+overfill trip also listens to the hopper's weight, and the card explains
+why and lists the recovery steps.*
 
 Start it, inject a fault, and walk through the recovery (clear the
 fault, reset the device at the field, acknowledge, reset, start) the
