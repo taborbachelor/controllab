@@ -30,7 +30,7 @@ class Loop:
         self.plant = LiveSession(external=True)
         store = IOImageDataStore(
             LINE_REGISTER_MAP, lambda: self.plant.io, outputs_writable=True,
-            hmi_latches=self.plant.latches, on_output_write=self.plant.note_controller_write,
+            handshake=self.plant.handshake, on_output_write=self.plant.note_controller_write,
         )
         self.server = ModbusServer(store, port=0, lock=self.plant.lock)
         threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
@@ -195,7 +195,7 @@ def test_separate_processes_free_running_in_real_time():
     plant = LiveSession(external=True)
     store = IOImageDataStore(
         LINE_REGISTER_MAP, lambda: plant.io, outputs_writable=True,
-        hmi_latches=plant.latches, on_output_write=plant.note_controller_write,
+        handshake=plant.handshake, on_output_write=plant.note_controller_write,
     )
     server = ModbusServer(store, port=0, lock=plant.lock)
     threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()

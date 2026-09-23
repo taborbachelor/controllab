@@ -88,16 +88,16 @@ def test_built_in_mode_status_is_readable_and_read_only():
     store = IOImageDataStore(LINE_REGISTER_MAP, lambda: rig.io, status_source=lambda: encode(rig.line))
     rig.plant.estop.trip()
     run(rig, 0.3)
-    assert handle_pdu(store, bytes.fromhex("0300C80002")) == bytes.fromhex("0304") + bytes((0, 5, 0, 1))  # ESTOPPED, "e-stop"
-    assert handle_pdu(store, bytes.fromhex("0600C80000")) == bytes((0x86, ILLEGAL_DATA_ADDRESS))
+    assert handle_pdu(store, bytes.fromhex("0300010002")) == bytes.fromhex("0304") + bytes((0, 5, 0, 1))  # ESTOPPED, "e-stop"
+    assert handle_pdu(store, bytes.fromhex("0600010000")) == bytes((0x86, ILLEGAL_DATA_ADDRESS))
 
 
 def test_external_mode_status_is_written_by_the_controller():
     rig = build_rig(with_controller=False)
     store = IOImageDataStore(LINE_REGISTER_MAP, lambda: rig.io, outputs_writable=True)
-    handle_pdu(store, bytes.fromhex("1000C8000204" + "0002" + "0000"))  # RUNNING, no fault
+    handle_pdu(store, bytes.fromhex("100001000204" + "0002" + "0000"))  # RUNNING, no fault
     assert store.status_values[:2] == [2, 0]
-    assert handle_pdu(store, bytes.fromhex("0300C80001")) == bytes.fromhex("03020002")
+    assert handle_pdu(store, bytes.fromhex("0300010001")) == bytes.fromhex("03020002")
 
 
 def test_status_codes_are_in_the_generated_document():

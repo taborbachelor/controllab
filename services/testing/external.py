@@ -8,7 +8,7 @@ LineController from the outside -- start/stop/reset/acknowledge,
 none of the logic. Behind it:
 
 - the plant's I/O image served over Modbus TCP on localhost, outputs
-  writable, HMI coils latched, status registers writable
+  and status writable, HMI commands through the request/ack handshake
   (services/protocols/register_map.py);
 - the reference external controller (services/protocols/
   external_controller.py) on its own Modbus connection;
@@ -17,7 +17,7 @@ none of the logic. Behind it:
 
 So the scenario runner, the vocabulary, the invariants, the EventLog and
 every scenario file work unchanged -- and everything they learn about the
-controller arrived over Modbus. Commands go out as latched HMI requests;
+controller arrived over Modbus. Commands go out as HMI requests;
 state comes back as status registers; the controller itself only ever
 sees field I/O.
 
@@ -39,7 +39,7 @@ from services.protocols import controller_status
 from services.protocols.external_controller import ExternalController
 from services.protocols.line_map import LINE_REGISTER_MAP
 from services.protocols.modbus import ModbusClient, ModbusServer
-from services.protocols.register_map import HmiLatches, IOImageDataStore, ModbusIOSync
+from services.protocols.register_map import HmiHandshake, IOImageDataStore, ModbusIOSync
 from services.testing.rig import DT, Rig, build_rig
 
 COMMANDS = ("start", "stop", "reset", "acknowledge")
@@ -47,8 +47,8 @@ COMMANDS = ("start", "stop", "reset", "acknowledge")
 
 class RemoteLine:
     def __init__(self, rig: Rig) -> None:
-        self.latches = HmiLatches(list(COMMANDS))
-        store = IOImageDataStore(LINE_REGISTER_MAP, lambda: rig.io, outputs_writable=True, hmi_latches=self.latches)
+        self.handshake = HmiHandshake(LINE_REGISTER_MAP.commands)
+        store = IOImageDataStore(LINE_REGISTER_MAP, lambda: rig.io, outputs_writable=True, handshake=self.handshake)
         self._server = ModbusServer(store, port=0)
         threading.Thread(target=self._server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
         port = self._server.server_address[1]
@@ -63,7 +63,7 @@ class RemoteLine:
     def _command(self, name: str) -> None:
         if self.command_sink is not None:
             self.command_sink(name)
-        self.latches.request(name)
+        self.handshake.request(name)
 
     def start(self) -> None:
         self._command("start")

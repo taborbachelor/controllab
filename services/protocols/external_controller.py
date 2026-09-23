@@ -10,10 +10,11 @@ plant without sharing a single Python object with it. If anything in
 Control had quietly reached past the I/O image, this is where it would
 break. Nothing in services/control/ changed for this step.
 
-Each scan, in PLC order: read the field inputs, take any latched HMI
-requests (and acknowledge them), run the controller's scan, write the
-outputs, then publish the controller status block (step 3b) so the plant
-side -- an HMI, or the scenario runner -- can see what it decided.
+Each scan, in PLC order: read the field inputs and the HMI request word,
+act on any new request, run the controller's scan, then write the outputs
+together with the controller status block (step 3b) and the HMI ack word
+-- five Modbus requests, shaped exactly as a standard PLC master polls
+(step 4), so this is also the compatibility model for a real PLC.
 `scan_once()` does exactly one, so tests can interleave plant and
 controller deterministically; `run()` paces scans in real time, on
 the controller's own clock, like a PLC with a fixed scan time
@@ -60,8 +61,7 @@ class ExternalController:
         for command in self.sync.take_commands():
             COMMANDS[command](self.line)
         self.line.scan(dt)
-        self.sync.push_outputs()
-        self.sync.push_status(controller_status.encode(self.line))
+        self.sync.push_outputs(status=controller_status.encode(self.line))
         self.scans += 1
 
 

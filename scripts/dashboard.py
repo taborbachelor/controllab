@@ -47,12 +47,13 @@ def main() -> int:
     modbus = None
     if args.modbus_port is not None:
         if args.external:
-            # External-controller mode: the remote controller owns the outputs,
-            # HMI coils are latched requests it acknowledges, and every output
-            # write feeds the comm-loss watchdog.
+            # External-controller mode: the remote controller owns the outputs
+            # and status, takes commands through the HMI request/ack words,
+            # and every write it makes feeds the comm-loss watchdog. SCADA
+            # pushbutton coils still work -- they become requests too.
             store = IOImageDataStore(
-                LINE_REGISTER_MAP, lambda: session.io, outputs_writable=True,
-                hmi_latches=session.latches, on_output_write=session.note_controller_write,
+                LINE_REGISTER_MAP, lambda: session.io, on_command=session.command, outputs_writable=True,
+                handshake=session.handshake, on_output_write=session.note_controller_write,
             )
         else:
             # Built-in controller mode: outputs stay read-only over Modbus (the

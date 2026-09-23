@@ -14,11 +14,12 @@ from services.protocols.register_map import (
     HOLDING_REGISTER,
     INPUT_REGISTER,
     HmiCoil,
-    HmiLatches,
+    HmiHandshake,
     IOImageDataStore,
+    ModbusIOSync,
     Point,
     RegisterMap,
-    contiguous_runs,
+    StatusRegister,
     to_raw,
 )
 from services.simulation.engine.io_image import IOImage, TagType
@@ -169,38 +170,102 @@ def test_committed_map_document_matches_the_served_map():
     assert (REPO / "docs" / "MODBUS-MAP.md").read_text(encoding="utf-8") == module.render()
 
 
-# ---- external-controller mode (Phase 7 step 3) ---------------------------------
+# ---- the controller view and the HMI handshake (Phase 7 step 4) -----------------
 
-def test_latched_hmi_is_a_request_acknowledge_handshake():
-    latches = HmiLatches(["start"])
-    io = small_io()
-    s = IOImageDataStore(small_map(), lambda: io, hmi_latches=latches)
-    assert handle_pdu(s, bytes.fromhex("01000A0001")) == bytes.fromhex("010100")  # nothing requested
-    latches.request("start")  # ControlLab side
-    assert handle_pdu(s, bytes.fromhex("01000A0001")) == bytes.fromhex("010101")  # stays set until taken...
-    assert handle_pdu(s, bytes.fromhex("01000A0001")) == bytes.fromhex("010101")  # ...across any number of reads
-    handle_pdu(s, bytes.fromhex("05000A0000"))  # controller acknowledges by writing 0
-    assert latches.requested["start"] is False
+def test_the_line_map_is_five_contiguous_plc_master_ranges():
+    r = LINE_REGISTER_MAP.controller_ranges()
+    assert (r.discrete_inputs, r.input_registers, r.holding_read, r.coils, r.holding_write) == (
+        (0, 11), (0, 2), (100, 1), (0, 3), (0, 7),
+    )
 
 
-def test_unknown_hmi_request_is_rejected():
+def test_validation_rejects_a_map_a_plc_master_could_not_poll():
+    """The step-2/3 layout's flaw, reproduced: a status register away from
+    the analog outputs leaves a hole in the controller's write range."""
+    bad = RegisterMap(
+        points=small_map().points,
+        status_registers=(StatusRegister("line_state", 200),),
+    )
+    with pytest.raises(ValueError, match="isn't one contiguous range"):
+        bad.validate(small_io())
+
+
+def test_handshake_takes_each_command_exactly_once():
+    h = HmiHandshake(["start", "stop"])
+    h.request("start")
+    assert h.request_word == 0b01
+    h.write_ack(0b01)            # controller took it
+    assert h.request_word == 0   # ControlLab clears the request
+    h.write_ack(0b01)            # re-written every scan: no second rising edge
+    assert h.request_word == 0
+    h.write_ack(0)               # controller saw the request drop
+    assert (h.request_word, h.ack_word, h.outstanding()) == (0, 0, [])
+
+
+def test_a_press_during_the_previous_ack_is_held_not_lost():
+    h = HmiHandshake(["start"])
+    h.request("start")
+    h.write_ack(1)
+    h.request("start")           # pressed again before phase 4 finished
+    assert h.request_word == 0   # not raised yet: the standing ack would swallow it
+    assert h.outstanding() == ["start"]
+    h.write_ack(0)               # ack drops ...
+    assert h.request_word == 1   # ... and the held press is raised
+
+
+def test_unknown_command_is_rejected():
     with pytest.raises(ValueError):
-        HmiLatches(["start"]).request("launch")
+        HmiHandshake(["start"]).request("launch")
 
 
-def test_output_writes_feed_the_heartbeat_but_hmi_writes_do_not():
-    beats = []
+def handshake_store(**kwargs):
     io = small_io()
-    s = IOImageDataStore(small_map(), lambda: io, outputs_writable=True, hmi_latches=HmiLatches(["start"]),
-                         on_output_write=lambda: beats.append(1))
-    handle_pdu(s, bytes.fromhex("05000A0000"))  # HMI acknowledge
-    assert beats == []
-    handle_pdu(s, bytes.fromhex("050000FF00"))  # a coil output
-    handle_pdu(s, bytes.fromhex("0600000064"))  # a holding-register output
+    m = RegisterMap(points=small_map().points, hmi_coils=(HmiCoil("start", 10),), hmi_ack=1, hmi_request=5)
+    h = HmiHandshake(m.commands)
+    return IOImageDataStore(m, lambda: io, outputs_writable=True, handshake=h, **kwargs), h, io
+
+
+def test_the_controller_can_write_ack_but_never_the_request_word():
+    s, h, _ = handshake_store()
+    h.request("start")
+    assert handle_pdu(s, bytes.fromhex("0300050001")) == bytes.fromhex("03020001")  # request visible
+    assert handle_pdu(s, bytes.fromhex("0600050000")) == bytes((0x86, ILLEGAL_DATA_ADDRESS))
+    assert handle_pdu(s, bytes.fromhex("0600010001")) == bytes.fromhex("0600010001")  # ack
+    assert h.request_word == 0
+
+
+def test_controller_writes_feed_the_heartbeat():
+    beats = []
+    s, _, _ = handshake_store(on_output_write=lambda: beats.append(1))
+    handle_pdu(s, bytes.fromhex("050000FF00"))           # an output coil
+    handle_pdu(s, bytes.fromhex("100000000204" + "0064" + "0000"))  # AO + ack in one FC 16
     assert beats == [1, 1]
 
 
-def test_contiguous_runs_never_span_a_hole():
-    assert contiguous_runs([0, 1, 2, 5, 6, 100]) == [(0, 3), (5, 2), (100, 1)]
-    assert contiguous_runs([3, 1, 2]) == [(1, 3)]
-    assert contiguous_runs([]) == []
+def test_a_scan_polls_exactly_like_a_plc_master():
+    """Five requests, one per table, each one contiguous range -- the
+    shape OpenPLC's Modbus master uses. Recorded off a fake client."""
+    calls = []
+
+    class Recorder:
+        def __getattr__(self, name):
+            def call(address, arg):
+                calls.append((name, address, arg if isinstance(arg, int) else len(arg)))
+                if name == "read_discrete_inputs":
+                    return [False] * arg
+                if name in ("read_input_registers", "read_holding_registers"):
+                    return [0] * arg
+            return call
+
+    io = build_line_io_image()
+    sync = ModbusIOSync(Recorder(), LINE_REGISTER_MAP, io)
+    sync.pull_inputs()
+    sync.take_commands()
+    sync.push_outputs(status=[0] * 5)
+    assert calls == [
+        ("read_discrete_inputs", 0, 11),
+        ("read_input_registers", 0, 2),
+        ("read_holding_registers", 100, 1),
+        ("write_coils", 0, 3),
+        ("write_registers", 0, 7),
+    ]

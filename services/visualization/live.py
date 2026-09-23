@@ -49,7 +49,7 @@ from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
-from services.protocols.register_map import HmiLatches
+from services.protocols.register_map import HmiHandshake
 from services.telemetry.events import Event, EventLog
 from services.telemetry.tag_history import TagHistory
 from services.testing.invariants import InvariantViolation, Invariants
@@ -98,10 +98,11 @@ PLANT = {
 class LiveSession:
     """`external=True` runs the plant with NO built-in controller (Phase 7
     step 3): an external controller owns the outputs over Modbus, operator
-    commands become latched HMI requests (`self.latches`) for it to pick
-    up, line state and alarms live in that controller (so the snapshot
-    reports state "external" and no alarms), and a comm-loss watchdog
-    de-energizes every output if the controller stops writing."""
+    commands become HMI requests (`self.handshake`, a request/ack word
+    pair) for it to pick up, line state and alarms live in that
+    controller (so the snapshot reports state "external" and no alarms),
+    and a comm-loss watchdog de-energizes every output if the controller
+    stops writing."""
 
     def __init__(self, external: bool = False) -> None:
         # Re-entrant because the Modbus server (Phase 7 step 2) holds this
@@ -111,8 +112,8 @@ class LiveSession:
         self._lock = threading.RLock()
         self.external = external
         # Created once, not per session: the Modbus data store holds this
-        # object, so restart() clears its bits instead of replacing it.
-        self.latches = HmiLatches(list(COMMANDS))
+        # object, so restart() resets it instead of replacing it.
+        self.handshake = HmiHandshake(list(COMMANDS))
         self._fresh()
 
     @property
@@ -137,8 +138,7 @@ class LiveSession:
             # and watchdog trips are recorded directly as the same Event type.
             self.events = None
             self._external_events: list[Event] = []
-            for command in self.latches.requested:
-                self.latches.requested[command] = False
+            self.handshake.reset()
         else:
             self.events = EventLog(self.rig.line)
             self.rig.line.command_sink = self.events.record_command
@@ -165,7 +165,7 @@ class LiveSession:
             raise ValueError(f"unknown command {name!r} (known: {', '.join(COMMANDS)})")
         with self._lock:
             if self.external:
-                self._pending.append((name, lambda: self.latches.request(name)))
+                self._pending.append((name, lambda: self.handshake.request(name)))
             else:
                 self._pending.append((name, getattr(self.rig.line, name)))
 
@@ -274,7 +274,7 @@ class LiveSession:
                 "values": self.tags.samples[-1].values,
                 "events": [{"t": e.t, "type": e.type, **e.data} for e in events[since:]],
                 "event_count": len(events),
-                "pending_hmi": [c for c, on in self.latches.requested.items() if on] if self.external else [],
+                "pending_hmi": self.handshake.outstanding() if self.external else [],
                 "injected": {
                     "estop": "tripped" if plant.estop.tripped else "healthy",
                     "conveyor_trip": plant.conveyor.motor.trip_now,

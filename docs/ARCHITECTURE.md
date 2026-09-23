@@ -793,6 +793,21 @@ issue and propose the change"):
   vocabulary, invariants, `EventLog`, and scenario files are untouched;
   `run_scenario(..., external=True)` selects it.
 
+## Module responsibilities (Phase 7 step 4a)
+
+- **`RegisterMap.controller_ranges()`** — the controller's view as the
+  five (start, count) ranges a PLC master configures. `validate()`
+  refuses a map where any of them has a hole. This is the rule the
+  step-2/3 map broke without anyone noticing until it was checked
+  against OpenPLC.
+- **`HmiHandshake`** — the request/ack word pair (4-phase,
+  exactly-once, holds a press made during a standing ack). Replaced
+  step 3a's `HmiLatches`. `IOImageDataStore(handshake=...)` serves the
+  words; the request word is read-only to clients.
+- **`ModbusIOSync`** — polls in exactly the master shape: FC 2, FC 4,
+  FC 3, then after the scan FC 15 and one FC 16 carrying the outputs,
+  the status block (`push_outputs(status=...)`), and the ack word.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |
@@ -804,7 +819,7 @@ issue and propose the change"):
 | 4 | Fault injection, alarms | done (steps 1-3: alarm core; wired into `LineController`; surfaced through Testing, 8/8 interlocks covered). Step 4 (feeder jam + sensor failure hooks) deliberately deferred — see `CONTROL-LAB.md` §10 |
 | 5 | Telemetry | done — generic sampled tag history; state/alarm diffing observer; optional command sink; generated Markdown commissioning report |
 | 6 | Visualization | done — tag history in every scenario run; HTML replay viewer; live localhost dashboard with operator commands, fault injection, and replay download |
-| 7 | Protocols | in progress — steps 1-3 done (Modbus server + client; register map; external-controller mode, full scenario suite passing across Modbus) |
+| 7 | Protocols | in progress — steps 1-3, 4a done (Modbus server + client; register map, revised to five PLC-master ranges; external-controller mode, full scenario suite passing across Modbus); 4b (OpenPLC demo) next |
 | 8 | AI engineering assistance | not started |
 | 9 | Virtual commissioning | not started |
 

@@ -114,7 +114,7 @@ watchdog stops the plant within a second.
 | 4 | Fault injection, alarms | done (feeder jam / sensor failure hooks deferred) |
 | 5 | Telemetry | done |
 | 6 | Visualization | done |
-| 7 | Protocols (Modbus + external controller mode) | in progress (steps 1-3 of 4 done; OpenPLC demo next) |
+| 7 | Protocols (Modbus + external controller mode) | in progress (steps 1-3 and 4a done; OpenPLC demo next) |
 | 8 | AI engineering assistance | not started |
 | 9 | Virtual commissioning | not started |
 

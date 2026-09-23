@@ -4,6 +4,18 @@
 
 Modbus TCP, any unit ID. Addresses are 0-based protocol addresses; the Ref column is the conventional 1-based reference (coils 00001, discrete inputs 10001, input registers 30001, holding registers 40001). Analog values are unsigned 16-bit integers: raw = round(value × scale), clamped to 0..65535.
 
+## Controller view — PLC master configuration
+
+Everything a controller needs is five contiguous ranges, one per table — exactly what a PLC master's remote-I/O device configuration asks for (e.g. OpenPLC's *Slave Devices*: a start address and size per table).
+
+| Table | Direction | Start | Size | Contents |
+|---|---|---:|---:|---|
+| Discrete inputs (FC 02) | read | 0 | 11 | field sensors |
+| Input registers (FC 04) | read | 0 | 2 | analog sensors |
+| Holding registers (FC 03) | read | 100 | 1 | HMI request word |
+| Coils (FC 15) | write | 0 | 3 | field outputs |
+| Holding registers (FC 16) | write | 0 | 7 | analog outputs, controller status, HMI ack word |
+
 ## Discrete inputs (FC 02, read-only)
 
 | Address | Ref | Tag | Description |
@@ -35,15 +47,35 @@ Modbus TCP, any unit ID. Addresses are 0-based protocol addresses; the Ref colum
 | 1 | 00002 | `M-103.RUN` | Feeder motor run command |
 | 2 | 00003 | `M-104.RUN` | Conveyor motor run command |
 
-## Holding registers — analog outputs (FC 03 read; FC 06/16 write in external-controller mode only)
+## Holding registers
 
-| Address | Ref | Tag | Description | Units | Scale | Full scale → raw |
-|---:|---:|---|---|---|---:|---:|
-| 0 | 40001 | `SC-103` | Feeder speed reference | % | ×100 | 100 → 10000 |
+Written by the controller in external-controller mode (FC 16); read-only with the built-in controller, which computes the status block on read.
 
-## Coils — HMI commands (FC 05/15 write, momentary)
+| Address | Ref | Name | Description | Units | Scale |
+|---:|---:|---|---|---|---:|
+| 0 | 40001 | `SC-103` | Feeder speed reference | % | ×100 |
+| 1 | 40002 | `line_state` | Line state code | | |
+| 2 | 40003 | `fault_reason` | Fault reason code (0 = none) | | |
+| 3 | 40004 | `alarms_active` | Bit per alarm: condition active | | |
+| 4 | 40005 | `alarms_unacked` | Bit per alarm: not yet acknowledged (latched = active or unacked) | | |
+| 5 | 40006 | `first_out` | 1 + bit number of the first-out alarm (0 = none) | | |
+| 6 | 40007 | `hmi_ack` | HMI acknowledge word (controller → ControlLab) | | |
+| 100 | 40101 | `hmi_request` | HMI request word (ControlLab → controller; read-only to clients) | | |
 
-Pushbuttons, kept apart from field I/O: writing 1 issues the command once; writing 0 does nothing; they always read back 0.
+## HMI commands to an external controller — request/acknowledge
+
+Bits of `hmi_request` / `hmi_ack`: bit 0 = `start`, bit 1 = `stop`, bit 2 = `reset`, bit 3 = `acknowledge`. A 4-phase handshake, so each command is taken exactly once:
+
+1. ControlLab sets the request bit.
+2. The controller sees request = 1, ack = 0: it executes the command and sets the ack bit.
+3. ControlLab sees the ack bit rise and clears the request bit.
+4. The controller sees request = 0, ack = 1 and clears the ack bit.
+
+A command pressed while its previous ack is still set is held and raised after the ack drops, never lost.
+
+## Coils — HMI pushbuttons for SCADA clients (FC 05/15 write, momentary)
+
+Kept apart from field I/O and outside the controller view: writing 1 issues the command once (in external-controller mode, as a request through the handshake above); writing 0 does nothing; they always read back 0.
 
 | Address | Ref | Command | Description |
 |---:|---:|---|---|
@@ -52,19 +84,7 @@ Pushbuttons, kept apart from field I/O: writing 1 issues the command once; writi
 | 102 | 00103 | `reset` | Reset a FAULTED/ESTOPPED line once the cause is cleared |
 | 103 | 00104 | `acknowledge` | Acknowledge all latched alarms |
 
-In external-controller mode these are **latched requests** instead: ControlLab sets the bit, the controller acts on it and writes 0 to acknowledge.
-
-## Holding registers — controller status (FC 03 read; written by the controller)
-
-The controller's internal state, published every scan like a PLC's HMI status words. With the built-in controller they are computed on read and read-only; in external-controller mode the external controller writes them (FC 16).
-
-| Address | Ref | Name | Description |
-|---:|---:|---|---|
-| 200 | 40201 | `line_state` | Line state code |
-| 201 | 40202 | `fault_reason` | Fault reason code (0 = none) |
-| 202 | 40203 | `alarms_active` | Bit per alarm: condition active |
-| 203 | 40204 | `alarms_unacked` | Bit per alarm: not yet acknowledged (latched = active or unacked) |
-| 204 | 40205 | `first_out` | 1 + bit number of the first-out alarm (0 = none) |
+## Controller status codes
 
 ### `line_state` codes
 

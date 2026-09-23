@@ -4,8 +4,13 @@ purpose, not derived from tag order: once a PLC program is written
 against these addresses they're a contract, and adding a tag later must
 never silently shift the ones already in use.
 
-Each table starts at 0, in §5.3 order. HMI command coils sit in their own
-block at 100, so field outputs can grow without ever colliding with them.
+Each table starts at 0, in §5.3 order. Revised in Phase 7 step 4 so the
+controller's view is five contiguous ranges a standard PLC master can
+poll (see register_map.py): holding registers 0-6 are everything the
+controller writes -- SC-103, the five status registers, the HMI ack word
+-- and holding register 100 is the one it reads, the HMI request word.
+The SCADA pushbutton coils keep their own block at 100, outside the
+controller view, so field outputs can grow without colliding with them.
 Scales give 0.01 % resolution on percentages and 0.1 kg on the hopper
 weight, and every full-scale value fits in 16 bits (checked by
 RegisterMap.validate()). The generated document is docs/MODBUS-MAP.md.
@@ -46,7 +51,7 @@ LINE_REGISTER_MAP = RegisterMap(
         Point("XV-102.CMD_OPEN", COIL, 0),
         Point("M-103.RUN", COIL, 1),
         Point("M-104.RUN", COIL, 2),
-        # Holding registers -- analog outputs (AO)
+        # Holding registers -- analog outputs (AO); 1-6 follow below
         Point("SC-103", HOLDING_REGISTER, 0, scale=100, full_scale=100.0),
     ),
     hmi_coils=(
@@ -55,12 +60,16 @@ LINE_REGISTER_MAP = RegisterMap(
         HmiCoil("reset", 102, "Reset a FAULTED/ESTOPPED line once the cause is cleared"),
         HmiCoil("acknowledge", 103, "Acknowledge all latched alarms"),
     ),
-    # Controller status (Phase 7 step 3b), codes in controller_status.py.
+    # Controller status (Phase 7 step 3b; moved from 200-204 in step 4 so
+    # it sits in the controller's single write range). Codes in
+    # controller_status.py.
     status_registers=(
-        StatusRegister("line_state", 200, "Line state code"),
-        StatusRegister("fault_reason", 201, "Fault reason code (0 = none)"),
-        StatusRegister("alarms_active", 202, "Bit per alarm: condition active"),
-        StatusRegister("alarms_unacked", 203, "Bit per alarm: not yet acknowledged (latched = active or unacked)"),
-        StatusRegister("first_out", 204, "1 + bit number of the first-out alarm (0 = none)"),
+        StatusRegister("line_state", 1, "Line state code"),
+        StatusRegister("fault_reason", 2, "Fault reason code (0 = none)"),
+        StatusRegister("alarms_active", 3, "Bit per alarm: condition active"),
+        StatusRegister("alarms_unacked", 4, "Bit per alarm: not yet acknowledged (latched = active or unacked)"),
+        StatusRegister("first_out", 5, "1 + bit number of the first-out alarm (0 = none)"),
     ),
+    hmi_ack=6,
+    hmi_request=100,
 )
