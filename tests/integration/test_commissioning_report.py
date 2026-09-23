@@ -57,3 +57,33 @@ def test_a_given_precondition_is_seen_by_control_before_when_is_applied():
     activated = [e for e in result.events if e.type == "alarm_activated"]
     assert [e.data["alarm_id"] for e in activated] == ["WT-105.HIGH_HIGH"]
     assert activated[0].t <= result.when_applied_t
+
+
+def test_run_scenario_records_tag_history_on_the_same_ticks_as_events():
+    """Phase 6 step 1: the replay viewer animates from TagHistory, so it
+    must cover the whole run -- a baseline plus one sample per tick --
+    on the same clock the events use."""
+    scenario = Scenario.load(SCENARIOS_DIR / "faults" / "hopper_high_high_trips_running.yaml")
+    result = run_scenario(scenario)
+
+    times = [s.t for s in result.tags.samples]
+    assert times[0] == 0.0
+    assert times == sorted(times) and len(set(times)) == len(times)
+    assert {e.t for e in result.events} <= set(times)
+
+    faulted_at = next(e.t for e in result.events if e.type == "state_changed" and e.data["to"] == "faulted")
+    sample = next(s for s in result.tags.samples if s.t == faulted_at)
+    assert sample.values["LSHH-105"] is True
+
+
+def test_replay_of_a_real_run_matches_the_line_it_recorded():
+    """End to end: the state and alarm board reconstructed from events
+    must agree with what LineController itself ended in."""
+    from services.visualization.replay import build_frames
+
+    scenario = Scenario.load(SCENARIOS_DIR / "safety" / "estop_from_running.yaml")
+    result = run_scenario(scenario)
+    final = build_frames(result.events, result.tags)[-1]
+    assert final["state"] == "estopped"
+    assert [(a["id"], a["first_out"]) for a in final["alarms"]] == [("ES-001.TRIP", True)]
+    assert final["values"]["ES-001"] is False

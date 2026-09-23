@@ -16,7 +16,8 @@ Full reasoning in `CONTROL-LAB.md` §3. In short:
   `scenarios/` for declarative commissioning scenarios) verifies behavior.
 - **Telemetry** (`services/telemetry/`, Phase 5, done) observes
   Simulation and Control from outside, pull/diff, the same non-invasive
-  relationship Testing already has. **Visualization** comes later (Phase 6).
+  relationship Testing already has. **Visualization** (`services/visualization/`,
+  Phase 6, in progress) replays recorded telemetry; it reads Telemetry only.
 
 Control must only ever observe and command Simulation through a shared I/O
 tag table (the "I/O image") — never by reaching into simulation objects
@@ -90,9 +91,13 @@ ControlLab/
 │   └── telemetry/
 │       ├── tag_history.py            TagHistory -- generic IOImage tag-value sampler
 │       │                             (Phase 5 step 1); write_csv() exports it
-│       └── events.py                 EventLog -- state/alarm diffing observer
-│                                      (Phase 5 step 2) + command capture (step 3);
-│                                      write_jsonl() exports it
+│   │   └── events.py                 EventLog -- state/alarm diffing observer
+│   │                                  (Phase 5 step 2) + command capture (step 3);
+│   │                                  write_jsonl() exports it
+│   └── visualization/
+│       ├── replay.py                 build_frames()/build_replay()/render_html() --
+│       │                             replay reconstructed from telemetry (Phase 6 step 2)
+│       └── replay_template.html      the viewer: vanilla JS + inline SVG line mimic
 ├── scenarios/
 │   ├── startup/normal_start.yaml
 │   ├── shutdown/normal_stop.yaml
@@ -111,6 +116,8 @@ ControlLab/
 │   └── scenario_report.py            thin CLI: runs every scenario, prints
 │                                      report.py's coverage matrix, --out FILE,
 │                                      --markdown FILE.md (commissioning report)
+│   └── replay.py                     runs one scenario, writes a self-contained
+│                                      HTML replay of it
 ├── tests/
 │   ├── unit/                        one test module per equipment/engine/control/
 │   │                                 testing/telemetry class, plus test_control_boundary.py
@@ -611,6 +618,33 @@ issue and propose the change"):
   `when`. Pinned by
   `test_a_given_precondition_is_seen_by_control_before_when_is_applied`.
 
+## Module responsibilities (Phase 6 steps 1-2)
+
+- **`run_scenario()`** also records a `TagHistory`, paired with the
+  `EventLog` in a small explicit `_Telemetry` dataclass so both are
+  sampled on exactly the same ticks. `ScenarioResult.tags` holds it.
+- **`services/visualization/replay.py`** — `build_frames()` turns
+  events + a `TagHistory` into one frame per sample: tag values, the line
+  state in effect, the latched alarm board (latched = active or
+  unacknowledged, first-out sticky until the alarm leaves the board,
+  both matching `alarms.py`), and which events fired that tick. It's
+  **reconstructed from telemetry, never re-simulated or read from a live
+  `LineController`.** That's what makes it a replay, and an end-to-end
+  test checks the reconstruction agrees with where the real controller
+  ended. `render_html()` embeds the data (with `</` escaped) into
+  `replay_template.html`. It writes no files; `scripts/replay.py` does.
+  It depends on Telemetry only, per §3.1's Visualization row.
+- **`replay_template.html`** — high-performance-HMI conventions: gray
+  equipment, dark = running/open, hollow = stopped/closed, red = trip,
+  amber = warning or **command/feedback disagreement** (dashed outline:
+  commanded to run but unproven, or a gate still travelling). Hopper
+  kg→% and setpoint lines come from the plant constants the caller
+  passes in (`scripts/replay.py` uses `rig.DEFAULT_PLANT_CONFIG`, which
+  is what every scenario run uses).
+- **`Plant.time_s`** is now rounded per step like `SimClock`. It had
+  drifted (found through the replay data), and every telemetry
+  timestamp comes from it.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |
@@ -621,7 +655,7 @@ issue and propose the change"):
 | 3 | Testing / commissioning scenarios | done |
 | 4 | Fault injection, alarms | done (steps 1-3: alarm core; wired into `LineController`; surfaced through Testing, 8/8 interlocks covered). Step 4 (feeder jam + sensor failure hooks) deliberately deferred — see `CONTROL-LAB.md` §10 |
 | 5 | Telemetry | done — generic sampled tag history; state/alarm diffing observer; optional command sink; generated Markdown commissioning report |
-| 6 | Visualization | not started |
+| 6 | Visualization | in progress — steps 1-2 done (tag history in every scenario run; HTML replay viewer) |
 | 7 | Protocols | not started |
 | 8 | AI engineering assistance | not started |
 | 9 | Virtual commissioning | not started |
@@ -637,6 +671,11 @@ Full detail and "done when" criteria per phase: `CONTROL-LAB.md` §10.
   JSON for hand-authored commissioning-style test files (comments,
   less punctuation noise). "Minimal dependencies" (`CONTROL-LAB.md`
   §3.4) means justified, not zero.
-- No database, API server, or frontend yet — those are later phases per
-  the roadmap above. FastAPI and React+TypeScript are the current intent
-  for when that work starts, not a commitment made now.
+- **Frontend: vanilla JS + inline SVG** (Phase 6), no build step, no
+  node toolchain. The replay viewer is one template file. React only if
+  UI complexity ever justifies it.
+- **Live dashboard server (Phase 6 step 3, not built yet): Python's
+  stdlib `http.server`**, polled JSON + POSTed commands, zero new
+  dependencies. This supersedes the earlier "FastAPI + React is the
+  intent" note; FastAPI is the upgrade path if push or multiple clients
+  become a real need. No database.

@@ -24,7 +24,10 @@ complete: a generic, IOImage-only sampled tag-value recorder
 optional sink on `LineController`, and a generated Markdown
 commissioning report — pass/fail, response time vs. each scenario's
 limit, the interlock coverage matrix, and every scenario's recorded
-event/alarm sequence. No UI or protocol support yet.
+event/alarm sequence. Phase 6 (Visualization) in progress: a
+self-contained HTML replay viewer for any scenario run (line mimic,
+alarm board, event log, and I/O tags, scrubbable tick by tick). No
+live dashboard or protocol support yet.
 
 ## Documentation
 
@@ -57,6 +60,14 @@ python scripts/scenario_report.py --markdown commissioning_report.md
 The Markdown commissioning report is deterministic: the same code
 produces a byte-identical file every run.
 
+To watch a scenario play back on a line mimic:
+
+```bash
+python scripts/replay.py scenarios/safety/estop_from_running.yaml   # writes estop_from_running.replay.html
+```
+
+Open the file in any browser. It needs no server and no network.
+
 ## Roadmap
 
 | Phase | Focus | Status |
@@ -67,7 +78,7 @@ produces a byte-identical file every run.
 | 3 | Testing / commissioning scenarios | done |
 | 4 | Fault injection, alarms | done (feeder jam / sensor failure hooks deferred) |
 | 5 | Telemetry | done |
-| 6 | Visualization | not started |
+| 6 | Visualization | in progress (steps 1-2 of 3 done: tag history in every run; HTML replay viewer) |
 | 7 | Protocols (Modbus, OPC UA, MQTT) | not started |
 | 8 | AI engineering assistance | not started |
 | 9 | Virtual commissioning | not started |

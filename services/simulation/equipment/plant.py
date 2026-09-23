@@ -73,7 +73,10 @@ class Plant:
         return self.total_mass_kg() + self.hopper.total_discharged_kg + self.spilled_kg
 
     def step(self, dt: float) -> None:
-        self.time_s += dt
+        # Rounded like SimClock and the Motor/Gate timers (Phase 1): a
+        # bare += dt drifts (25 x 0.1 -> 2.500000000000001), and every
+        # telemetry timestamp is read from here.
+        self.time_s = round(self.time_s + dt, 9)
 
         if self.estop.tripped:
             # A real E-stop removes power regardless of what's commanded.

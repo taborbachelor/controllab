@@ -164,3 +164,13 @@ def test_run_is_deterministic_across_repeated_runs():
     first = run_scenario()
     second = run_scenario()
     assert first == second
+
+
+def test_plant_time_does_not_drift():
+    """Every telemetry timestamp is Plant.time_s, so it must land exactly
+    on tick boundaries -- found via the Phase 6 replay, whose data showed
+    t = 2.500000000000001 after 25 ticks."""
+    plant = Plant(PlantConfig())
+    for _ in range(25):
+        plant.step(0.1)
+    assert plant.time_s == 2.5

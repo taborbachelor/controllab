@@ -33,6 +33,10 @@ the run (tests/integration/test_event_log.py proves the sink leaves
 Control's behavior identical). The commissioning report reads exactly
 what the run produced this way, instead of re-running scenarios through
 a second, separately-maintained collection path that could drift.
+A TagHistory of every I/O tag is recorded alongside it, sampled at the
+same ticks (Phase 6 step 1) -- the replay viewer needs tag values over
+time to animate the line, and reads them from the run's own record for
+the same no-second-path reason.
 `when_applied_t` marks the boundary between setup and the response
 under test: events at or before it came from reaching `given`; events
 after it are the system's reaction to `when`.
@@ -42,6 +46,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from services.telemetry.events import Event, EventLog
+from services.telemetry.tag_history import TagHistory
 from services.testing.invariants import InvariantViolation, Invariants
 from services.testing.rig import DT, Rig, build_rig, tick
 from services.testing.scenario import Scenario, ScenarioLoadError
@@ -71,39 +76,50 @@ class ScenarioResult:
     elapsed_s: float
     detail: str
     events: list[Event] = field(default_factory=list)
+    tags: TagHistory | None = None
     when_applied_t: float | None = None  # None: never got past given
 
 
 def run_scenario(scenario: Scenario) -> ScenarioResult:
     rig = build_rig()
     invariants = Invariants(rig)
-    event_log = EventLog(rig.line)
-    rig.line.command_sink = event_log.record_command
-    event_log.sample(rig.plant.time_s)
+    telemetry = _Telemetry(EventLog(rig.line), TagHistory(rig.io))
+    rig.line.command_sink = telemetry.events.record_command
+    telemetry.sample(rig.plant.time_s)
 
-    setup_failure = _apply_given(rig, scenario, invariants, event_log)
-    if setup_failure is not None:
-        setup_failure.events = event_log.events
-        return setup_failure
-
-    result = _run_from_given(rig, scenario, invariants, event_log)
-    result.events = event_log.events
+    setup_failure = _apply_given(rig, scenario, invariants, telemetry)
+    result = setup_failure or _run_from_given(rig, scenario, invariants, telemetry)
+    result.events = telemetry.events.events
+    result.tags = telemetry.tags
     return result
 
 
-def _tick(rig: Rig, event_log: EventLog) -> None:
+@dataclass
+class _Telemetry:
+    """The two Phase 5 recorders, sampled together at every tick this
+    runner drives."""
+
+    events: EventLog
+    tags: TagHistory
+
+    def sample(self, t: float) -> None:
+        self.events.sample(t)
+        self.tags.record(t)
+
+
+def _tick(rig: Rig, telemetry: _Telemetry) -> None:
     tick(rig, DT)
-    event_log.sample(rig.plant.time_s)
+    telemetry.sample(rig.plant.time_s)
 
 
-def _run_from_given(rig: Rig, scenario: Scenario, invariants: Invariants, event_log: EventLog) -> ScenarioResult:
+def _run_from_given(rig: Rig, scenario: Scenario, invariants: Invariants, telemetry: _Telemetry) -> ScenarioResult:
 
     # Settle: SETTLE_TICKS so given's effects (e.g. a direct level
     # write) are published through the I/O image AND scanned by Control
     # before `when` is applied -- same reasoning as the tick-before-check
     # rule below, one level up.
     for i in range(1, SETTLE_TICKS + 1):
-        _tick(rig, event_log)
+        _tick(rig, telemetry)
         try:
             invariants.check()
         except InvariantViolation as e:
@@ -127,7 +143,7 @@ def _run_from_given(rig: Rig, scenario: Scenario, invariants: Invariants, event_
     max_ticks = round(scenario.within_s / DT)
     unmet: dict = {}
     for i in range(1, max_ticks + 1):
-        _tick(rig, event_log)
+        _tick(rig, telemetry)
 
         try:
             invariants.check()
@@ -152,7 +168,7 @@ def _run_from_given(rig: Rig, scenario: Scenario, invariants: Invariants, event_
     )
 
 
-def _apply_given(rig: Rig, scenario: Scenario, invariants: Invariants, event_log: EventLog) -> ScenarioResult | None:
+def _apply_given(rig: Rig, scenario: Scenario, invariants: Invariants, telemetry: _Telemetry) -> ScenarioResult | None:
     """Returns a failed ScenarioResult if an invariant trips while
     reaching `given` (a real finding -- even the baseline setup is
     broken), or None once `given` is successfully established."""
@@ -174,7 +190,7 @@ def _apply_given(rig: Rig, scenario: Scenario, invariants: Invariants, event_log
 
     rig.line.start()
     for i in range(1, round(MAX_GIVEN_RUNUP_S / DT) + 1):
-        _tick(rig, event_log)
+        _tick(rig, telemetry)
         try:
             invariants.check()
         except InvariantViolation as e:
