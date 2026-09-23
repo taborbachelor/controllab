@@ -1,0 +1,34 @@
+{
+  "candidates": [
+    {
+      "name": "Feeder Jam During Start Faults The Line",
+      "rationale": "A jam present when the line starts: the drive proves running, so only the plug switch can catch it once the screw pushes against it.",
+      "given": [],
+      "when": [{"key": "feeder_jam", "value": "true"}, {"key": "start", "value": "true"}],
+      "trigger": ["feeder_jam"],
+      "expect": [{"key": "line_state", "value": "\"faulted\""}, {"key": "fault_reason", "value": "\"feeder jam\""}, {"key": "first_out", "value": "\"LSH-103.JAM\""}],
+      "within_seconds": 4.0,
+      "interlock": "Feeder jam"
+    },
+    {
+      "name": "Weight Failure Stops The Motors",
+      "rationale": "A failed hopper weight signal must leave no motor running.",
+      "given": [{"key": "line_state", "value": "\"running\""}],
+      "when": [{"key": "sensor_failed", "value": "\"WT-105\""}, {"key": "estop", "value": "\"tripped\""}],
+      "trigger": ["sensor_failed"],
+      "expect": [{"key": "feeder_running", "value": "false"}, {"key": "conveyor_running", "value": "false"}],
+      "within_seconds": 1.0,
+      "interlock": "Hopper weight signal healthy"
+    },
+    {
+      "name": "Weight Failure While Stopping Faults The Line",
+      "rationale": "Unknown means stopped: a failed hopper weight signal during the stop sequence should fault the line.",
+      "given": [{"key": "line_state", "value": "\"running\""}],
+      "when": [{"key": "stop", "value": "true"}, {"key": "sensor_failed", "value": "\"WT-105\""}],
+      "trigger": ["sensor_failed"],
+      "expect": [{"key": "line_state", "value": "\"faulted\""}, {"key": "fault_reason", "value": "\"hopper weight signal failed\""}],
+      "within_seconds": 3.0,
+      "interlock": "Hopper weight signal healthy"
+    }
+  ]
+}

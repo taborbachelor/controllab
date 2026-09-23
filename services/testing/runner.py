@@ -111,6 +111,13 @@ class ScenarioResult:
     # Multi-stage scenarios (`then:`): each stage's response, in order.
     # elapsed_s stays the first stage's, the response to `when`.
     stage_elapsed: tuple[float, ...] = ()
+    # Where a failed run departed from the scenario, structured (for reports
+    # and for AI run analysis, which must not have to parse `detail`):
+    # the stage (1-based), the plant time its `when` was applied, and each
+    # expectation still unmet at its deadline as {key: {expected, actual}}.
+    failed_stage: int | None = None
+    failed_stage_applied_t: float | None = None
+    unmet: dict = field(default_factory=dict)
 
 
 def run_scenario(scenario: Scenario, external: bool = False) -> ScenarioResult:
@@ -210,6 +217,7 @@ def _run_from_given(
         if when_applied_t is None:
             when_applied_t = rig.plant.time_s
 
+        stage_applied_t = rig.plant.time_s
         outcome = _poll_stage(rig, scenario, stage, invariants, step, tolerance_s)
         for key in outcome.not_observed:
             if key not in not_observed_all:
@@ -225,7 +233,8 @@ def _run_from_given(
         if not outcome.passed:
             return ScenarioResult(
                 scenario, False, elapsed_by_stage[0] if elapsed_by_stage else outcome.elapsed,
-                label + outcome.detail, **common,
+                label + outcome.detail, failed_stage=n, failed_stage_applied_t=stage_applied_t,
+                unmet=outcome.unmet, stage_elapsed=tuple(elapsed_by_stage), **common,
             )
         elapsed_by_stage.append(outcome.elapsed)
         within_tolerance = within_tolerance or outcome.within_tolerance
@@ -254,6 +263,7 @@ class _StageOutcome:
     within_tolerance: bool = False
     not_observed: tuple[str, ...] = ()
     not_observable: bool = False
+    unmet: dict = field(default_factory=dict)
 
 
 def _poll_stage(
@@ -287,7 +297,7 @@ def _poll_stage(
     window = f"{stage.within_s}s" + (f" (+{tolerance_s}s latency tolerance)" if tolerance_s else "")
     return _StageOutcome(
         False, round(stage.within_s + tolerance_s, 9), f"timed out after {window} -- unmet: {unmet}",
-        not_observed=not_observed,
+        not_observed=not_observed, unmet=unmet,
     )
 
 

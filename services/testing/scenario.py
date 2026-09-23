@@ -34,6 +34,13 @@ so a single-stage scenario is exactly what it always was.
         expect: {line_state: faulted, any_unacknowledged_trip: false}
         within: {seconds: 1.0}
 
+**`trigger:` (optional)** names the `when` key(s) that ARE the stimulus
+under test, as opposed to setup riding along with it (e.g. a level preset
+in the same `when`). The review gate then proves the scenario fails with
+exactly those keys removed -- the causality check a generated scenario
+most needs, since a model can put the requested action in `when` without
+the expectations depending on it. AI-generated candidates must declare it.
+
 A stage that claims something is *refused* ("reset while the jam
 remains") must expect something only the command's evaluation can
 produce, or it passes before the command is even processed: in the
@@ -92,6 +99,7 @@ class Scenario:
     within_s: float
     interlock: str | None = None
     then: tuple[Stage, ...] = ()
+    trigger: tuple[str, ...] = ()
 
     @property
     def stages(self) -> list[Stage]:
@@ -124,6 +132,13 @@ class Scenario:
                 raise ScenarioLoadError(f"{path}: stage {n} must expect something")
             stages.append(Stage(stage.get("when") or {}, stage["expect"], _within_s(stage["within"], f"{path}: stage {n}")))
 
+        trigger = raw.get("trigger") or []
+        if isinstance(trigger, str):
+            trigger = [trigger]
+        when = raw.get("when") or {}
+        if not isinstance(trigger, list) or any(k not in when for k in trigger):
+            raise ScenarioLoadError(f"{path}: trigger must list keys of `when` (the stimulus under test)")
+
         return cls(
             name=raw["name"],
             path=path,
@@ -133,6 +148,7 @@ class Scenario:
             within_s=within_s,
             interlock=raw.get("interlock"),
             then=tuple(stages),
+            trigger=tuple(trigger),
         )
 
     @staticmethod

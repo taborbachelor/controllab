@@ -27,16 +27,16 @@ def entries(**kv):
 
 GOOD = {
     "name": "Belt Slip Closes The Gate", "rationale": "Motion loss mid-run must stop feeding.",
-    "given": entries(line_state="running"), "when": entries(belt_slip=True),
+    "given": entries(line_state="running"), "when": entries(belt_slip=True), "trigger": ["belt_slip"],
     "expect": entries(line_state="faulted", gate_open=False), "within_seconds": 1.0,
     "interlock": "Conveyor proven running",
 }
 VACUOUS = {
     "name": "Idle Stays Idle", "rationale": "Nothing happens.",
-    "given": entries(bin_level_pct=5.0), "when": entries(start=True),
+    "given": entries(bin_level_pct=5.0), "when": entries(start=True), "trigger": ["start"],
     "expect": entries(line_state="idle"), "within_seconds": 0.5, "interlock": "Bin not low",
 }
-WRONG = {**GOOD, "name": "Stop Keeps Feeding", "when": entries(stop=True),
+WRONG = {**GOOD, "name": "Stop Keeps Feeding", "when": entries(stop=True), "trigger": ["stop"],
          "expect": entries(feeder_running=True, line_state="stopping"), "interlock": None}
 
 
@@ -140,3 +140,32 @@ def test_a_malformed_candidate_is_skipped_not_fatal(tmp_path):
     broken = {k: v for k, v in GOOD.items() if k != "expect"}
     result = generate_candidates(FakeProvider([broken, GOOD]), "x", 2, tmp_path, SCENARIOS)
     assert len(result.files) == 1 and any("malformed" in n for n in result.notes)
+
+
+@pytest.mark.parametrize("change, reason", [
+    ({"trigger": []}, "trigger must name"),
+    ({"trigger": ["estop"]}, "trigger must name"),                       # not in `when`
+    ({"when": entries(open_the_gate_manually=True)}, "outside the vocabulary"),
+    ({"expect": [{"key": "line_state"}]}, "list of {key, value}"),
+    ({"within_seconds": -1}, "within_seconds"),
+    ({"within_seconds": "soon"}, "within_seconds"),
+    ({"name": ""}, "name"),
+])
+def test_malformed_ai_output_is_rejected_before_it_reaches_the_gate(tmp_path, change, reason):
+    result = generate_candidates(FakeProvider([{**GOOD, **change}]), "x", 1, tmp_path, SCENARIOS)
+    assert result.files == [] and result.reviews == []
+    assert any("malformed" in n and reason in n for n in result.notes), result.notes
+
+
+def test_a_trigger_the_expectations_dont_depend_on_is_rejected(tmp_path):
+    """The requested action is in `when`, but the scenario would pass without
+    it: a hopper preset to high-high faults the line on its own. Dropping all
+    of `when` catches nothing here (the preset goes too); dropping exactly the
+    declared trigger does."""
+    decoy = {**GOOD, "name": "Belt Slip Faults The Line (decoy)",
+             "when": entries(belt_slip=True, hopper_level_pct=97.5), "trigger": ["belt_slip"],
+             "expect": entries(line_state="faulted")}
+    result = generate_candidates(FakeProvider([decoy]), "cover belt slip", 1, tmp_path, SCENARIOS)
+    [rev] = result.reviews
+    assert rev.verdict == "REJECTED"
+    assert any(f.check == "trigger" and "still passes without its declared trigger" in f.message for f in rev.findings)

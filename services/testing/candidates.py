@@ -99,6 +99,8 @@ def review(path: Path, existing: list[Scenario]) -> Review:
         [f"given.{k}" for k in given if k not in APPLY_ACTIONS]
         + [f"when.{k}" for k in scenario.when if k not in APPLY_ACTIONS]
         + [f"expect.{k}" for k in scenario.expect if k not in READ_FIELDS]
+        + [f"then[{n}].when.{k}" for n, st in enumerate(scenario.then, 2) for k in st.when if k not in APPLY_ACTIONS]
+        + [f"then[{n}].expect.{k}" for n, st in enumerate(scenario.then, 2) for k in st.expect if k not in READ_FIELDS]
     )
     if unknown:
         r.add("vocabulary", ERROR, f"unknown keys: {', '.join(unknown)}")
@@ -119,8 +121,8 @@ def review(path: Path, existing: list[Scenario]) -> Review:
     else:
         r.add("interlock", OK, f"covers §6.3 row {scenario.interlock!r}")
 
-    signature = (scenario.given, scenario.when, scenario.expect)
-    twins = [s.name for s in existing if (s.given, s.when, s.expect) == signature]
+    signature = (scenario.given, scenario.when, scenario.expect, scenario.then)
+    twins = [s.name for s in existing if (s.given, s.when, s.expect, s.then) == signature]
     if twins:
         r.add("duplicate", WARNING, f"identical given/when/expect to existing scenario {twins[0]!r}")
     else:
@@ -158,6 +160,17 @@ def review(path: Path, existing: list[Scenario]) -> Review:
                       "still passes with `when` removed -- its expectations hold without the stimulus, so it tests nothing")
             else:
                 r.add("vacuous", OK, "fails without its `when` stimulus, so the stimulus is what it tests")
+            if scenario.trigger:
+                # Stronger than dropping all of `when`: drop exactly the declared
+                # trigger, keep any setup that rides along with it.
+                rest = {k: v for k, v in scenario.when.items() if k not in scenario.trigger}
+                without_trigger = run_scenario(dataclasses.replace(scenario, when=rest, trigger=()))
+                names = ", ".join(scenario.trigger)
+                if without_trigger.passed:
+                    r.add("trigger", ERROR,
+                          f"still passes without its declared trigger ({names}) -- the expectations don't depend on it")
+                else:
+                    r.add("trigger", OK, f"fails without its declared trigger ({names}), so the trigger is what it tests")
         else:
             r.add("vacuous", WARNING, "no `when` -- it checks a steady state, not a response")
 

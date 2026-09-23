@@ -81,6 +81,8 @@ RULES = [
     "`given` may include line_state: \"idle\" or \"running\" (running means the full start sequence is driven first).",
     "`expect` must describe the RESPONSE to `when`: a scenario whose expectations would already hold without the "
     "`when` stimulus is rejected as vacuous by the review gate. Assert something only the stimulus causes.",
+    "Name the stimulus under test in `trigger` (one or more `when` keys). The review gate removes exactly those keys "
+    "and requires the scenario to FAIL without them; anything else in `when` is treated as setup.",
     "A refused start must be proven with start_inhibit, not only by the line staying idle.",
     "Set `within` to the time the behavior needs plus some margin; use the timing facts below.",
     "Prefer behavior not already covered by the existing scenarios listed below; do not duplicate them.",
@@ -112,6 +114,7 @@ def build_context(scenarios_dir: Path) -> str:
             "gate_travel_timeout_s": DEFAULT_GATE_TRAVEL_TIMEOUT_S,
             "gate_travel_time_s": DEFAULT_PLANT_CONFIG["gate_travel_time_s"],
             "motor_start_delay_s": DEFAULT_PLANT_CONFIG["conveyor_start_delay_s"],
+            "feeder_plug_detect_s": DEFAULT_PLANT_CONFIG["feeder_plug_detect_s"],
             "normal_start_to_running_s_measured": 1.5,
             "hopper_high_pct": DEFAULT_PLANT_CONFIG["hopper_high_pct"],
             "hopper_high_high_pct": DEFAULT_PLANT_CONFIG["hopper_high_high_pct"],

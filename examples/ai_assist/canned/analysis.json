@@ -1,0 +1,29 @@
+{
+  "summary": "The stop was taken at t=1.8 and the line entered STOPPING; WT-105.FAIL went active one scan later, at t=1.9, but the line never faulted: it finished the purge and went to IDLE at t=3.8. The scenario expected a fault.",
+  "first_observed_divergence": {"t": 1.9, "description": "WT-105.FAIL activates while the line is STOPPING and no state change to faulted follows; the next state change is stopping -> idle at t=3.8."},
+  "hypotheses": [
+    {
+      "cause": "The scenario's expectation may be what is wrong: the controller may deliberately not trip on a failed hopper weight signal during STOPPING, since the stop sequence does not use the weight.",
+      "kind": "scenario_expectation",
+      "confidence": "medium",
+      "supporting_evidence": ["t=1.8: stop taken, running -> stopping", "t=1.9: WT-105.FAIL active, no transition to faulted", "t=3.8: stopping -> idle, the normal end of a purge"],
+      "contradicting_or_missing_evidence": ["the digest does not say whether a trip in STOPPING is specified; that is in the interlock table, not the run"],
+      "check_to_confirm": "Read the 'Hopper weight signal healthy' row in docs/CONTROL-LAB.md section 6.3 for which states it trips in."
+    },
+    {
+      "cause": "The controller may be missing the trip in STOPPING, if the design intends 'unknown means stopped' to fault the line in every state.",
+      "kind": "controller",
+      "confidence": "low",
+      "supporting_evidence": ["WT-105.FAIL was latched from t=1.9 onward without a fault"],
+      "contradicting_or_missing_evidence": ["the line did stop, and every motor was already being stopped by the stop sequence", "no invariant tripped"],
+      "check_to_confirm": "Compare with the existing scenario hopper_weight_failure_trips_running.yaml and the controller's STOPPING trip list."
+    }
+  ],
+  "recommended_investigation": [
+    "Check the section 6.3 row for the states the hopper weight trip applies to.",
+    "If the row limits it to starting and running, correct the scenario to expect a completed stop with WT-105.FAIL latched.",
+    "If faulting during a stop is wanted, that is a controller design change for an engineer to decide, not a test fix."
+  ],
+  "overall_confidence": "medium",
+  "uncertainty": "The digest shows the run's events and the last 3 s of tag changes; it cannot show the specification, which decides between the two hypotheses."
+}

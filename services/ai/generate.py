@@ -64,12 +64,14 @@ def output_schema() -> dict:
                         "rationale": {"type": "string", "description": "what behavior this tests and why it matters"},
                         "given": _entries(sorted(APPLY_ACTIONS) + ["line_state"]),
                         "when": _entries(sorted(APPLY_ACTIONS)),
+                        "trigger": {"type": "array", "items": {"type": "string", "enum": sorted(APPLY_ACTIONS)},
+                                    "description": "the `when` key(s) that are the stimulus under test"},
                         "expect": _entries(sorted(READ_FIELDS)),
                         "within_seconds": {"type": "number"},
                         "interlock": {"anyOf": [{"type": "string"}, {"type": "null"}],
                                       "description": "the section 6.3 row name it covers, or null"},
                     },
-                    "required": ["name", "rationale", "given", "when", "expect", "within_seconds", "interlock"],
+                    "required": ["name", "rationale", "given", "when", "trigger", "expect", "within_seconds", "interlock"],
                     "additionalProperties": False,
                 },
             }
@@ -109,6 +111,7 @@ def to_yaml(candidate: dict, provenance: str) -> str:
     """One candidate as a scenario file, headed as a proposal."""
     doc = {"name": candidate["name"], "given": _mapping(candidate["given"]), "when": _mapping(candidate["when"]),
            "expect": _mapping(candidate["expect"]), "within": {"seconds": candidate["within_seconds"]}}
+    doc["trigger"] = list(candidate["trigger"])
     if candidate.get("interlock"):
         doc["interlock"] = candidate["interlock"]
     rationale = " ".join(str(candidate.get("rationale", "")).split())
@@ -119,6 +122,36 @@ def to_yaml(candidate: dict, provenance: str) -> str:
         f"# Rationale: {rationale}\n"
     )
     return header + yaml.safe_dump(doc, sort_keys=False, allow_unicode=True)
+
+
+def validate_candidate(candidate: object) -> str | None:
+    """Why a candidate from the model is malformed, or None. Structural
+    only -- whether it's a GOOD test is the review gate's job. Checked in
+    code, not trusted to the schema the provider was given."""
+    if not isinstance(candidate, dict):
+        return "not an object"
+    missing = [k for k in ("name", "rationale", "given", "when", "trigger", "expect", "within_seconds") if k not in candidate]
+    if missing:
+        return f"missing {', '.join(missing)}"
+    if not isinstance(candidate["name"], str) or not candidate["name"].strip():
+        return "name must be non-empty text"
+    for section, keys in (("given", set(APPLY_ACTIONS) | {"line_state"}), ("when", set(APPLY_ACTIONS)), ("expect", set(READ_FIELDS))):
+        entries = candidate[section]
+        if not isinstance(entries, list) or not all(isinstance(e, dict) and set(e) == {"key", "value"} for e in entries):
+            return f"{section} must be a list of {{key, value}}"
+        bad = sorted({e["key"] for e in entries if e["key"] not in keys})
+        if bad:
+            return f"{section} uses keys outside the vocabulary: {', '.join(map(str, bad))}"
+    if not candidate["expect"]:
+        return "expect is empty"
+    when_keys = {e["key"] for e in candidate["when"]}
+    trigger = candidate["trigger"]
+    if not isinstance(trigger, list) or not trigger or not set(trigger) <= when_keys:
+        return "trigger must name at least one key of `when` -- the stimulus the scenario tests"
+    within = candidate["within_seconds"]
+    if isinstance(within, bool) or not isinstance(within, (int, float)) or not 0 < within <= 60:
+        return "within_seconds must be a number in (0, 60]"
+    return None
 
 
 def generate_candidates(
@@ -156,6 +189,11 @@ def generate_candidates(
     provenance = f"{provider.name} / {completion.model}"
     files: list[Path] = []
     for candidate in candidates:
+        problem = validate_candidate(candidate)
+        if problem is not None:
+            name = candidate.get("name", "?") if isinstance(candidate, dict) else "?"
+            notes.append(f"candidate {name!r} rejected before review, malformed: {problem}")
+            continue
         path = out_dir / f"{_slug(str(candidate.get('name', '')))}.yaml"
         n = 2
         while path.exists():  # never overwrite an earlier proposal

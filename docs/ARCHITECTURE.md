@@ -53,7 +53,8 @@ ControlLab/
 ├── CLAUDE.md                       master project context
 ├── docs/
 │   ├── CONTROL-LAB.md               project specification
-│   └── ARCHITECTURE.md              this file
+│   ├── ARCHITECTURE.md              this file
+│   └── AI.md                        the optional AI engineering assistance (Phase 8)
 ├── services/
 │   ├── control/
 │   │   ├── errors.py                 ControlError + tag-binding validation
@@ -134,6 +135,8 @@ ControlLab/
 │       ├── hmi.css, hmi.js           shared styles + mimic/alarm/tag renderers
 │       └── mimic.svg.html            the shared line mimic (inline SVG)
 ├── examples/
+│   ├── ai_assist/                    the whole AI loop end to end: run_flow.py, a labelled
+│   │                                  scripted stand-in provider, canned/ answers (Phase 8)
 │   └── openplc/                      a real PLC runtime (OpenPLC, Docker) running a
 │                                      Structured Text port of the controller against
 │                                      the plant: controllab_line.st, setup_openplc.py,
@@ -997,6 +1000,19 @@ issue and propose the change"):
 - **Vocabulary** — `sensor_stuck`, `sensor_failed`, `sensor_restored`
   (value: an input tag); read field `hopper_weight_agrees`.
 
+## Module responsibilities (Phase 8 completion)
+
+- **`Scenario.trigger`** + the gate's trigger check (`candidates.py`):
+  re-run with exactly the trigger removed; must fail.
+- **`generate.validate_candidate()` / `analyze.validate_analysis()`** —
+  model output checked in code before anything is written.
+- **`ScenarioResult.failed_stage` / `failed_stage_applied_t` / `unmet`**
+  — the structured failure; `analyze.build_digest()` adds it plus a
+  deterministic first divergence.
+- **`examples/ai_assist/`** — `run_flow.py` (the whole loop) and
+  `scripted_provider.py` (canned, labelled stand-in answers from
+  `canned/`). Full description: `docs/AI.md`.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |
@@ -1009,7 +1025,7 @@ issue and propose the change"):
 | 5 | Telemetry | done — generic sampled tag history; state/alarm diffing observer; optional command sink; generated Markdown commissioning report |
 | 6 | Visualization | done — tag history in every scenario run; HTML replay viewer; live localhost dashboard with operator commands, fault injection, and replay download |
 | 7 | Protocols | done — Modbus server + client; register map (five PLC-master ranges); external-controller mode with the full scenario suite passing across Modbus; OpenPLC running a Structured Text port of the controller against the plant |
-| 8 | AI engineering assistance | done — deterministic candidate review gate; start inhibit; optional AI (provider abstraction, Anthropic first): gated scenario generation, bounded failed-run analysis |
+| 8 | AI engineering assistance | done — review gate (incl. declared-trigger causality); optional AI behind a provider abstraction; validated, gated scenario generation; bounded, validated failed-run analysis; end-to-end example (`docs/AI.md`). First live model call pending an API key |
 | 9 | Virtual commissioning | done — real-time runner (unchanged scenarios against a free-running external controller, latency tolerance, known starting state); the commissioning report against OpenPLC (45/45 runs, 3 passes); *not observable* for controllers without a status block; I/O map files, with the unchanged OpenPLC program passing against a relocated plant |
 
 Full detail and "done when" criteria per phase: `CONTROL-LAB.md` §10.

@@ -2,6 +2,7 @@
 no network. Under test: what is sent (bounded, structured, a window --
 never the full history), what comes back (always labelled as unverified
 hypotheses), and that nothing else changes."""
+import dataclasses
 import json
 from pathlib import Path
 
@@ -10,7 +11,7 @@ import pytest
 from services.ai import analyze
 from services.ai.analyze import SCHEMA, analyze_run, build_digest
 from services.ai.limits import MAX_ANALYSIS_EVENTS, MAX_ANALYSIS_INPUT_CHARS, MAX_ANALYSIS_OUTPUT_TOKENS, MAX_TAG_CHANGES
-from services.ai.provider import Completion
+from services.ai.provider import Completion, ProviderError
 from services.telemetry.events import Event
 from services.testing.runner import run_scenario
 from services.testing.scenario import Scenario
@@ -34,6 +35,10 @@ ANSWER = {
         "contradicting_or_missing_evidence": ["no evidence the controller mis-sequenced"],
         "check_to_confirm": "compare with scenarios/shutdown/normal_stop.yaml",
     }],
+    "first_observed_divergence": {"t": 1.8, "description": "M-103.RUN drops on the tick the stop is taken"},
+    "recommended_investigation": ["Compare the expectation with the section 6.2 stop sequence."],
+    "overall_confidence": "medium",
+    "uncertainty": "The digest shows only the last 3 s of the run.",
 }
 
 
@@ -104,6 +109,7 @@ def test_output_is_labelled_unverified_whatever_the_model_says(failed, tmp_path)
     assert "nothing was changed" in text
     assert "*Unverified hypothesis" in text
     assert "not the full telemetry" in text
+    assert "The model's wording claims certainty" in text  # flagged, not just stamped
 
 
 def test_analysis_changes_nothing_but_its_own_file(failed, tmp_path):
@@ -127,3 +133,54 @@ def test_analog_drift_is_summarized_not_listed_tick_by_tick(failed):
     assert set(digest["analog_in_window"]["LT-101"]) == {"start", "end", "min", "max"}
     stop = [c for c in digest["tag_changes_in_window"] if c["tag"] == "M-103.RUN" and c["to"] is False]
     assert stop, "the discrete transition that explains this failure must survive"
+
+
+def test_the_digest_carries_the_structured_failure(failed):
+    scenario, result = failed
+    digest = build_digest(scenario, result)
+    o = digest["outcome"]
+    assert o["failed_stage"] == 1
+    assert o["expected_vs_actual"] == {"feeder_running": {"expected": True, "actual": False}}
+    d = o["first_divergence"]
+    assert (d["stage"], d["kind"]) == (1, "expectations unmet by the deadline")
+    assert d["t"] == o["run_ended_t"] and "cause may be earlier" in d["note"]
+
+
+def test_the_digest_includes_every_stage_of_a_multi_stage_scenario():
+    s = Scenario.load(SCENARIOS / "faults" / "feeder_jam_recovery.yaml")
+    broken = dataclasses.replace(s, then=(dataclasses.replace(s.then[0], expect={"line_state": "idle"}),))
+    result = run_scenario(broken)
+    digest = build_digest(broken, result)
+    assert len(digest["scenario"]["then"]) == 1 and digest["outcome"]["failed_stage"] == 2
+    assert digest["outcome"]["stages_passed"] == 1
+
+
+@pytest.mark.parametrize("change", [
+    {"hypotheses": []},
+    {"overall_confidence": "certain"},
+    {"first_observed_divergence": {"t": "early"}},
+    {"hypotheses": [{"cause": "x"}]},
+    {"recommended_investigation": "look harder"},
+])
+def test_a_malformed_analysis_is_rejected_and_nothing_is_written(failed, tmp_path, change):
+    scenario, result = failed
+    with pytest.raises(ProviderError, match="malformed and was not written"):
+        analyze_run(FakeProvider({**ANSWER, **change}), scenario, result, tmp_path / "a.md")
+    assert not (tmp_path / "a.md").exists()
+
+
+def test_a_passing_run_is_not_sent_for_analysis(tmp_path):
+    s = Scenario.load(SCENARIOS / "faults" / "feeder_trip_while_running.yaml")
+    provider = FakeProvider()
+    with pytest.raises(ValueError, match="the run passed"):
+        analyze_run(provider, s, run_scenario(s), tmp_path / "a.md")
+    assert provider.calls == []
+
+
+def test_the_rendered_analysis_has_every_section(failed, tmp_path):
+    scenario, result = failed
+    text = analyze_run(FakeProvider(), scenario, result, tmp_path / "a.md").read_text(encoding="utf-8")
+    for heading in ("## Summary", "## First observed divergence", "## Hypotheses", "## Recommended investigation"):
+        assert heading in text
+    assert "Where the run departed from the scenario (deterministic" in text
+    assert "*Model's overall confidence: medium.*" in text

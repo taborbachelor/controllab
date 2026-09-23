@@ -64,11 +64,17 @@ python scripts/ai_analyze.py path/to/failing_scenario.yaml
 
 Generated scenarios are *proposals*: they land in `candidates/` and every
 one goes through a deterministic review gate (`scripts/review_candidates.py`)
-that rejects broken, duplicate, non-deterministic, and vacuous tests. A
+that rejects broken, duplicate, non-deterministic, and vacuous tests,
+including one whose declared trigger the expectations don't depend on. A
 candidate becomes a test only when an engineer moves it into `scenarios/`.
 Run analysis sends a bounded digest of a failed run, never the full
 telemetry, and returns hypotheses marked unverified. The API key is read
 from the environment per call and never stored.
+
+The whole loop (request, proposals, gate, approval, deterministic
+execution, analysis of a failed run) runs without a key using a labelled
+scripted stand-in: `python examples/ai_assist/run_flow.py --approve
+feeder_jam_during_start` (add `--live` for Claude). Details: [`docs/AI.md`](docs/AI.md).
 
 ## Documentation
 
@@ -170,7 +176,7 @@ passes: [`examples/openplc/COMMISSIONING-REPORT.md`](examples/openplc/COMMISSION
 | 5 | Telemetry | done |
 | 6 | Visualization | done |
 | 7 | Protocols (Modbus + external controller mode) | done |
-| 8 | AI engineering assistance | done (optional) |
+| 8 | AI engineering assistance | done — first live model call pending an API key |
 | 9 | Virtual commissioning | done |
 
 Full detail: `docs/CONTROL-LAB.md` §10.
