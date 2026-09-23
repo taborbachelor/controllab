@@ -3,6 +3,34 @@
 *Phase 8 (docs/CONTROL-LAB.md §10). How the optional AI layer is built,
 what it may and may not do, and how to use it.*
 
+## Where it sits
+
+ControlLab's purpose is controls validation: scenarios run against a
+control runtime, and a deterministic validator decides PASS or FAIL
+(README §5). AI is an **optional diagnostic layer over that validated run
+data**. It doesn't decide pass or fail, and nothing in the validation loop
+depends on it.
+
+When a run fails, the validator has already produced the verdict, the
+failing stage, expected vs actual for every unmet check, and the **first
+divergence**: the stage and deadline where the run is known to have left
+the scenario. That's `services/testing/verdict.py`, shown by `controllab
+test` and the dashboard's result card. Run analysis is built from the
+same runner record (`ScenarioResult`: the failed stage, the unmet
+expectations with their actual values, and so the same first divergence),
+plus a bounded digest of the evidence around it. It adds *hypotheses*
+about why. Scenario generation adds *proposals*, which face
+the same review gate as a hand-written scenario.
+
+**What has and hasn't been run against a real model.** The Anthropic
+provider is built and tested against a faked SDK (request shape, errors,
+limits, key handling). No call to a real model has been made: that was a
+deliberate choice not to spend on API calls for this project. Every example
+output in this repository comes from the **scripted stand-in** (see *A
+complete example*): hand-written canned answers, labelled in every file
+they produce as not being model output. How good Claude's own proposals
+and analyses would be is untested.
+
 ## What it is, and what it is not
 
 AI in ControlLab is **engineering assistance, not control logic.** It

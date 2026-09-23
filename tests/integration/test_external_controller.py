@@ -223,6 +223,9 @@ def test_separate_processes_free_running_in_real_time():
     finally:
         if proc.poll() is None:
             proc.kill()
+            proc.wait(timeout=5)
+        proc.stdout.close()  # the pipes are this test's to close (else a ResourceWarning)
+        proc.stderr.close()
         pacer.stop()
         pacer.join(timeout=2)
         server.shutdown()

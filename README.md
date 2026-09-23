@@ -1,227 +1,304 @@
 # ControlLab
 
-Virtual commissioning and control-system test environment for industrial automation.
+**Virtual commissioning and controls validation for industrial automation.**
 
-ControlLab simulates a small industrial plant — material bin → gate →
-feeder → conveyor → hopper — so deterministic control logic can be run
-against it and tested: startup, shutdown, interlocks, fault injection, and
-recovery, before any physical equipment exists.
+ControlLab runs deterministic virtual process equipment against real control
+logic, lets you inject equipment and instrument faults on purpose, and
+automatically verifies that the controller responds safely and recovers
+correctly. The same scenarios run against the Python controller, the same
+controller over Modbus I/O, and a real PLC runtime (OpenPLC).
 
-![The ControlLab live dashboard: the line stopped and ready, with a plain-English status card and five guided walkthroughs](docs/images/dashboard-overview.jpg)
+The question it answers: **can we change industrial control software without
+breaking the machine?**
 
-*The live dashboard (`python scripts/dashboard.py`). The card at the top
-says what the line is doing and what to do next; the walkthroughs on the
-right run short stories step by step.*
+![ControlLab verifying the normal-operation scenario live: the status card narrates the run, the line is purging its belt during the stop sequence, and the scenarios panel leads on the right](docs/images/dashboard-overview.jpg)
 
-**Status:** all ten roadmap phases (0-9) complete; 625 tests passing.
-
-What's in it:
-
-- **Simulation core** — a deterministic plant (bin, gate, feeder, conveyor,
-  hopper, E-stop) with material transport, conservation, and spillage
-  accounting. The same scenario run twice gives identical results.
-- **Control** — an I/O image (tag table), device control modules, and the
-  full `IDLE/STARTING/RUNNING/STOPPING/FAULTED/ESTOPPED` line state
-  machine with start permissives, trips, and a machine-readable reason
-  for every refused start. Control only ever touches I/O tags, never the
-  simulated equipment (enforced by a test).
-- **Commissioning scenarios** — a declarative `given`/`when`/`expect`
-  YAML format (multi-stage with `then:`, so a whole recovery procedure is
-  one scenario). 25 scenarios cover all 11 interlock rows; the coverage
-  matrix (`python scripts/scenario_report.py`) reports 11/11, 0 gaps.
-- **Fault injection and alarms** — motor fail-to-start and trips, belt
-  slip, stuck gates, E-stop, a feeder jam (the drive keeps running; a
-  discharge-chute plug switch catches it), and instrument failure (stuck,
-  or failed with an input-channel diagnostic that tells "0 kg" from
-  "unknown"). Alarms latch, report first-out, need acknowledging, and a
-  reset is refused while its cause remains. The hopper's overfill
-  protection is built the way it would be on a real line: fail-safe
-  level switches (a broken wire trips), a 1oo2 high-high vote between the
-  switch and the weight transmitter (a switch seized in the healthy
-  position can't remove the trip), and an alarm when the two disagree.
-- **Telemetry and reports** — sampled tag history (CSV), a state/alarm
-  event log (JSONL), operator-command capture, and a generated Markdown
-  commissioning report: pass/fail, response time against each limit, and
-  the interlock coverage matrix. Byte-identical run to run.
-- **Visualization** — a self-contained HTML replay of any scenario run
-  (line mimic, alarm board, event log, I/O tags, scrubbable tick by tick)
-  and a live localhost dashboard with operator controls and a separate
-  fault-injection panel.
-- **Protocols** — a stdlib Modbus TCP server (tested against the spec's
-  own examples and `pymodbus`) serving a documented register map
-  ([`docs/MODBUS-MAP.md`](docs/MODBUS-MAP.md)), and an external-controller
-  mode with a comm-loss watchdog.
-- **Virtual commissioning against a real PLC** — the unchanged scenario
-  suite runs against a free-running controller in real time, limits in
-  plant time with a stated I/O latency tolerance. OpenPLC in Docker,
-  running a Structured Text port of the controller, passes 25/25
-  scenarios over 3 passes (75/75 runs):
-  [`examples/openplc/COMMISSIONING-REPORT.md`](examples/openplc/COMMISSIONING-REPORT.md).
-  A controller that doesn't publish ControlLab's status block is judged on
-  field evidence and gets *not observable* rather than a guess; an I/O map
-  file serves the plant at the addresses an existing PLC program already
-  uses.
-- **Optional AI assistance** — scenario generation and failed-run analysis
-  behind a deterministic review gate (below).
-
-### Optional AI assistance (Phase 8)
-
-Not needed for anything above. With `pip install -e ".[ai]"` and
-`ANTHROPIC_API_KEY` set:
-
-```bash
-python scripts/ai_generate.py "cover gate faults during shutdown" --count 3
-python scripts/ai_analyze.py path/to/failing_scenario.yaml
-```
-
-Generated scenarios are *proposals*: they land in `candidates/` and every
-one goes through a deterministic review gate (`scripts/review_candidates.py`)
-that rejects broken, duplicate, non-deterministic, and vacuous tests,
-including one whose declared trigger the expectations don't depend on. A
-candidate becomes a test only when an engineer moves it into `scenarios/`.
-Run analysis sends a bounded digest of a failed run, never the full
-telemetry, and returns hypotheses marked unverified. The API key is read
-from the environment per call and never stored.
-
-The whole loop (request, proposals, gate, approval, deterministic
-execution, analysis of a failed run) runs without a key using a labelled
-scripted stand-in: `python examples/ai_assist/run_flow.py --approve
-feeder_jam_during_start` (add `--live` for Claude). Details: [`docs/AI.md`](docs/AI.md).
-
-The live-model path is built and tested against a faked SDK, but has
-deliberately not been run against a real model (a choice not to spend on
-API calls for this project). The scripted stand-in exercises every
-verdict of the gate and the analysis; how good Claude's own proposals
-are is untested.
-
-## Documentation
-
-- [`docs/CONTROL-LAB.md`](docs/CONTROL-LAB.md) — full project specification:
-  purpose, architecture, initial equipment, operating modes, testing
-  philosophy, non-goals, roadmap.
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — repository layout,
-  module responsibilities, technology stack.
-- [`CLAUDE.md`](CLAUDE.md) — master project context for AI-assisted
-  development on this repository.
-
-## Development
+## Quick start
 
 Requires Python 3.12+.
 
 ```bash
 pip install -e ".[dev]"
-pytest
+python scripts/dashboard.py        # the dashboard: open http://127.0.0.1:8000
+controllab test                    # every scenario against the Python controller
+controllab test feeder_jam_recovery --regression reset-ignores-jam   # watch a regression get caught
+pytest                             # the full test suite, every scenario included
 ```
 
-`pytest` runs everything, including every scenario under `scenarios/`.
-For the interlock coverage matrix and the commissioning report:
+A ten-minute walkthrough for showing it to another engineer:
+[`docs/DEMO.md`](docs/DEMO.md).
+
+## 1. What is ControlLab?
+
+A virtual commissioning environment. Commissioning is the stage where a
+control program meets the machine for the first time: every start sequence,
+interlock, trip and recovery gets proven before production. ControlLab does
+that against a simulated plant instead, so it can happen before the equipment
+exists, and can be repeated automatically every time the control logic
+changes.
+
+It has four parts:
+
+- **A virtual plant**: deterministic equipment models with real I/O (the
+  signals a PLC would wire to).
+- **Control logic under test**: a Python reference controller, or any
+  external controller that speaks Modbus TCP, including a PLC runtime.
+- **Commissioning scenarios**: YAML files, each one a test, with setup,
+  actions, faults, expected behavior at each stage, and a time limit.
+- **A validator**: runs a scenario, checks every expectation and physical
+  invariant on every scan, and produces a PASS/FAIL result with expected vs
+  actual at each stage.
+
+## 2. What problem does it solve?
+
+Control software is changed constantly: a new permissive, a retuned timer, a
+"quick fix" for a nuisance trip. On a real line, the usual way to learn a
+change broke something is when the machine does something it shouldn't.
+ControlLab makes the machine's required behavior an executable
+specification. Every scenario states what the controller must do when, for
+example, the feeder jams: trip within one second, refuse a reset while the
+chute is plugged, recover only in the right order. Any change to the control
+logic can then be checked against all of it, automatically, before it
+reaches equipment.
+
+## 3. What does the virtual plant represent?
+
+A bulk-material handling line: a storage **bin** → a slide **gate** → a
+screw **feeder** → an inclined **conveyor** → a weighed **hopper**, plus an
+**E-stop**. It has the instrumentation a real one would:
+
+- motor run commands and running feedback;
+- a conveyor motion switch (a motor can run while its belt slips);
+- gate limit switches;
+- a discharge-chute plug switch that catches a feeder jam;
+- bin low-level and hopper high / high-high level switches;
+- a hopper weight transmitter.
+
+That's 19 I/O tags in all ([`docs/CONTROL-LAB.md`](docs/CONTROL-LAB.md) §5.3).
+Material moves through it with mass conserved (checked to a milligram
+every scan), spillage accounted for, and every scan deterministic: the same scenario gives
+identical results every run.
+
+The controller never touches the equipment models. It reads and writes I/O
+tags only, exactly as a PLC does through its I/O cards. A test enforces
+this.
+
+## 4. How are faults injected?
+
+Through the same vocabulary the scenarios use, acting on the plant, never on
+the controller. The controller has to notice the fault on its own:
+
+- **Equipment:** motor trips and fail-to-start, belt slip, a stuck gate, a
+  feeder jam (the drive keeps running; only the plug switch sees it), E-stop.
+- **Instruments:** a transmitter or switch **stuck** at its last reading
+  (a seized float; nothing in the signal says it's wrong), or **failed**
+  (lost signal: the weight transmitter reads 0 with its input-channel
+  diagnostic set; a fail-safe switch reads "tripped").
+- **Process conditions:** bin and hopper levels.
+
+In the dashboard they live under **Engineer tools**. In a scenario they're
+a line of YAML (`feeder_jam: true`).
+
+## 5. How are scenarios validated?
+
+A scenario is a file. This one is abridged; the full file has five stages:
+
+```yaml
+name: Feeder Jam Recovery -- Reset Refused Until The Jam Is Cleared
+given: {line_state: running}                  # setup
+when: {feeder_jam: true}                      # the fault
+expect:                                       # what the controller must do...
+  line_state: faulted
+  fault_reason: "feeder jam"
+  feeder_run_commanded: false
+within: {seconds: 1.0}                        # ...and how fast
+then:                                         # the recovery procedure, stage by stage
+  - title: "Reset is refused while the chute is still plugged"
+    when: {acknowledge: true, reset: true}
+    expect: {line_state: faulted, any_unacknowledged_trip: false}
+    within: {seconds: 1.0}
+  # clear the jam -> reset accepted -> restart with material flowing
+```
+
+The runner applies the setup, then each stage's actions. It checks every
+expectation on every scan until they all hold, or the stage's time limit
+expires. On every tick it also checks physical invariants: mass conserved,
+the feeder never running onto an unproven belt, no motor energized during
+E-stop. The result is an engineering record:
+- the verdict;
+- every check, **MATCH** or **MISMATCH** with the actual value;
+- the response time of each stage against its limit;
+- the first-out alarm;
+- on a failure, the **first divergence**, meaning the stage and deadline where
+  the run left the scenario.
+
+Nothing in that record is inferred beyond what the runner observed.
+
+The repository has 27 scenarios covering all 11 interlock rows of the
+specification. New scenarios, hand-written or AI-generated, go through a
+deterministic review gate that rejects a scenario that is vacuous (it still
+passes with its fault removed), non-deterministic, or disagrees between
+the in-process and Modbus runs.
 
 ```bash
-python scripts/scenario_report.py            # print
-python scripts/scenario_report.py --out coverage_report.txt
-python scripts/scenario_report.py --markdown commissioning_report.md
+controllab test                         # all of them
+controllab test hopper -v               # matching files, full results
+python scripts/scenario_report.py --markdown report.md   # coverage matrix + commissioning report
 ```
 
-The Markdown commissioning report is deterministic: the same code
-produces a byte-identical file every run.
+## 6. How does OpenPLC fit into it?
 
-To watch a scenario play back on a line mimic:
+The scenario never changes; the control runtime does.
+
+```
+                 SAME SCENARIO (scenarios/*.yaml)
+                               │
+        ┌──────────────────────┼─────────────────────────────┐
+        ▼                      ▼                             ▼
+ Python controller    Same controller, separate      OpenPLC Runtime running a
+ (in-process)         process, over Modbus TCP       Structured Text port, over
+                                                     Modbus TCP, in real time
+        └──────────────────────┼─────────────────────────────┘
+                               ▼
+                 SAME VIRTUAL PLANT (served as Modbus remote I/O)
+                               ▼
+                 EXPECTED BEHAVIOR, checked the same way
+```
+
+ControlLab serves the plant as a Modbus TCP remote-I/O device with a
+documented register map ([`docs/MODBUS-MAP.md`](docs/MODBUS-MAP.md)).
+OpenPLC, in Docker, polls it exactly as it would a real I/O rack, and runs
+[`controllab_line.st`](examples/openplc/controllab_line.st), an IEC 61131-3
+Structured Text port of the controller. Against a PLC, scenarios run in real
+time, with limits in plant time and a stated I/O latency allowance. Every
+scenario starts from a cold PLC restart.
+
+**Result on OpenPLC: 27/27 scenarios over 3 passes (81/81 runs), none needing the latency
+allowance, 11/11 interlock rows covered**
+([`examples/openplc/COMMISSIONING-REPORT.md`](examples/openplc/COMMISSIONING-REPORT.md)).
+
+In the dashboard, **Compare runtimes** runs one scenario on every available
+runtime and says how each was compared. Two lockstep runs are compared event
+for event. A real-time PLC run is compared by verdict and checks, since its
+response times depend on where in its scan a change lands.
+
+![One scenario run on three runtimes: PASS 12/12 on each; the Modbus run's event log identical to the Python run](docs/images/dashboard-parity.jpg)
+
+## 7. How does regression testing work?
+
+Every scenario is a regression test. To demonstrate that a bad change is
+caught, ControlLab ships **deliberate regressions**. They are named,
+deliberately broken builds of the controller, each a plausible bad commit,
+and they live only in the testing layer
+([`services/testing/regressions.py`](services/testing/regressions.py)).
+Production code is never modified to show a failure.
+
+| Regression | The bad change | Caught at |
+|---|---|---|
+| `jam-trip-removed` | the feeder-jam trip deleted from RUNNING | feeder jam recovery, stage 1 |
+| `reset-ignores-jam` | reset accepted while the chute is still plugged | feeder jam recovery, stage 2 |
+| `high-high-switch-only` | the 1oo2 overfill trip reverted to the switch alone | stuck high-high switch, stage 1 |
+| `feeder-starts-with-conveyor` | the feeder started together with the conveyor | normal operation, stage 1 |
+
+```
+$ controllab test feeder_jam_recovery --regression reset-ignores-jam
+  FAIL             6/8  checks  faults/feeder_jam_recovery.yaml
+REGRESSION FAILURE
+...
+Stage 2: Reset is refused while the chute is still plugged
+  MISMATCH     Line state: expected faulted  (actual: idle)
+  MISMATCH     Trip reason: expected feeder jam  (actual: —)
+...
+Failure detected at: stage 2 (Reset is refused while the chute is still plugged), t = 3.30 s (the stage's deadline)
+REGRESSION DETECTED: 1 scenario(s) caught 'reset-ignores-jam' (expected behavior: Reset refused while the jam remains).
+```
+
+The test suite proves each regression is caught where it should be, and that
+each copied method differs from production only by its marked change.
+
+![A deliberate regression caught: stage 2 fails because reset was accepted with the chute still plugged](docs/images/dashboard-regression.jpg)
+
+## 8. Where does AI assistance fit?
+
+It's optional, and it sits on top of the validation system, not inside it.
+It does two things, both producing files an engineer reads:
+
+- **proposes new scenarios**, which must pass the same review gate as a
+  hand-written one;
+- **analyzes a failed run**, starting from the validator's first divergence,
+  and returns hypotheses explicitly marked unverified.
+
+It never issues a command, never changes control logic, and nothing in the
+plant, controller, runner or PLC path imports it. The whole loop runs without
+an API key using a labelled scripted stand-in. The live-model path is built
+and tested against a faked SDK, but has deliberately not been run against a
+real model. Details: [`docs/AI.md`](docs/AI.md).
+
+## What else is in it
+
+- **Controller:** the full `IDLE/STARTING/RUNNING/STOPPING/FAULTED/ESTOPPED`
+  state machine; downstream-first start and upstream-first stop with belt
+  purge; latched alarms with first-out and acknowledge; resets refused while
+  a cause remains; a machine-readable reason for every refused start.
+  Overfill protection is built as on a real line: fail-safe level switches,
+  a 1oo2 high-high vote between the switch and the weight transmitter, and
+  an alarm when they disagree.
+- **Dashboard** (`python scripts/dashboard.py`):
+  - the plant running live, and scenarios verified live on the picture;
+  - a plain-English status card;
+  - guided walkthroughs to operate it by hand;
+  - engineer tools to break it;
+  - a replay of every run.
+- **Telemetry and reports:** tag history (CSV), event log (JSONL), a
+  deterministic Markdown commissioning report with the interlock coverage
+  matrix, and a self-contained HTML replay of any run
+  (`python scripts/replay.py SCENARIO.yaml`).
+- **Modbus and external controllers:**
+  - a stdlib Modbus TCP server, tested against the spec's examples and
+    `pymodbus`;
+  - an external-controller mode with a comm-loss watchdog
+    (`scripts/dashboard.py --external` + `scripts/external_controller.py`);
+  - I/O map files that serve the plant at an existing PLC program's
+    addresses ([`configs/io/`](configs/io/));
+  - *not observable* verdicts for a controller that publishes no status
+    block, instead of a guess.
+
+## Reference
 
 ```bash
-python scripts/replay.py scenarios/safety/estop_from_running.yaml   # writes estop_from_running.replay.html
+python scripts/dashboard.py --modbus-port 5020      # also expose the live line to any Modbus client
+python scripts/scenario_report.py --external        # the suite across Modbus, lockstep
+python scripts/scenario_report.py --realtime reference --speed 4    # against a free-running controller
+python scripts/scenario_report.py --realtime openplc --repeat 3     # against OpenPLC (examples/openplc)
+controllab test --runtime openplc normal_operation  # one scenario on OpenPLC, full result
+controllab test --list-regressions
+python scripts/review_candidates.py candidates/     # the review gate, on proposed scenarios
 ```
 
-Open the file in any browser. It needs no server and no network.
+Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md).
 
-To run the line live:
+## Documentation
 
-```bash
-python scripts/dashboard.py        # then open http://127.0.0.1:8000
-```
+- [`docs/DEMO.md`](docs/DEMO.md): the demonstration, step by step.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): layers, runtimes, module responsibilities.
+- [`docs/CONTROL-LAB.md`](docs/CONTROL-LAB.md): the specification, the phased roadmap, and the change log with every finding.
+- [`docs/AI.md`](docs/AI.md): the optional AI layer.
+- [`docs/MODBUS-MAP.md`](docs/MODBUS-MAP.md): the register map.
 
-New to it? The page explains itself: a "What's happening" card narrates
-the line in plain words, and five guided walkthroughs (a normal start and
-stop, a refused start, an emergency stop, a motor fault and its recovery,
-overfill protection with a broken sensor) run step by step, each with a
-"Do it for me" button.
+## Status
 
-![The line running mid-walkthrough: material moving along the feeder and up the conveyor, the next step highlighting the Stop button](docs/images/dashboard-running.jpg)
-
-*Running, partway through "A normal start and stop". Material is moving
-along the feeder and up the conveyor; the walkthrough says what just
-happened and highlights the next button to press.*
-
-![The line tripped on hopper high-high with the high-high switch stuck: the status card explains the trip and lists the recovery steps](docs/images/dashboard-overfill-trip.jpg)
-
-*"Overfill protection with a broken sensor". The hopper's high-high
-switch has been made to stick (highlighted red under Engineer tools), and
-the hopper was overfilled to 97 %. The line tripped anyway, because the
-overfill trip also listens to the hopper's weight, and the card explains
-why and lists the recovery steps.*
-
-Start it, inject a fault, and walk through the recovery (clear the
-fault, reset the device at the field, acknowledge, reset, start) the
-way a commissioning engineer would. The instrument panel makes the
-hopper's weight transmitter and level switches stick or fail: stick
-LSHH-105, set the hopper to 97 %, and watch WT-105 trip the line on its
-own while the cross-check names the switch. Localhost only, no dependencies
-beyond the standard library. Add `--modbus-port 5020` to also expose the
-line to any Modbus TCP client (a SCADA package, Modbus Poll, a PLC):
-sensors and outputs readable, operator commands on HMI coils 100-103.
-
-To run the controller as a separate program that only talks Modbus:
-
-```bash
-python scripts/dashboard.py --external        # terminal 1: the plant, no controller
-python scripts/external_controller.py         # terminal 2: the controller, over Modbus TCP
-```
-
-Press Start on the dashboard; kill the controller mid-run and the
-watchdog stops the plant within a second.
-
-To run the whole scenario suite against a free-running controller in
-real time, the way you would against a PLC (Phase 9):
-
-```bash
-python scripts/scenario_report.py --realtime reference --speed 4       # our controller, free-running
-python scripts/scenario_report.py --realtime openplc --repeat 3        # a real PLC runtime, see examples/openplc
-```
-
-Limits are still checked in plant time, with a stated I/O latency
-tolerance; a result met only inside it is reported as such, and repeat
-passes report the response-time spread. For a controller that doesn't
-publish ControlLab's status block, `--no-status` reports expectations on
-its internal state as *not observable* rather than reading registers
-nobody wrote.
-
-To commission a PLC program whose I/O configuration already exists,
-describe its addresses in an I/O map file instead of changing the
-program: see [`configs/io/`](configs/io/) (`line.yaml` is the built-in
-map, `relocated.yaml` the same line at remote-I/O offsets). `--map FILE`
-on `scenario_report.py --realtime`, `scripts/register_map.py` (the map
-document and PLC master configuration), and
-`examples/openplc/setup_openplc.py`. A map without a status block
-declares a controller without one. The unchanged OpenPLC program passed
-the suite (15 scenarios at the time) against the relocated map with only
-its slave-device ranges changed.
-
-## Roadmap
+All roadmap phases are complete, and 658 tests pass.
 
 | Phase | Focus | Status |
 |---|---|---|
-| 0 | Foundation | done |
-| 1 | Simulation core | done |
-| 2 | Control (states, sequences, interlocks) | done |
-| 3 | Testing / commissioning scenarios | done |
-| 4 | Fault injection, alarms | done |
-| 5 | Telemetry | done |
-| 6 | Visualization | done |
-| 7 | Protocols (Modbus + external controller mode) | done |
-| 8 | AI engineering assistance | done — live-model path built, not exercised (see below) |
-| 9 | Virtual commissioning | done |
-
-Full detail: `docs/CONTROL-LAB.md` §10.
+| 0–2 | Foundation, simulation core, control | done |
+| 3–4 | Commissioning scenarios; fault injection and alarms | done |
+| 5–6 | Telemetry; visualization | done |
+| 7 | Protocols (Modbus, external-controller mode) | done |
+| 8 | AI engineering assistance | done (the live-model path is built but not exercised) |
+| 9 | Virtual commissioning against a real PLC | done |
+| 10 | Demonstration and validation workflow | done |
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+MIT; see [`LICENSE`](LICENSE).

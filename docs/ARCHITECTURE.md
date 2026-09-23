@@ -5,6 +5,57 @@ why. This document covers the how: repository layout, module boundaries,
 and the technology stack, as they actually exist — not the aspiration.
 Update it whenever the real structure changes.*
 
+## The validation workflow, and how the runtimes relate
+
+The whole system exists to answer one question about a control program:
+does it still do what the machine requires? Everything below is arranged
+around that loop:
+
+```
+ scenarios/*.yaml  ──►  services/testing/runner.py  ──►  ScenarioResult  ──►  services/testing/verdict.py
+ (setup, actions,        execute(rig, scenario,           (per-stage timing,     RunSummary: every check
+  faults, expected        step, invariants, telemetry)    failed stage,          MATCH / MISMATCH with the
+  behavior, limits,       invariants checked every        expected vs actual,    actual value, first-out,
+  recovery stages)        tick                            events, tag history)   first divergence
+                                   │
+                    step() is the only thing that differs per runtime
+        ┌──────────────────────────┼──────────────────────────────────┐
+        ▼                          ▼                                  ▼
+ in-process lockstep        external lockstep                   real time
+ run_scenario()             run_scenario(external=True)         realtime.run_realtime()
+ LineController scans,      the same LineController in          the plant paced on the wall clock,
+ then the plant steps       another thread/process, reached     served as Modbus remote I/O; the
+                            only through the Modbus register    controller (OpenPLC, or the reference
+                            map (services/testing/external.py)  one) free-runs and polls it
+        └──────────────────────────┼──────────────────────────────────┘
+                                   ▼
+                  the same Plant, the same I/O image, the same invariants
+```
+
+- **One runner, three runtimes.** `runner.execute()` is shared. Each
+  runtime passes a different `step()`, so a scenario file never changes
+  between them. Lockstep runs are deterministic, and two of them (in-process
+  vs over Modbus) are compared event for event. A real-time run is judged in
+  plant time with a stated I/O latency allowance, and compared by verdict and
+  checks.
+- **Faults go to the plant, never the controller.**
+  `services/testing/vocabulary.py` applies stimuli to `Plant` objects. The
+  controller must notice them through its I/O.
+- **Regressions are fixtures.** `services/testing/regressions.py` holds
+  deliberately broken `LineController` subclasses, built only when asked for
+  by name (`run_scenario(..., line_cls=)`). `services/control/` is never
+  modified to demonstrate a failure.
+- **Front ends only present.**
+  - `controllab test` (`services/cli.py`) and the dashboard
+    (`services/visualization/verify.py`) call the runner through the paths
+    above and render its `RunSummary`.
+  - The dashboard's Python-runtime verification runs `execute()` on the live
+    session's own line (`LiveSession.run_live`), and is tested to record the
+    same events as the suite's run.
+- **AI sits outside the loop.** `services/ai/` reads a finished result
+  (starting from the same first divergence) and writes files for an
+  engineer. Nothing in the loop above imports it.
+
 ## Layers and their boundaries
 
 Full reasoning in `CONTROL-LAB.md` §3. In short:
@@ -1119,6 +1170,7 @@ issue and propose the change"):
 | 7 | Protocols | done — Modbus server + client; register map (five PLC-master ranges); external-controller mode with the full scenario suite passing across Modbus; OpenPLC running a Structured Text port of the controller against the plant |
 | 8 | AI engineering assistance | done — review gate (incl. declared-trigger causality); optional AI behind a provider abstraction; validated, gated scenario generation; bounded, validated failed-run analysis; end-to-end example (`docs/AI.md`). Live-model path built, deliberately not exercised (no API spend on this project) |
 | 9 | Virtual commissioning | done — real-time runner (unchanged scenarios against a free-running external controller, latency tolerance, known starting state); the commissioning report against OpenPLC (45/45 runs, 3 passes); *not observable* for controllers without a status block; I/O map files, with the unchanged OpenPLC program passing against a relocated plant |
+| 10 | Demonstration and validation workflow | done — run summaries (`verdict.py`), `controllab test`, deliberate-regression fixtures, dashboard scenarios with live verification, expected vs actual, runtime comparison (Python / Modbus / OpenPLC); `docs/DEMO.md` |
 
 Full detail and "done when" criteria per phase: `CONTROL-LAB.md` §10.
 

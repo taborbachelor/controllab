@@ -250,7 +250,7 @@ If you discover a better architecture than the one described here: **do not sile
 
 ## 23. Current Immediate Objective
 
-All roadmap phases (0-9) are complete. The work now is hardening and finishing, not new phases:
+All roadmap phases (0-10) are complete; Phase 10 made the validation workflow the face of the project (run summaries, `controllab test`, regression fixtures, dashboard scenarios, `docs/DEMO.md`). The work now is hardening and finishing, not new phases:
 
 1. Close real engineering findings as they surface (they are recorded in `docs/CONTROL-LAB.md` §10 and the change log), one small tested step at a time.
 2. Keep the repository presentable as a public portfolio project: README, docs, and reports current with what actually exists.
