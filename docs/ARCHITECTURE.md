@@ -1061,6 +1061,19 @@ issue and propose the change"):
   queued for the next tick, so a paused line never swallows a press
   silently); the server attaches `story`.
 
+## Module responsibilities (dashboard: guided walkthroughs)
+
+- **`services/visualization/walkthroughs.py`** — five walkthroughs (normal
+  start/stop, a refused start, E-stop, a motor fault and recovery, overfill
+  protection with a stuck switch). A step says what to do, names the
+  control to highlight, can do it ("Do it for me"), and completes only
+  when the live line reaches its condition, never on a click.
+- **`LiveSession.start_tour()` / `tour_do()` / `exit_tour()`** — a
+  walkthrough starts on a fresh line; actions go through the validated
+  `command()` / `stimulus()` path; the step advances after each tick.
+  `POST /api/tour`. Every walkthrough runs to completion in the suite, and
+  no action step may complete before its action.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |

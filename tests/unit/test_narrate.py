@@ -98,3 +98,25 @@ def test_paused_says_so_and_lists_what_is_waiting():
     s.command("start")
     st = story(s, running=False)
     assert st["headline"].startswith("Paused.") and "Waiting to apply: start" in st["detail"]
+
+
+def test_the_checklist_ticks_off_the_fix_once_the_cause_is_gone():
+    s = running_session()
+    s.stimulus("sensor_stuck", "LSHH-105")
+    s.stimulus("hopper_level_pct", 97)
+    steps(s, 15)
+    first = story(s)["steps"]
+    assert first[0] == {"text": "Repair LSHH-105 (Engineer tools → Instrument faults → LSHH-105 → Restore)", "done": False}
+    assert first[1]["text"].startswith("Lower the hopper level") and first[1]["done"] is False
+    s.stimulus("sensor_restored", "LSHH-105")
+    s.stimulus("hopper_level_pct", 50)
+    steps(s, 2)
+    after = story(s)["steps"]
+    assert after[0]["text"].startswith("Lower the hopper level") and after[0]["done"] is True
+
+
+def test_every_explained_fault_says_how_to_tell_its_cause_is_gone():
+    from services.visualization.narrate import _CLEARED
+
+    assert set(_CLEARED) == set(_FAULTS)
+

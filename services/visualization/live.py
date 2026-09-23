@@ -56,6 +56,7 @@ from services.simulation.equipment.instruments import InstrumentFault
 from services.testing.invariants import InvariantViolation, Invariants
 from services.testing.rig import DEFAULT_PLANT_CONFIG, DT, build_rig, tick
 from services.testing.vocabulary import apply_field
+from services.visualization import walkthroughs
 from services.visualization.narrate import narrate
 from services.visualization.page import assemble
 from services.visualization.replay import build_replay, render_html
@@ -155,6 +156,9 @@ class LiveSession:
         self._pending: list[tuple[str, Callable[[], None]]] = []
         self._last_controller_write_t = 0.0
         self._watchdog_tripped = False
+        # The active guided walkthrough (walkthroughs.py), or None:
+        # {"id", "index", "mark" (event count when the step began), "then"}.
+        self.tour: dict | None = None
 
     def _event_list(self) -> list[Event]:
         return self._external_events if self.external else self.events.events
@@ -205,6 +209,70 @@ class LiveSession:
         with self._lock:
             self._fresh()
 
+    # ---- guided walkthroughs --------------------------------------------
+
+    def start_tour(self, tour_id: str) -> None:
+        """Start a walkthrough on a fresh line, so every one begins from the
+        same known state."""
+        if self.external:
+            raise ValueError("walkthroughs need the built-in controller")
+        if tour_id not in walkthroughs.BY_ID:
+            raise ValueError(f"unknown walkthrough {tour_id!r}")
+        with self._lock:
+            self._fresh()
+            self.tour = {"id": tour_id, "index": 0, "mark": len(self._event_list()), "then": ""}
+
+    def tour_do(self) -> None:
+        """"Do it for me": queue the current step's actions through the same
+        validated command()/stimulus() path every button uses."""
+        with self._lock:
+            step = self._tour_step()
+            if step is None:
+                raise ValueError("no walkthrough step to do")
+            for key, value in step.do:
+                if key in COMMANDS:
+                    self.command(key)
+                else:
+                    self.stimulus(key, value)
+
+    def exit_tour(self) -> None:
+        with self._lock:
+            self.tour = None
+
+    def _tour_step(self):
+        if self.tour is None:
+            return None
+        steps = walkthroughs.BY_ID[self.tour["id"]].steps
+        return steps[self.tour["index"]] if self.tour["index"] < len(steps) else None
+
+    def _advance_tour(self) -> None:
+        """Called after every tick: complete the current step if the line has
+        actually reached its condition."""
+        step = self._tour_step()
+        if step is None:
+            return
+        events = [{"t": e.t, "type": e.type, **e.data} for e in self._event_list()[self.tour["mark"]:]]
+        if step.until(self.snapshot(since=len(self._event_list())), events):
+            self.tour.update(index=self.tour["index"] + 1, mark=len(self._event_list()), then=step.then)
+
+    def _tour_view(self) -> dict | None:
+        if self.tour is None:
+            return None
+        w = walkthroughs.BY_ID[self.tour["id"]]
+        step = self._tour_step()
+        return {
+            "id": w.id,
+            "title": w.title,
+            "index": self.tour["index"],
+            "total": len(w.steps),
+            "then": self.tour["then"],
+            "done": step is None,
+            "say": step.say if step else "",
+            "target": step.target if step else None,
+            "can_do": bool(step and step.do),
+            "levels": {k: v for k, v in (step.do if step else ()) if k in LEVEL_STIMULI},
+        }
+
     # ---- the scan ------------------------------------------------------
 
     def step(self) -> None:
@@ -230,6 +298,8 @@ class LiveSession:
             else:
                 self.events.sample(t)
             self.tags.record(t)
+            if self.tour is not None:
+                self._advance_tour()
             if self.violation is None:
                 try:
                     self.invariants.check()
@@ -314,6 +384,7 @@ class LiveSession:
                     },
                 },
                 "violation": self.violation,
+                "tour": self._tour_view(),
             }
 
     def config(self) -> dict:
@@ -327,6 +398,7 @@ class LiveSession:
             ],
             "commands": list(COMMANDS),
             "stimuli": STIMULI,
+            "walkthroughs": walkthroughs.catalog(),
         }
 
     def replay_html(self) -> str:
@@ -445,6 +517,17 @@ def make_handler(session: LiveSession, pacer: Pacer) -> type[BaseHTTPRequestHand
                         pacer.speed = float(body["speed"])
                 elif path == "/api/restart":
                     session.restart()
+                elif path == "/api/tour":
+                    action = body.get("action")
+                    if action == "start":
+                        session.start_tour(body.get("id"))
+                        pacer.running = True  # a walkthrough on a paused line would just sit there
+                    elif action == "do":
+                        session.tour_do()
+                    elif action == "exit":
+                        session.exit_tour()
+                    else:
+                        raise ValueError("action must be start, do or exit")
                 else:
                     return self._json(404, {"error": "not found"})
             except (ValueError, json.JSONDecodeError) as e:

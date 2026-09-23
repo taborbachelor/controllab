@@ -95,3 +95,14 @@
   header.page-intro { display: block; }
   header.page-intro .titlebar { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; margin-bottom: 6px; }
   header.page-intro .intro-more { margin-top: 6px; }
+  #tour-panel { border-color: var(--accent); }
+  .tour-pick { display: block; width: 100%; text-align: left; font: inherit; padding: 8px 10px; margin-top: 6px;
+               border: 1px solid var(--grid); border-radius: 6px; background: var(--hollow); cursor: pointer; }
+  .tour-pick:hover, .tour-pick:focus-visible { border-color: var(--accent); }
+  .tour-pick span { display: block; color: var(--muted); font-size: 12px; }
+  .tour-title { margin: 0 0 6px; } .tour-prog { color: var(--muted); font-size: 12px; margin-left: 6px; }
+  .tour-then { margin: 0 0 8px; padding: 6px 8px; background: var(--hollow); border-radius: 4px; font-size: 13px; }
+  .tour-then span { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .tour-say { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+  @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(47, 95, 138, .7); } 50% { box-shadow: 0 0 0 5px rgba(47, 95, 138, .25); } }
+  .pulse { animation: pulse 1.2s ease-in-out infinite; outline: 2px solid var(--accent); outline-offset: 1px; }

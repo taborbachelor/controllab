@@ -71,6 +71,10 @@
     </section>
   </div>
   <div class="col">
+    <section aria-label="Guided walkthroughs" id="tour-panel">
+      <h2>Guided walkthroughs</h2>
+      <div id="tour"></div>
+    </section>
     <section aria-label="Engineer tools">
       <details class="tools" id="tools">
       <summary>Engineer tools: break things on purpose, set levels</summary>
@@ -159,6 +163,53 @@ $("restart").addEventListener("click", () => {
   $("events").innerHTML = '<p class="empty">No events yet.</p>';  // the old session's rows must go too
 });
 
+let tourKey = "";
+function renderTour(t) {
+  document.querySelectorAll(".pulse").forEach((el) => el.classList.remove("pulse"));
+  const key = t ? `${t.id}:${t.index}` : "";
+  if (!t) {
+    if (tourKey !== "none") {
+      $("tour").innerHTML = '<p class="note" style="margin-top:0">New here? Pick one. Each starts a fresh line and ' +
+        "walks you through it one step at a time.</p>" + CFG.walkthroughs.map((w) =>
+        `<button type="button" class="tour-pick" data-tour="${w.id}"><strong>${esc(w.title)}</strong>` +
+        `<span>${esc(w.summary)}</span></button>`).join("");
+      tourKey = "none";
+    }
+    return;
+  }
+  if (key !== tourKey) {
+    const prog = t.done ? "Finished" : `Step ${t.index + 1} of ${t.total}`;
+    $("tour").innerHTML =
+      `<p class="tour-title"><strong>${esc(t.title)}</strong> <span class="tour-prog">${prog}</span></p>` +
+      (t.then ? `<p class="tour-then"><span>✓ What just happened</span>${esc(t.then)}</p>` : "") +
+      (t.done ? '<p class="tour-say">That\'s the whole walkthrough.</p>'
+              : `<p class="tour-say">${esc(t.say)}</p>`) +
+      '<div class="buttons">' +
+      (t.can_do ? '<button type="button" class="attention" data-tour-act="do">Do it for me</button>' : "") +
+      (!t.done && !t.can_do ? '<span class="note" style="margin:0">Just watch; it moves on by itself.</span>' : "") +
+      `<button type="button" data-tour-act="exit">${t.done ? "Pick another" : "Exit"}</button></div>`;
+    for (const [key, value] of Object.entries(t.levels)) {
+      const input = document.querySelector(`[data-level="${key}"]`);
+      if (input) $(input.dataset.input).value = value;
+    }
+    tourKey = key;
+  }
+  if (t.target) {
+    const el = document.querySelector(t.target);
+    if (el) {
+      const tools = el.closest("details");
+      if (tools && !tools.open) tools.open = true;
+      el.classList.add("pulse");
+    }
+  }
+}
+$("tour").addEventListener("click", (e) => {
+  const pick = e.target.closest("[data-tour]"), act = e.target.closest("[data-tour-act]");
+  if (pick) { post("/api/tour", { action: "start", id: pick.dataset.tour }); since = 0; eventRows = [];
+              $("events").innerHTML = '<p class="empty">No events yet.</p>'; }
+  if (act) post("/api/tour", { action: act.dataset.tourAct });
+});
+
 function renderStory(story) {
   $("story").className = "story " + story.tone;
   $("story-headline").textContent = story.headline;
@@ -185,6 +236,7 @@ async function poll() {
     $("run").textContent = running ? "⏸ Pause" : "▶ Run";
     $("run").classList.toggle("attention", !running);
     renderStory(s.story);
+    renderTour(s.tour);
     $("speed").value = String(s.speed);
     $("clock").textContent = `t = ${s.t.toFixed(1)} s`;
     renderState(s.state);

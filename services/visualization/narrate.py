@@ -14,8 +14,9 @@ which parts are finished.
 """
 from __future__ import annotations
 
-# Plain names for the things on the picture, used throughout.
-BIN, GATE, FEEDER, CONVEYOR, HOPPER = "the bin", "the bin gate", "the feeder", "the conveyor", "the hopper"
+from services.testing.rig import DEFAULT_PLANT_CONFIG
+
+_HH_KG = DEFAULT_PLANT_CONFIG["hopper_capacity_kg"] * DEFAULT_PLANT_CONFIG["hopper_high_high_pct"] / 100
 
 # Why the controller tripped the line (LineController.fault_reason), in
 # plain words, and what the operator does about the cause before resetting.
@@ -67,6 +68,23 @@ _FAULTS: dict[str, tuple[str, str]] = {
         "would pile up at the feeder, so the line stopped.",
         "Fix the belt (Engineer tools → Belt slip, click it off)",
     ),
+}
+
+# Whether each fault's cause is gone, judged from what the field reports --
+# so the checklist ticks off the fix as soon as it's done, not only after a
+# reset. (The controller makes the real decision; this only reads the same
+# signals it does.)
+_CLEARED = {
+    "hopper high-high": lambda v, inj: v["LSHH-105"] and v["WT-105"] < _HH_KG,
+    "feeder trip": lambda v, inj: not v["M-103.FAULT"],
+    "conveyor trip": lambda v, inj: not v["M-104.OL"],
+    "feeder jam": lambda v, inj: not v["LSH-103"],
+    "hopper weight signal failed": lambda v, inj: not v["WT-105.FLT"],
+    "conveyor failed to prove running": lambda v, inj: not inj.get("conveyor_fail_to_start"),
+    "feeder failed to prove running": lambda v, inj: not inj.get("feeder_fail_to_start"),
+    "gate failed to prove open": lambda v, inj: not inj.get("gate_stuck"),
+    "gate travel fault": lambda v, inj: not inj.get("gate_stuck"),
+    "conveyor lost confirmation": lambda v, inj: not inj.get("belt_slip"),
 }
 
 # Why a start was refused (LineController.last_start_refusal), in plain
@@ -139,9 +157,14 @@ def narrate(s: dict) -> dict:
         }
     elif state == "faulted":
         what, fix = _FAULTS.get(s["fault_reason"] or "", (f"The line tripped ({s['fault_reason']}).", ""))
-        steps = []
+        inj = s["injected"]
+        steps = [
+            {"text": f"Repair {tag} (Engineer tools → Instrument faults → {tag} → Restore)", "done": False}
+            for tag in sorted(inj.get("instruments", {}))
+        ]
         if fix:
-            steps.append({"text": fix, "done": False})
+            cleared = _CLEARED.get(s["fault_reason"])
+            steps.append({"text": fix, "done": bool(cleared and cleared(v, inj))})
         steps += [
             {"text": "Press Acknowledge (confirms you've seen the alarms)", "done": not _unacked(alarms)},
             {"text": "Press Reset (the controller only accepts it once the cause is gone)", "done": False},

@@ -7,7 +7,7 @@ feeder → conveyor → hopper — so deterministic control logic can be run
 against it and tested: startup, shutdown, interlocks, fault injection, and
 recovery, before any physical equipment exists.
 
-**Status:** all ten roadmap phases (0-9) complete; 610 tests passing.
+**Status:** all ten roadmap phases (0-9) complete; 625 tests passing.
 
 What's in it:
 
@@ -132,6 +132,12 @@ To run the line live:
 ```bash
 python scripts/dashboard.py        # then open http://127.0.0.1:8000
 ```
+
+New to it? The page explains itself: a "What's happening" card narrates
+the line in plain words, and five guided walkthroughs (a normal start and
+stop, a refused start, an emergency stop, a motor fault and its recovery,
+overfill protection with a broken sensor) run step by step, each with a
+"Do it for me" button.
 
 Start it, inject a fault, and walk through the recovery (clear the
 fault, reset the device at the field, acknowledge, reset, start) the
