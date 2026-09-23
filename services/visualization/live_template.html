@@ -17,9 +17,24 @@
 </head>
 <body>
 <div id="violation" class="banner" role="alert"></div>
-<header>
-  <h1>ControlLab — Live</h1>
-  <span class="meta">Simulated line, real-time. Operator commands on the left, test stimuli on the right.</span>
+<header class="page-intro">
+  <div class="titlebar"><h1>ControlLab — Live</h1>
+  <span class="meta">A simulated line, running in real time</span></div>
+  <p class="intro">This is a small simulated factory line that moves bulk material (think grain or gravel) from a storage
+    <strong>bin</strong>, through a <strong>gate</strong> and a <strong>feeder</strong>, up a <strong>conveyor</strong>
+    and into a <strong>hopper</strong>. A control program runs it, the way a PLC runs a real plant: you operate it,
+    break it on purpose, and watch it protect itself and recover.</p>
+  <details class="intro-more">
+    <summary>What am I looking at?</summary>
+    <ul>
+      <li><strong>What's happening</strong> (the card below) says what the line is doing right now, why, and what to do next.</li>
+      <li><strong>The picture</strong> is the line. Dark shapes are running or open, hollow ones are stopped or closed, dashed amber means "told to move but not confirmed yet", red means tripped. Material shows as brown. Hover anything for what it is.</li>
+      <li><strong>Operator</strong> buttons are what a plant operator has: Start, Stop, Acknowledge (confirm you've seen an alarm), and Reset (clear a trip once its cause is fixed).</li>
+      <li><strong>Guided walkthroughs</strong> run short stories step by step: a normal start, an emergency stop, a failure and its recovery.</li>
+      <li><strong>Engineer tools</strong> break things on purpose (motor faults, a jammed feeder, a failed sensor) and set levels, to test how the control program reacts. That's the point of ControlLab: proving control logic works, faults included, before any real equipment exists.</li>
+      <li><strong>Alarms</strong> and the <strong>event log</strong> record what the controller noticed and did, the way a real control room does.</li>
+    </ul>
+  </details>
 </header>
 <section id="story" class="story info" aria-live="polite" aria-label="What's happening">
   <p class="story-kicker">What's happening</p>
@@ -51,13 +66,15 @@
       <p class="note">Acknowledge and reset are separate on purpose: acknowledging says an operator has seen the alarm; reset says the cause is fixed.</p>
     </section>
     <section aria-label="Event log">
-      <h2>Events</h2>
+      <h2>Event log</h2>
       <div id="events"><p class="empty">No events yet.</p></div>
     </section>
   </div>
   <div class="col">
-    <section aria-label="Test stimuli">
-      <h2>Test stimuli — fault injection</h2>
+    <section aria-label="Engineer tools">
+      <details class="tools" id="tools">
+      <summary>Engineer tools: break things on purpose, set levels</summary>
+      <h2>Equipment faults</h2>
       <div class="buttons" id="faults"></div>
       <h2 style="margin-top:12px">Field resets</h2>
       <div class="buttons" id="field-resets">
@@ -74,15 +91,20 @@
         <label for="bin-pct">Set bin level (%)</label>
         <span><input id="bin-pct" type="number" min="0" max="100" step="1" value="5"> <button type="button" data-level="bin_level_pct" data-input="bin-pct">Set</button></span>
       </div>
-      <p class="note">Stimuli act on the simulated plant, never on Control — the same vocabulary scenario files use. A highlighted button is a fault currently injected; click again to clear it. Clearing a motor trip also needs a field reset of that device's own latch — the same two-step recovery a real line has — before Control's reset will take.</p>
+      <p class="note">These act on the simulated equipment, never on the control program: the program has to notice and react on its own. A highlighted button is a fault currently injected; click it again to clear it. A motor trip also needs its device reset (Field resets) before the line's Reset will take, the same two-step recovery a real line has.</p>
+      </details>
     </section>
     <section aria-label="Alarms">
       <h2>Alarms</h2>
       <div id="alarms"></div>
+      <p class="note">An alarm stays listed (latched) until its cause is gone <em>and</em> someone presses Acknowledge. FIRST OUT marks the one that started it.</p>
     </section>
     <section aria-label="Tags">
-      <h2>I/O tags</h2>
+      <details class="tools">
+      <summary>Raw I/O: every signal the control program sees and sets</summary>
+      <p class="note" style="margin-top:0">DI/AI are inputs from sensors, DO/AO are outputs to motors and valves. Hover a row for its description.</p>
       <div class="tagwrap"><table><thead><tr><th>Tag</th><th>Type</th><th class="num">Value</th></tr></thead><tbody id="tags"></tbody></table></div>
+      </details>
     </section>
   </div>
 </main>

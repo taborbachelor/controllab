@@ -83,3 +83,15 @@
   .story-steps li { margin: 2px 0; }
   .story-steps li.done { color: var(--muted); text-decoration: line-through; }
   button.attention { background: var(--accent, #2563eb); color: #fff; border-color: transparent; font-weight: 600; }
+  .l-hint { color: var(--muted); font-style: italic; }
+  details.tools > summary { cursor: pointer; font-weight: 600; font-size: 13px; padding: 2px 0; }
+  details.tools[open] > summary { margin-bottom: 8px; }
+  .intro { flex: 1 0 100%; margin: 0; font-size: 14px; max-width: 95ch; }
+  .intro-more { flex: 1 0 100%; font-size: 13px; }
+  .intro-more summary { cursor: pointer; color: var(--accent); }
+  .intro-more ul { margin: 6px 0 0; padding-left: 20px; max-width: 95ch; }
+  .intro-more li { margin: 3px 0; }
+  .legend .l-hint::before { display: none; }
+  header.page-intro { display: block; }
+  header.page-intro .titlebar { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; margin-bottom: 6px; }
+  header.page-intro .intro-more { margin-top: 6px; }

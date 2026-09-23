@@ -39,7 +39,7 @@ function renderMimic(v, animate) {
   const binPct = Math.max(0, Math.min(100, v["LT-101"]));
   $("bin-fill").setAttribute("y", BIN_TOP + BIN_H * (1 - binPct / 100));
   $("bin-fill").setAttribute("height", BIN_H * binPct / 100);
-  $("lt101").textContent = `LT-101  ${binPct.toFixed(1)} %`;
+  $("lt101").textContent = `${binPct.toFixed(1)} % full`;
   lamp("lsl101", v["LSL-101"], WARN);
 
   const gateOpen = v["ZSO-102"], gateClosed = v["ZSC-102"], gateCmd = v["XV-102.CMD_OPEN"];
@@ -48,7 +48,8 @@ function renderMimic(v, animate) {
   gate.setAttribute("fill", gateOpen ? RUN : OFF);
   gate.setAttribute("stroke", gateFb === gateCmd ? LINE : WARN);
   gate.setAttribute("stroke-dasharray", gateFb === gateCmd ? "none" : "6 4");
-  $("xv102-txt").textContent = (gateOpen ? "OPEN" : gateClosed ? "CLOSED" : "TRAVELLING") + ` · cmd ${gateCmd ? "open" : "close"}`;
+  $("xv102-txt").textContent = (gateOpen ? "Open" : gateClosed ? "Closed" : gateCmd ? "Opening…" : "Closing…") +
+    (gateFb !== null && gateFb !== gateCmd ? ` (told to ${gateCmd ? "open" : "close"})` : "");
 
   const fRun = v["M-103.RUNNING"], fCmd = v["M-103.RUN"], fTrip = v["M-103.FAULT"], plugged = v["LSH-103"];
   device($("m103"), fCmd, fRun, fTrip);
@@ -56,13 +57,15 @@ function renderMimic(v, animate) {
   // LSH-103, the discharge-chute plug switch: a jam. The drive still reports
   // RUNNING through one, so this is the only sign of it on the mimic.
   $("feeder-body").setAttribute("stroke", fTrip || plugged ? TRIP : LINE);
-  $("m103-txt").textContent = (fTrip ? "FAULT" : plugged ? "PLUGGED (LSH-103)" : fRun ? "RUNNING" : "STOPPED") + ` · cmd ${fCmd ? "run" : "stop"} · SC-103 ${v["SC-103"].toFixed(0)} %`;
+  $("m103-txt").textContent = (fTrip ? "Drive fault" : plugged ? "Jammed (chute plug switch LSH-103)" : fRun ? `Running at ${v["SC-103"].toFixed(0)} % speed` : "Stopped") +
+    (!fTrip && fCmd !== fRun ? ` (told to ${fCmd ? "run" : "stop"})` : "");
 
   const cRun = v["M-104.RUNNING"], cCmd = v["M-104.RUN"], cTrip = v["M-104.OL"], motion = v["ZSS-104"];
   device($("m104"), cCmd, cRun, cTrip);
   $("m104-l").setAttribute("fill", cRun || cTrip ? "#fff" : "var(--ink)");
   $("conv-belt").setAttribute("stroke", cTrip ? TRIP : cRun && !motion ? WARN : LINE);
-  $("m104-txt").textContent = (cTrip ? "OVERLOAD" : cRun ? "RUNNING" : "STOPPED") + ` · cmd ${cCmd ? "run" : "stop"} · motion ${motion ? "yes" : "no"}`;
+  $("m104-txt").textContent = (cTrip ? "Overload trip" : cRun && !motion ? "Motor on, belt not moving" : cRun ? "Running" : "Stopped") +
+    (!cTrip && cCmd !== cRun ? ` (told to ${cCmd ? "run" : "stop"})` : "");
   lamp("zss104", motion, RUN);
 
   // Material only visibly moves where it physically can.
@@ -77,7 +80,7 @@ function renderMimic(v, animate) {
   $("hop-fill").setAttribute("height", HOP_H * hopPct / 100);
   // A failed transmitter reads 0 kg, the same as an empty hopper; only its
   // channel fault (WT-105.FLT) says the number is meaningless.
-  $("wt105").textContent = v["WT-105.FLT"] ? "WT-105  FAILED (channel fault)" : `WT-105  ${kg.toFixed(0)} kg  (${hopPct.toFixed(1)} %)`;
+  $("wt105").textContent = v["WT-105.FLT"] ? "Weight signal FAILED" : `${kg.toFixed(0)} kg · ${hopPct.toFixed(1)} % full`;
   // Fail-safe switches: 1 = below the switch point, so the lamp lights on 0.
   lamp("lsh105", !v["LSH-105"], WARN);
   lamp("lshh105", !v["LSHH-105"], TRIP);
