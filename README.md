@@ -117,7 +117,7 @@ watchdog stops the plant within a second.
 | 5 | Telemetry | done |
 | 6 | Visualization | done |
 | 7 | Protocols (Modbus + external controller mode) | done |
-| 8 | AI engineering assistance | not started |
+| 8 | AI engineering assistance | in progress (step 1: a deterministic review gate for candidate scenarios) |
 | 9 | Virtual commissioning | not started |
 
 Full detail: `docs/CONTROL-LAB.md` §10.

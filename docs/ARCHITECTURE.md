@@ -87,6 +87,8 @@ ControlLab/
 │   │   ├── runner.py                 run_scenario() -- executes one Scenario,
 │   │   │                             always recording its telemetry events
 │   │   ├── report.py                 the interlock coverage matrix (pure logic)
+│   │   ├── candidates.py             review(): the gate every candidate scenario
+│   │   │                             passes before an engineer sees it (Phase 8 step 1)
 │   │   ├── external.py               RemoteLine + build_external_rig(): the suite
 │   │   │                             against the external controller (Phase 7 step 3b)
 │   │   └── commissioning_report.py   render_markdown() -- the Markdown
@@ -144,6 +146,7 @@ ControlLab/
 │   ├── dashboard.py                  starts the live dashboard on 127.0.0.1
 │   │                                  (--modbus-port also serves the I/O image)
 │   ├── register_map.py               writes docs/MODBUS-MAP.md from line_map.py
+│   ├── review_candidates.py          reviews candidate scenario files (Phase 8 step 1)
 │   └── external_controller.py        runs the reference external controller against
 │                                      dashboard.py --external
 ├── tests/
@@ -812,6 +815,16 @@ issue and propose the change"):
   FC 3, then after the scan FC 15 and one FC 16 carrying the outputs,
   the status block (`push_outputs(status=...)`), and the ack word.
 
+## Module responsibilities (Phase 8 step 1)
+
+- **`services/testing/candidates.py`** — `review(path, existing)`
+  returns a `Review` of findings (ok / warning / judgment / error) and
+  a verdict. It reuses the runner (built-in, twice, and across Modbus),
+  the vocabulary tables, and the §6.3 row list, so a candidate is
+  judged by exactly the machinery the suite itself uses. The vacuity
+  check reruns with `when` removed via `dataclasses.replace`. No AI, no
+  network. Any future generator feeds this gate, never `scenarios/`.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |
@@ -824,7 +837,7 @@ issue and propose the change"):
 | 5 | Telemetry | done — generic sampled tag history; state/alarm diffing observer; optional command sink; generated Markdown commissioning report |
 | 6 | Visualization | done — tag history in every scenario run; HTML replay viewer; live localhost dashboard with operator commands, fault injection, and replay download |
 | 7 | Protocols | done — Modbus server + client; register map (five PLC-master ranges); external-controller mode with the full scenario suite passing across Modbus; OpenPLC running a Structured Text port of the controller against the plant |
-| 8 | AI engineering assistance | not started |
+| 8 | AI engineering assistance | in progress — step 1 done (deterministic candidate review gate); steps 2-3 (model-dependent) await decisions |
 | 9 | Virtual commissioning | not started |
 
 Full detail and "done when" criteria per phase: `CONTROL-LAB.md` §10.
