@@ -116,7 +116,9 @@ def test_the_commanded_output_fields_are_field_evidence_not_controller_state():
         assert key in READ_FIELDS and key not in CONTROLLER_FIELDS
 
 
-def test_a_trip_drops_every_commanded_output_in_the_scan_it_faults():
+def test_a_trip_drops_feed_and_gate_in_the_scan_it_faults_and_the_conveyor_clears():
+    """Feed and gate drop in the scan the line faults; on an upstream trip the
+    conveyor stays commanded to clear the belt (docs/CONTROL-LAB.md §6.3)."""
     from services.control.line_state import LineState
     from services.testing.rig import tick
 
@@ -129,7 +131,8 @@ def test_a_trip_drops_every_commanded_output_in_the_scan_it_faults():
     rig.plant.feeder.motor.trip_now = True
     while rig.line.state != LineState.FAULTED:
         tick(rig)
-    assert [read_field(rig, k) for k in ("feeder_run_commanded", "conveyor_run_commanded", "gate_open_commanded")] == [False] * 3
+    assert [read_field(rig, k) for k in ("feeder_run_commanded", "conveyor_run_commanded", "gate_open_commanded")] == [
+        False, True, False]
 
 
 def test_no_scenario_is_vacuous_on_field_evidence_alone():

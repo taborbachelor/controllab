@@ -87,7 +87,10 @@ def test_a_plant_fault_reaches_the_remote_controller_and_it_shuts_the_line(loop)
     loop.run(5)
     assert (loop.state, loop.controller.line.fault_reason) == ("faulted", "feeder trip")
     plant = loop.plant.rig.plant
-    assert not (plant.conveyor.motor.running or plant.feeder.motor.running or plant.gate.is_open)
+    assert not (plant.feeder.motor.running or plant.gate.is_open)
+    assert plant.conveyor.motor.running  # an upstream trip: the conveyor clears the belt...
+    loop.run(25)
+    assert not plant.conveyor.motor.running  # ...then stops
 
 
 def test_full_recovery_driven_entirely_over_modbus(loop):
@@ -133,7 +136,7 @@ def test_watchdog_ignores_a_stopped_line_with_a_speed_setpoint_left_in(loop):
     loop.plant.command("start")
     loop.run(20)
     loop.plant.stimulus("feeder_trip", True)
-    loop.run(5)
+    loop.run(30)  # past the belt clearing: every run command off
     assert loop.plant.io.read("SC-103") == 100.0
     loop.run(30, controller=False)
     assert "controller_watchdog" not in [e["type"] for e in loop.plant.snapshot()["events"]]

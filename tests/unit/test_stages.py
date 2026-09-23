@@ -66,4 +66,4 @@ def test_later_stages_are_real_stimuli_not_setup(tmp_path):
     """The stage-2 'reset refused' claim is only meaningful because reset
     DOES work once its cause is gone: the recovery scenario proves both."""
     result = run_scenario(Scenario.load(REPO / "scenarios" / "faults" / "feeder_trip_recovery.yaml"))
-    assert result.passed and len(result.stage_elapsed) == 5
+    assert result.passed and len(result.stage_elapsed) == 6

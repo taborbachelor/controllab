@@ -1,6 +1,6 @@
 name: Feeder Trip Recovery -- Reset Refused Until The Drive Is Reset
 description: "The feeder's motor drive faults; reset is refused until the drive itself is reset at the field."
-title: "The drive fault trips the line and every output drops"
+title: "The drive fault trips the line: feed stops at once, the conveyor keeps running to clear the belt"
 
 # The full recovery procedure a commissioning engineer walks through after a
 # trip, as stages (then:). Each stage is applied once the previous one's
@@ -16,7 +16,7 @@ expect:
   line_state: faulted
   fault_reason: "feeder trip"
   feeder_run_commanded: false
-  conveyor_run_commanded: false
+  conveyor_run_commanded: true
   gate_open_commanded: false
 
 within:
@@ -37,6 +37,13 @@ then:
       seconds: 1.0
   # Clear the cause and reset the drive at the field; its (acknowledged)
   # alarm goes out once the healthy drive is seen.
+  - title: "The conveyor runs the belt empty, then stops"
+    expect:
+      conveyor_run_commanded: false
+      belt_empty: true
+      line_state: faulted
+    within:
+      seconds: 3.0
   - title: "Clearing the fault and resetting the drive clears the alarm"
     when:
       feeder_trip: false

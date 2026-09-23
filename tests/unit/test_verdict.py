@@ -45,8 +45,8 @@ def test_a_passing_multistage_run():
     scenario = Scenario.load(JAM)
     s = summarize(scenario, run_scenario(scenario), "Python controller", root=SCENARIOS)
     assert s.verdict == "PASS" and s.passed and s.qualifier == ""
-    assert [st.status for st in s.stages] == ["passed"] * 5
-    assert s.checks_passed == s.checks_evaluated == s.checks_total == 12
+    assert [st.status for st in s.stages] == ["passed"] * 6
+    assert s.checks_passed == s.checks_evaluated == s.checks_total == 15
     assert s.first_out == "LSH-103.JAM"  # from the event log
     assert s.invariants == "held on every tick" and s.first_divergence is None
     assert s.stages[1].title == "Reset is refused while the chute is still plugged"
@@ -62,7 +62,7 @@ def test_a_failing_run_reports_the_real_actual_values_and_the_first_divergence()
     result = run_scenario(scenario, line_cls=REGRESSIONS["reset-ignores-jam"].cls)
     s = summarize(scenario, result, "Python controller", regression="reset-ignores-jam")
     assert s.verdict == "FAIL"
-    assert [st.status for st in s.stages] == ["passed", "failed", "not_run", "not_run", "not_run"]
+    assert [st.status for st in s.stages] == ["passed", "failed", "not_run", "not_run", "not_run", "not_run"]
     failed = s.stages[1]
     by_key = {c.key: c for c in failed.checks}
     assert by_key["line_state"].status == "mismatch" and by_key["line_state"].actual == "idle"  # reset was taken

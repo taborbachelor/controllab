@@ -88,3 +88,14 @@ def test_alarm_table_matches_the_published_alarm_bits():
     warnings = {i for i, (_, _, is_warning) in enumerate(ALARMS) if is_warning}
     line = next(l for l in ST.splitlines() if "unacked_trip := TRUE" in l)
     assert {int(i) for i in re.findall(r"i <> (\d+)", line)} == warnings
+
+
+def test_the_belt_clearing_trips_match_the_python_controller():
+    """The ST program lists the upstream trips by reason code; Python by name
+    (LineController.CLEAR_BELT_ON). Tied here so the two can't drift."""
+    from services.control.line_controller import CLEAR_BELT_ON
+    from services.protocols.controller_status import FAULT_REASONS
+
+    lists = re.findall(r"clearing := M104_RUN AND \(([^)]*)\)", ST)
+    assert len(lists) == 3 and len(set(lists)) == 1  # the STARTING, RUNNING and STOPPING trip entries
+    assert {FAULT_REASONS[int(c)] for c in re.findall(r"trip = (\d+)", lists[0])} == set(CLEAR_BELT_ON)

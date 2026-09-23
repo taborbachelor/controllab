@@ -1,6 +1,6 @@
 name: Feeder Jam Recovery -- Reset Refused Until The Jam Is Cleared
 description: "A feeder jam trips the line; reset is refused while the chute is plugged; the line recovers only through the correct operator sequence."
-title: "The jam trips the line and every output drops"
+title: "The jam trips the line: feed stops at once, the conveyor keeps running to clear the belt"
 
 given:
   line_state: running
@@ -12,7 +12,7 @@ expect:
   line_state: faulted
   fault_reason: "feeder jam"
   feeder_run_commanded: false
-  conveyor_run_commanded: false
+  conveyor_run_commanded: true
   gate_open_commanded: false
 
 within:
@@ -31,6 +31,13 @@ then:
       any_unacknowledged_trip: false
     within:
       seconds: 1.0
+  - title: "The conveyor runs the belt empty, then stops"
+    expect:
+      conveyor_run_commanded: false
+      belt_empty: true
+      line_state: faulted
+    within:
+      seconds: 3.0
   # Clear the jam at the feeder: the plug switch drops, the acknowledged
   # alarm goes out.
   - title: "Clearing the jam at the feeder clears the alarm"

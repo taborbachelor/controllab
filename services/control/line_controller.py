@@ -39,6 +39,15 @@ from services.control.line_state import LineState, StartInhibit, StartStep
 from services.control.motor_control import MotorControl
 from services.simulation.engine.io_image import IOImage
 
+# Trips whose cause is upstream of the conveyor (docs/CONTROL-LAB.md §6.3:
+# trips cascade upstream; downstream keeps running so it can clear). On
+# these, a running conveyor keeps running for the purge time so the belt
+# empties into the hopper, then stops. Every other trip -- E-stop, hopper
+# high-high, an unknown hopper level, any conveyor fault -- stops it at once.
+CLEAR_BELT_ON = frozenset({
+    "feeder trip", "feeder jam", "feeder failed to prove running", "gate travel fault", "gate failed to prove open",
+})
+
 
 class LineController:
     def __init__(
@@ -85,6 +94,8 @@ class LineController:
 
         self._step_elapsed_s = 0.0
         self._purge_elapsed_s = 0.0
+        # FAULTED on an upstream trip: the conveyor is still clearing the belt.
+        self.clearing_belt = False
         self._start_requested = False
         self._stop_requested = False
         self._reset_requested = False
@@ -153,7 +164,7 @@ class LineController:
         elif self.state == LineState.STOPPING:
             self._scan_stopping(dt)
         elif self.state == LineState.FAULTED:
-            self._scan_faulted()
+            self._scan_faulted(dt)
         elif self.state == LineState.ESTOPPED:
             self._scan_estopped()
 
@@ -367,17 +378,30 @@ class LineController:
     # ---- FAULTED ------------------------------------------------------
 
     def _enter_faulted(self, reason: str) -> None:
+        self.clearing_belt = reason in CLEAR_BELT_ON and self.conveyor_ctrl.commanded_run
+        self._purge_elapsed_s = 0.0
         self.feeder_ctrl.command_run(False)
-        self.conveyor_ctrl.command_run(False)
+        self.conveyor_ctrl.command_run(self.clearing_belt)
         self.gate_ctrl.command_open(False)
         self.state = LineState.FAULTED
         self.fault_reason = reason
         self.start_step = None
 
-    def _scan_faulted(self) -> None:
+    def _scan_faulted(self, dt: float) -> None:
         self.feeder_ctrl.command_run(False)
-        self.conveyor_ctrl.command_run(False)
         self.gate_ctrl.command_open(False)
+        if self.clearing_belt:
+            # The same purge as a normal stop, cut short by anything that makes
+            # running the belt on wrong: the conveyor itself failing or losing
+            # motion, the hopper at high-high, or its level unknown.
+            self._purge_elapsed_s = round(self._purge_elapsed_s + dt, 9)
+            if (self._purge_elapsed_s >= self.purge_time_s
+                    or self.conveyor_ctrl.faulted
+                    or not self.interlocks.conveyor_confirmed_running
+                    or self.interlocks.hopper_high_high
+                    or self.interlocks.hopper_weight_failed):
+                self.clearing_belt = False
+        self.conveyor_ctrl.command_run(self.clearing_belt)
         if self._start_requested:
             # Refused exactly as before (FAULTED never acts on start); only
             # the reporting is new.
@@ -387,6 +411,8 @@ class LineController:
             return
         if self._fault_cause_cleared():
             self._clear_all_device_faults()
+            self.clearing_belt = False  # IDLE means off; a reset ends any belt clearing,
+            self.conveyor_ctrl.command_run(False)  # in this same scan
             self.state = LineState.IDLE
             self.fault_reason = None
         # else: refused, stays FAULTED, fault_reason unchanged
@@ -428,6 +454,7 @@ class LineController:
     # ---- ESTOPPED -------------------------------------------------------
 
     def _enter_estopped(self) -> None:
+        self.clearing_belt = False
         self.feeder_ctrl.command_run(False)
         self.conveyor_ctrl.command_run(False)
         self.gate_ctrl.command_open(False)

@@ -10,7 +10,7 @@ expect:
   line_state: faulted
   fault_reason: "feeder trip"
   feeder_run_commanded: false
-  conveyor_run_commanded: false
+  conveyor_run_commanded: true
   gate_open_commanded: false
 
 within:

@@ -119,7 +119,7 @@ REGRESSIONS: dict[str, Regression] = {
             "jam-trip-removed", JamTripRemoved,
             "The feeder-jam (plug switch) trip was deleted from the RUNNING state.",
             "faults/feeder_jam_recovery.yaml",
-            "Feeder jam -> line trips, every output off",
+            "Feeder jam -> line trips: feed stops, the conveyor clears the belt",
         ),
         Regression(
             "reset-ignores-jam", ResetIgnoresJam,

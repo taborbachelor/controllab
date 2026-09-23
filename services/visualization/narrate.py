@@ -190,7 +190,9 @@ def narrate(s: dict) -> dict:
         out = {
             "tone": "trip",
             "headline": "Tripped: the controller stopped the line.",
-            "detail": " ".join([what, "It stopped the feeder, closed the gate and stopped the conveyor. "
+            "detail": " ".join([what, ("It stopped the feeder and closed the gate; the conveyor keeps running a "
+                                       "little longer to clear the belt, then stops." if v["M-104.RUN"] else
+                                       "It stopped the feeder, closed the gate and stopped the conveyor."),
                                 "It won't restart until the cause is fixed and someone resets it."] + notes),
             "steps": steps,
         }

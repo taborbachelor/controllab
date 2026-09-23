@@ -73,6 +73,7 @@ PROGRAM controllab_line
     fault_reason : INT := 0;
     step_scans : INT := 0;
     purge_scans : INT := 0;
+    clearing : BOOL := FALSE;       (* FAULTED on an upstream trip: the conveyor still clearing the belt *)
     feed_demand : BOOL := TRUE;
 
     (* one-shot operator requests, consumed by this scan *)
@@ -232,7 +233,7 @@ PROGRAM controllab_line
 
   (* ================= e-stop overrides every state ================= *)
   IF NOT ES_001 AND state <> 5 THEN
-    M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE;
+    M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE; clearing := FALSE;
     state := 5; fault_reason := 1; start_step := 0;
   END_IF;
 
@@ -264,7 +265,10 @@ PROGRAM controllab_line
       ELSIF gate_travel_fault THEN trip := 7;
       END_IF;
       IF trip <> 0 THEN
-        M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE;
+        (* an upstream trip (feeder trip, feeder fail-to-start, gate fault, jam) keeps a running
+           conveyor on to clear the belt; every other trip stops it at once -- LineController.CLEAR_BELT_ON *)
+        clearing := M104_RUN AND (trip = 3 OR trip = 5 OR trip = 7 OR trip = 9 OR trip = 10);
+        M103_RUN := FALSE; M104_RUN := clearing; XV102_CMD_OPEN := FALSE; purge_scans := 0;
         state := 4; fault_reason := trip; start_step := 0;
       ELSIF stop_req THEN
         state := 3; M103_RUN := FALSE; XV102_CMD_OPEN := FALSE; purge_scans := 0;
@@ -296,7 +300,10 @@ PROGRAM controllab_line
       ELSIF gate_travel_fault THEN trip := 9;
       END_IF;
       IF trip <> 0 THEN
-        M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE;
+        (* an upstream trip (feeder trip, feeder fail-to-start, gate fault, jam) keeps a running
+           conveyor on to clear the belt; every other trip stops it at once -- LineController.CLEAR_BELT_ON *)
+        clearing := M104_RUN AND (trip = 3 OR trip = 5 OR trip = 7 OR trip = 9 OR trip = 10);
+        M103_RUN := FALSE; M104_RUN := clearing; XV102_CMD_OPEN := FALSE; purge_scans := 0;
         state := 4; fault_reason := trip;
       ELSIF stop_req THEN
         state := 3; M103_RUN := FALSE; XV102_CMD_OPEN := FALSE; purge_scans := 0;
@@ -318,7 +325,10 @@ PROGRAM controllab_line
       ELSIF gate_travel_fault THEN trip := 9;
       END_IF;
       IF trip <> 0 THEN
-        M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE;
+        (* an upstream trip (feeder trip, feeder fail-to-start, gate fault, jam) keeps a running
+           conveyor on to clear the belt; every other trip stops it at once -- LineController.CLEAR_BELT_ON *)
+        clearing := M104_RUN AND (trip = 3 OR trip = 5 OR trip = 7 OR trip = 9 OR trip = 10);
+        M103_RUN := FALSE; M104_RUN := clearing; XV102_CMD_OPEN := FALSE; purge_scans := 0;
         state := 4; fault_reason := trip;
       ELSE
         purge_scans := purge_scans + 1;
@@ -327,13 +337,22 @@ PROGRAM controllab_line
         END_IF;
       END_IF;
 
-    4: (* FAULTED -- off; reset only once the pass-through causes have cleared *)
-      M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE;
+    4: (* FAULTED -- feed and gate off; the conveyor off too unless it is clearing the belt after an
+          upstream trip; reset only once the pass-through causes have cleared *)
+      M103_RUN := FALSE; XV102_CMD_OPEN := FALSE;
+      IF clearing THEN
+        purge_scans := purge_scans + 1;
+        IF purge_scans >= LIM_PURGE OR M104_OL OR NOT conveyor_confirmed OR hopper_high_high OR WT105_FLT THEN
+          clearing := FALSE;
+        END_IF;
+      END_IF;
+      M104_RUN := clearing;
       IF start_req THEN start_inhibit := 16#0010; END_IF;          (* refused, as always; now reported *)
       IF reset_req AND NOT hopper_high_high AND NOT M104_OL AND NOT M103_FAULT AND NOT LSH_103 AND NOT WT105_FLT THEN
         conv_proof_fault := FALSE; conv_proof_scans := 0;
         feed_proof_fault := FALSE; feed_proof_scans := 0;
         gate_travel_fault := FALSE; gate_scans := 0;
+        clearing := FALSE; M104_RUN := FALSE;                      (* IDLE means off, in this same scan *)
         state := 0; fault_reason := 0;
       END_IF;
 

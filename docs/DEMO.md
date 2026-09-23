@@ -78,15 +78,17 @@ are identical."*
 On **Feeder jam recovery**, click **Run & verify**. Walk through the result
 card stage by stage:
 
-1. **The jam trips the line and every output drops.** A jam doesn't fault
-   the motor. The drive keeps running while no material comes out, and only
-   the discharge-chute plug switch catches it. First-out alarm:
-   `LSH-103.JAM`.
+1. **The jam trips the line: feed stops at once, the conveyor keeps
+   running to clear the belt.** A jam doesn't fault the motor. The drive
+   keeps running while no material comes out, and only the discharge-chute
+   plug switch catches it. First-out alarm: `LSH-103.JAM`. Trips cascade
+   upstream: what's downstream of the fault keeps running so it can clear.
 2. **Reset is refused while the chute is still plugged.** The reset
    interlock.
-3. **Clearing the jam at the feeder clears the alarm.**
-4. **Reset is accepted once the cause is gone.**
-5. **The line restarts and material flows.**
+3. **The conveyor runs the belt empty, then stops.**
+4. **Clearing the jam at the feeder clears the alarm.**
+5. **Reset is accepted once the cause is gone.**
+6. **The line restarts and material flows.**
 
 Each stage shows MATCH for every check and its response time. Click **Watch
 this run (replay)** to scrub through the exact run, tick by tick.

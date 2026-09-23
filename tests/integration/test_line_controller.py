@@ -664,3 +664,61 @@ def test_bin_low_while_running_stays_a_warning_for_the_whole_run():
     assert warning.active and warning.is_warning
     assert not line.alarms.any_unacknowledged_trip()
     assert plant.bin.level_kg < 500.0  # it really was feeding from the low bin, not idling
+
+
+# ---- belt clearing on upstream trips (docs/CONTROL-LAB.md §6.3) ------------
+
+
+def _running_with_material_on_the_belt():
+    plant, io, line = make_rig()
+    line.start()
+    run(plant, io, line, 3.0)
+    assert line.state == LineState.RUNNING and plant.conveyor.mass_on_belt_kg > 0
+    return plant, io, line
+
+
+def test_an_upstream_trip_clears_the_belt_then_stops_the_conveyor():
+    plant, io, line = _running_with_material_on_the_belt()
+    plant.feeder.motor.trip_now = True
+    run(plant, io, line, 0.3)
+    assert (line.state, line.fault_reason) == (LineState.FAULTED, "feeder trip")
+    assert io.read("M-104.RUN") and not io.read("M-103.RUN") and not io.read("XV-102.CMD_OPEN")
+    run(plant, io, line, 2.5)
+    assert not io.read("M-104.RUN") and plant.conveyor.mass_on_belt_kg == 0 and plant.spilled_kg == 0
+    assert line.state == LineState.FAULTED
+
+
+def test_a_conveyor_or_high_high_trip_stops_the_conveyor_at_once_and_cuts_clearing_short():
+    plant, io, line = _running_with_material_on_the_belt()
+    plant.conveyor.motor.trip_now = True
+    run(plant, io, line, 0.3)
+    assert line.fault_reason == "conveyor trip" and not io.read("M-104.RUN")
+
+    plant, io, line = _running_with_material_on_the_belt()
+    plant.feeder.motor.trip_now = True
+    run(plant, io, line, 0.3)
+    assert line.clearing_belt
+    plant.hopper.level_kg = 0.97 * plant.hopper.capacity_kg  # the hopper reaches high-high mid-clear
+    run(plant, io, line, 0.3)
+    assert not line.clearing_belt and not io.read("M-104.RUN")
+    assert plant.conveyor.mass_on_belt_kg > 0  # held on the belt, not dumped into a full hopper
+
+
+def test_a_reset_or_an_estop_ends_belt_clearing():
+    plant, io, line = _running_with_material_on_the_belt()
+    plant.feeder.motor.trip_now = True
+    run(plant, io, line, 0.3)
+    plant.feeder.motor.trip_now = False
+    plant.feeder.motor.clear_fault()
+    run(plant, io, line, 0.2)
+    line.acknowledge()
+    line.reset()
+    tick(plant, io, line)
+    assert line.state == LineState.IDLE and not line.clearing_belt and not io.read("M-104.RUN")
+
+    plant, io, line = _running_with_material_on_the_belt()
+    plant.feeder.motor.trip_now = True
+    run(plant, io, line, 0.3)
+    plant.estop.trip()
+    run(plant, io, line, 0.2)
+    assert line.state == LineState.ESTOPPED and not line.clearing_belt and not io.read("M-104.RUN")

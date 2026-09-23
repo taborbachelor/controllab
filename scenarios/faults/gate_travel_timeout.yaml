@@ -22,9 +22,16 @@ then:
       line_state: faulted
       fault_reason: "gate failed to prove open"
       feeder_run_commanded: false
-      conveyor_run_commanded: false
+      conveyor_run_commanded: true
       gate_open_commanded: false
     within:
       seconds: 5.0
+  - title: "The conveyor runs the belt empty, then stops"
+    expect:
+      conveyor_run_commanded: false
+      belt_empty: true
+      line_state: faulted
+    within:
+      seconds: 3.0
 
 interlock: "Gate travel timeout"
