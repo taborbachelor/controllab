@@ -29,17 +29,17 @@ still plugged.
 
 **What's verified:**
 
-- 27 scenarios covering all 11 interlocks in the spec: trips, recoveries,
+- 29 scenarios covering all 11 interlocks in the spec: trips, recoveries,
   E-stop, and instrument faults (stuck and failed sensors, a 1oo2 overfill
   trip with a switch/transmitter disagreement alarm).
 - The same scenario files run unchanged against **OpenPLC** executing an
   IEC 61131-3 Structured Text port of the controller over Modbus TCP, in
-  real time: **27/27 scenarios, 81/81 runs**
+  real time: **29/29 scenarios, 87/87 runs**
   ([commissioning report](examples/openplc/COMMISSIONING-REPORT.md)).
 - Mass is conserved to the milligram and checked on every scan, and every
   run is deterministic, so the same scenario gives the same result every
   time.
-- 662 automated tests. The demo site is rebuilt from the current code on
+- 676 automated tests. The demo site is rebuilt from the current code on
   every push, so it can't drift from the repository.
 
 ## Quick start
@@ -163,7 +163,7 @@ E-stop. The result is an engineering record:
 
 Nothing in that record is inferred beyond what the runner observed.
 
-The repository has 27 scenarios covering all 11 interlock rows of the
+The repository has 29 scenarios covering all 11 interlock rows of the
 specification. New scenarios, hand-written or AI-generated, go through a
 deterministic review gate that rejects a scenario that is vacuous (it still
 passes with its fault removed), non-deterministic, or disagrees between
@@ -202,7 +202,7 @@ Structured Text port of the controller. Against a PLC, scenarios run in real
 time, with limits in plant time and a stated I/O latency allowance. Every
 scenario starts from a cold PLC restart.
 
-**Result on OpenPLC: 27/27 scenarios over 3 passes (81/81 runs), none needing the latency
+**Result on OpenPLC: 29/29 scenarios over 3 passes (87/87 runs), none needing the latency
 allowance, 11/11 interlock rows covered**
 ([`examples/openplc/COMMISSIONING-REPORT.md`](examples/openplc/COMMISSIONING-REPORT.md)).
 
@@ -319,7 +319,7 @@ Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md).
 
 ## Status
 
-All roadmap phases are complete, and 662 tests pass.
+All roadmap phases are complete, and 676 tests pass.
 
 | Phase | Focus | Status |
 |---|---|---|
