@@ -35,6 +35,7 @@ _TAGS: list[tuple[str, TagType, str, str]] = [
     ("M-104.OL", TagType.DI, "", "Conveyor motor overload tripped"),
     ("ZSS-104", TagType.DI, "", "Conveyor motion (zero-speed) switch"),
     ("WT-105", TagType.AI, "kg", "Hopper weight"),
+    ("WT-105.FLT", TagType.DI, "", "Hopper weight input channel fault (wire break / transmitter failed)"),
     ("LSH-105", TagType.DI, "", "Hopper high level switch (80%)"),
     ("LSHH-105", TagType.DI, "", "Hopper high-high level switch (95%)"),
     ("ES-001", TagType.DI, "", "E-stop healthy (1 = healthy; fail-safe polarity)"),
@@ -51,26 +52,33 @@ def build_line_io_image() -> IOImage:
 
 def publish_plant_inputs(plant: Plant, io: IOImage) -> None:
     """Simulation -> I/O image: publish every DI/AI tag from the plant's
-    current state. Call *after* plant.step()."""
-    io.write_input("LT-101", plant.bin.level_pct)
-    io.write_input("LSL-101", plant.bin.low)
+    current state, as its instrument reports it (plant.instruments: a stuck
+    or failed sensor reports something other than the truth). Call *after*
+    plant.step()."""
+    def publish(tag: str, true_value) -> None:
+        io.write_input(tag, plant.instruments.report(tag, true_value))
 
-    io.write_input("ZSO-102", plant.gate.is_open)
-    io.write_input("ZSC-102", plant.gate.is_closed)
+    publish("LT-101", plant.bin.level_pct)
+    publish("LSL-101", plant.bin.low)
 
-    io.write_input("M-103.RUNNING", plant.feeder.motor.running)
-    io.write_input("M-103.FAULT", plant.feeder.motor.fault)
-    io.write_input("LSH-103", plant.feeder.plugged)
+    publish("ZSO-102", plant.gate.is_open)
+    publish("ZSC-102", plant.gate.is_closed)
 
-    io.write_input("M-104.RUNNING", plant.conveyor.motor.running)
-    io.write_input("M-104.OL", plant.conveyor.motor.fault)
-    io.write_input("ZSS-104", plant.conveyor.motion_confirmed)
+    publish("M-103.RUNNING", plant.feeder.motor.running)
+    publish("M-103.FAULT", plant.feeder.motor.fault)
+    publish("LSH-103", plant.feeder.plugged)
 
-    io.write_input("WT-105", plant.hopper.level_kg)
-    io.write_input("LSH-105", plant.hopper.high)
-    io.write_input("LSHH-105", plant.hopper.high_high)
+    publish("M-104.RUNNING", plant.conveyor.motor.running)
+    publish("M-104.OL", plant.conveyor.motor.fault)
+    publish("ZSS-104", plant.conveyor.motion_confirmed)
 
-    io.write_input("ES-001", plant.estop.healthy)
+    publish("WT-105", plant.hopper.level_kg)
+    # The input card's own diagnostic for WT-105, not an instrument reading.
+    io.write_input("WT-105.FLT", plant.instruments.channel_fault("WT-105"))
+    publish("LSH-105", plant.hopper.high)
+    publish("LSHH-105", plant.hopper.high_high)
+
+    publish("ES-001", plant.estop.healthy)
 
 
 def apply_plant_commands(io: IOImage, plant: Plant) -> None:

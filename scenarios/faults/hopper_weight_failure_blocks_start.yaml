@@ -1,0 +1,16 @@
+name: Start Refused While The Hopper Weight Signal Is Failed
+
+given:
+  sensor_failed: "WT-105"
+
+when:
+  start: true
+
+expect:
+  line_state: idle
+  start_inhibit: ["SENSOR_FAILED", "UNACKNOWLEDGED_ALARM"]
+
+within:
+  seconds: 0.3
+
+interlock: "Hopper weight signal healthy"

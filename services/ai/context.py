@@ -45,6 +45,9 @@ VALUE_SHAPES: dict[str, str] = {
     "feeder_trip": "true/false (inject/clear a feeder VFD trip; trips only a running motor)",
     "conveyor_fail_to_start": "true/false (conveyor motor never proves running)",
     "feeder_fail_to_start": "true/false (feeder motor never proves running)",
+    "sensor_stuck": '"<input tag>" (that instrument freezes at its last reading; undetectable by the controller)',
+    "sensor_failed": '"WT-105" (signal lost: reads 0.0 and its channel fault WT-105.FLT sets; only WT-105 has a diagnostic)',
+    "sensor_restored": '"<input tag>" (the instrument is repaired at the field)',
     "feeder_jam": "true/false (jam/clear the feeder discharge: flow stops, drive keeps running, plug switch LSH-103 makes after the screw pushes against it)",
     "gate_stuck": "true/false (gate never reaches its limit switch)",
     "belt_slip": "true/false (conveyor motion switch reads no motion)",
@@ -67,6 +70,7 @@ VALUE_SHAPES: dict[str, str] = {
     "any_unacknowledged_trip": "true/false",
     "latched_alarm_ids": "sorted list of alarm ids (see alarms)",
     "first_out": "alarm id of the first-out alarm, or null",
+    "hopper_weight_agrees": "true/false (WT-105's reading within 5 kg of the true hopper weight)",
     "start_inhibit": 'sorted list of reason names, ["NONE"] when the most recent start was accepted',
 }
 

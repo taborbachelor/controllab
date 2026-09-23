@@ -13,7 +13,7 @@
   ControlLab is a Modbus TCP remote-I/O device to this program. Configure
   it in OpenPLC under Slave Devices with the five ranges from
   docs/MODBUS-MAP.md ("Controller view"):
-      Discrete inputs      start 0    size 12   -> %IX100.0 .. %IX101.3
+      Discrete inputs      start 0    size 13   -> %IX100.0 .. %IX101.4
       Coils                start 0    size 3    -> %QX100.0 .. %QX100.2
       Input registers      start 0    size 2    -> %IW100 .. %IW101
       Holding - read       start 100  size 1    -> %IW102 (after the input registers)
@@ -27,7 +27,7 @@
 
 PROGRAM controllab_line
   VAR
-    (* ---- field inputs (discrete inputs 0-11) ---- *)
+    (* ---- field inputs (discrete inputs 0-12) ---- *)
     LSL_101 AT %IX100.0 : BOOL;       (* bin low *)
     ZSO_102 AT %IX100.1 : BOOL;       (* gate open limit *)
     ZSC_102 AT %IX100.2 : BOOL;       (* gate closed limit *)
@@ -40,6 +40,7 @@ PROGRAM controllab_line
     LSHH_105 AT %IX101.1 : BOOL;      (* hopper high-high *)
     ES_001 AT %IX101.2 : BOOL;        (* e-stop healthy, fail-safe *)
     LSH_103 AT %IX101.3 : BOOL;       (* feeder discharge chute plugged: a jam *)
+    WT105_FLT AT %IX101.4 : BOOL;    (* hopper weight input channel fault: WT_105 is meaningless *)
 
     (* ---- analog inputs (input registers 0-1) and the HMI request word (holding 100) ---- *)
     LT_101 AT %IW100 : INT;           (* bin level, % x100 *)
@@ -60,7 +61,7 @@ PROGRAM controllab_line
     ST_FIRST_OUT AT %QW105 : INT;     (* 1 + alarm bit, 0 = none *)
     HMI_ACK AT %QW106 : WORD;
     ST_START_INHIBIT AT %QW107 : WORD; (* why the last start was refused: 1 bin low, 2 hopper HH,
-                                          4 unacked alarm, 8 e-stop, 16 faulted; 0 = none *)
+                                          4 unacked alarm, 8 e-stop, 16 faulted, 32 sensor failed; 0 = none *)
   END_VAR
 
   (* IEC 61131-3: a VAR block holds either located variables or ordinary
@@ -94,9 +95,9 @@ PROGRAM controllab_line
     gate_travel_fault : BOOL := FALSE;
 
     (* alarms, in controller_status.ALARMS bit order *)
-    alarm_cond : ARRAY[0..9] OF BOOL;
-    alarm_active : ARRAY[0..9] OF BOOL;
-    alarm_unacked : ARRAY[0..9] OF BOOL;
+    alarm_cond : ARRAY[0..10] OF BOOL;
+    alarm_active : ARRAY[0..10] OF BOOL;
+    alarm_unacked : ARRAY[0..10] OF BOOL;
     first_out_holder : INT := 0;      (* 1-based, 0 = none *)
     was_active : BOOL;
     unacked_trip : BOOL;
@@ -168,8 +169,9 @@ PROGRAM controllab_line
   alarm_cond[7] := conv_proof_fault;            (* M-104.START_PROOF *)
   alarm_cond[8] := LSHH_105;                    (* WT-105.HIGH_HIGH *)
   alarm_cond[9] := LSH_103;                     (* LSH-103.JAM *)
+  alarm_cond[10] := WT105_FLT;                 (* WT-105.FAIL *)
 
-  FOR i := 0 TO 9 DO
+  FOR i := 0 TO 10 DO
     was_active := alarm_active[i];
     alarm_active[i] := alarm_cond[i];
     IF alarm_active[i] AND NOT was_active THEN
@@ -180,14 +182,14 @@ PROGRAM controllab_line
   END_FOR;
 
   IF ack_req THEN
-    FOR i := 0 TO 9 DO
+    FOR i := 0 TO 10 DO
       alarm_unacked[i] := FALSE;
       IF NOT alarm_active[i] AND first_out_holder = i + 1 THEN first_out_holder := 0; END_IF;
     END_FOR;
   END_IF;
 
   unacked_trip := FALSE;
-  FOR i := 0 TO 9 DO
+  FOR i := 0 TO 10 DO
     IF i <> 1 AND alarm_unacked[i] THEN unacked_trip := TRUE; END_IF;   (* bit 1 is the only warning *)
   END_FOR;
 
@@ -206,6 +208,7 @@ PROGRAM controllab_line
         IF LSHH_105 THEN start_inhibit := start_inhibit OR 16#0002; END_IF;
         IF LSL_101 THEN start_inhibit := start_inhibit OR 16#0001; END_IF;
         IF unacked_trip THEN start_inhibit := start_inhibit OR 16#0004; END_IF;
+        IF WT105_FLT THEN start_inhibit := start_inhibit OR 16#0020; END_IF;   (* unknown means stopped *)
         IF start_inhibit = 0 THEN
           state := 1; start_step := 0; step_scans := 0;
           M104_RUN := TRUE;                                        (* downstream first *)
@@ -218,6 +221,7 @@ PROGRAM controllab_line
       ELSIF M104_OL THEN trip := 4;
       ELSIF M103_FAULT THEN trip := 3;
       ELSIF LSH_103 THEN trip := 10;
+      ELSIF WT105_FLT THEN trip := 11;
       ELSIF conv_proof_fault THEN trip := 6;
       ELSIF feed_proof_fault THEN trip := 5;
       ELSIF gate_travel_fault THEN trip := 7;
@@ -248,6 +252,7 @@ PROGRAM controllab_line
       IF LSHH_105 THEN trip := 2;
       ELSIF M103_FAULT THEN trip := 3;
       ELSIF LSH_103 THEN trip := 10;                         (* the drive still reports running *)
+      ELSIF WT105_FLT THEN trip := 11;                      (* the feed decision reads WT_105 *)
       ELSIF M104_OL THEN trip := 4;
       ELSIF NOT conveyor_confirmed THEN trip := 8;
       ELSIF gate_travel_fault THEN trip := 9;
@@ -287,7 +292,7 @@ PROGRAM controllab_line
     4: (* FAULTED -- off; reset only once the pass-through causes have cleared *)
       M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE;
       IF start_req THEN start_inhibit := 16#0010; END_IF;          (* refused, as always; now reported *)
-      IF reset_req AND NOT LSHH_105 AND NOT M104_OL AND NOT M103_FAULT AND NOT LSH_103 THEN
+      IF reset_req AND NOT LSHH_105 AND NOT M104_OL AND NOT M103_FAULT AND NOT LSH_103 AND NOT WT105_FLT THEN
         conv_proof_fault := FALSE; conv_proof_scans := 0;
         feed_proof_fault := FALSE; feed_proof_scans := 0;
         gate_travel_fault := FALSE; gate_scans := 0;
@@ -310,7 +315,7 @@ PROGRAM controllab_line
   ST_FAULT_REASON := fault_reason;
   ST_ALARMS_ACTIVE := 16#0000;
   ST_ALARMS_UNACKED := 16#0000;
-  FOR i := 0 TO 9 DO
+  FOR i := 0 TO 10 DO
     bit := SHL(IN := WORD#1, N := i);
     IF alarm_active[i] THEN ST_ALARMS_ACTIVE := ST_ALARMS_ACTIVE OR bit; END_IF;
     IF alarm_unacked[i] THEN ST_ALARMS_UNACKED := ST_ALARMS_UNACKED OR bit; END_IF;

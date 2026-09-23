@@ -1,0 +1,24 @@
+name: Stuck Hopper Weight Transmitter -- The Independent High-High Switch Still Trips
+
+# A stuck transmitter reports nothing about itself: WT-105 keeps its last
+# reading while the hopper level jumps, and the controller has no way to tell
+# (there is no diagnostic for "stuck"). What still protects the line is the
+# high-high level switch, a separate instrument that doesn't depend on WT-105.
+# (Stuck is applied first, so the reading freezes before the level moves.)
+
+given:
+  line_state: running
+
+when:
+  sensor_stuck: "WT-105"
+  hopper_level_pct: 97.5
+
+expect:
+  hopper_weight_agrees: false
+  line_state: faulted
+  fault_reason: "hopper high-high"
+
+within:
+  seconds: 0.5
+
+interlock: "Hopper high-high"

@@ -15,6 +15,7 @@ from services.simulation.equipment.conveyor import Conveyor
 from services.simulation.equipment.estop import EStop
 from services.simulation.equipment.feeder import Feeder
 from services.simulation.equipment.gate import Gate
+from services.simulation.equipment.instruments import Instruments
 from services.simulation.equipment.vessel import Hopper, MaterialBin
 
 
@@ -59,6 +60,10 @@ class Plant:
             high_high_pct=cfg.hopper_high_high_pct,
         )
         self.estop = EStop()
+        # What the field instruments report, including injected sensor
+        # faults (instruments.py). WT-105's input channel has a fault
+        # diagnostic; no other instrument's does.
+        self.instruments = Instruments(diagnosed={"WT-105"})
 
         self.spilled_kg = 0.0
         self.time_s = 0.0

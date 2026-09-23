@@ -22,6 +22,7 @@ discrete_inputs:
   1009: LSHH-105
   1010: ES-001
   1011: LSH-103
+  1012: WT-105.FLT
 
 input_registers:
   2000: {tag: LT-101, scale: 100, full_scale: 100}

@@ -49,6 +49,7 @@ class StartInhibit(IntFlag):
     UNACKNOWLEDGED_ALARM = 4
     ESTOP_ACTIVE = 8
     LINE_FAULTED = 16  # start pressed while FAULTED: refused until reset
+    SENSOR_FAILED = 32  # Phase 4 completion: the hopper weight signal (WT-105.FLT) has failed
 
 
 def inhibit_names(inhibit: StartInhibit) -> list[str]:

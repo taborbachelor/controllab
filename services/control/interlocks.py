@@ -56,6 +56,14 @@ class Interlocks:
         return self.io.read("LSH-103")
 
     @property
+    def hopper_weight_failed(self) -> bool:
+        """WT-105.FLT, the input channel's diagnostic: WT-105's value is
+        meaningless (it reads 0.0, like an empty hopper), so nothing that
+        depends on the hopper weight can be decided. docs/CONTROL-LAB.md §8:
+        unknown means stopped."""
+        return self.io.read("WT-105.FLT")
+
+    @property
     def hopper_high(self) -> bool:
         return self.io.read("LSH-105")
 
@@ -113,4 +121,6 @@ class Interlocks:
             reasons.append("hopper at high-high")
         if self.bin_low:
             reasons.append("bin low")
+        if self.hopper_weight_failed:
+            reasons.append("hopper weight signal failed")
         return PermissiveCheck(ok=not reasons, reasons=reasons)

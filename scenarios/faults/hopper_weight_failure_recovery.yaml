@@ -1,0 +1,48 @@
+name: Hopper Weight Failure Recovery -- Reset Refused Until The Signal Is Restored
+
+given:
+  line_state: running
+
+when:
+  sensor_failed: "WT-105"
+
+expect:
+  line_state: faulted
+  fault_reason: "hopper weight signal failed"
+
+within:
+  seconds: 0.5
+
+then:
+  # Signal still lost: reset refused (the ack proves it was evaluated).
+  - when:
+      acknowledge: true
+      reset: true
+    expect:
+      line_state: faulted
+      any_unacknowledged_trip: false
+    within:
+      seconds: 1.0
+  # Repair the transmitter: the reading is true again and the alarm goes out.
+  - when:
+      sensor_restored: "WT-105"
+    expect:
+      hopper_weight_agrees: true
+      latched_alarm_ids: []
+    within:
+      seconds: 1.0
+  - when:
+      reset: true
+    expect:
+      line_state: idle
+    within:
+      seconds: 1.0
+  - when:
+      start: true
+    expect:
+      line_state: running
+      feeder_flowing: true
+    within:
+      seconds: 3.0
+
+interlock: "Hopper weight signal healthy"

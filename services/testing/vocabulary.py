@@ -125,6 +125,23 @@ def _apply_feeder_jam(rig: Rig, value: bool) -> None:
     rig.plant.feeder.jammed = value
 
 
+# Sensor faults (Phase 4 completion; services/simulation/equipment/
+# instruments.py). The value is the instrument's tag. stuck: it keeps its
+# last reading; failed: signal lost (only WT-105 has a channel diagnostic);
+# restored: repaired at the field.
+
+
+def _instrument_action(method: str):
+    def apply(rig: Rig, value: str) -> None:
+        if value not in rig.io or not rig.io.tag(value).type.is_input:
+            raise ScenarioError(f"sensor_{method}: {value!r} is not an input instrument tag")
+        try:
+            getattr(rig.plant.instruments, {"stuck": "stick", "failed": "fail", "restored": "restore"}[method])(value)
+        except ValueError as e:
+            raise ScenarioError(f"sensor_{method}: {e}") from e
+    return apply
+
+
 def _apply_hopper_level_pct(rig: Rig, value: float) -> None:
     rig.plant.hopper.level_kg = (value / 100.0) * rig.plant.hopper.capacity_kg
 
@@ -146,6 +163,9 @@ APPLY_ACTIONS: dict[str, Callable[[Rig, object], None]] = {
     "gate_stuck": _apply_gate_stuck,
     "belt_slip": _apply_belt_slip,
     "feeder_jam": _apply_feeder_jam,
+    "sensor_stuck": _instrument_action("stuck"),
+    "sensor_failed": _instrument_action("failed"),
+    "sensor_restored": _instrument_action("restored"),
     "feeder_drive_reset": _apply_feeder_drive_reset,
     "conveyor_overload_reset": _apply_conveyor_overload_reset,
     "gate_reset": _apply_gate_reset,
@@ -167,6 +187,12 @@ READ_FIELDS: dict[str, Callable[[Rig], object]] = {
     "spilled_kg": lambda rig: rig.plant.spilled_kg,
     "spilled": lambda rig: rig.plant.spilled_kg > 1e-9,
     "hopper_level_kg": lambda rig: rig.plant.hopper.level_kg,
+    # What WT-105 is reporting on the wire -- which a stuck or failed
+    # transmitter makes differ from hopper_level_kg, the truth. Agreement is
+    # judged the way a commissioning engineer checks a transmitter against a
+    # known level: within 5 kg (0.25 % of the 2,000 kg span; Modbus carries
+    # 0.1 kg).
+    "hopper_weight_agrees": lambda rig: abs(rig.io.read("WT-105") - rig.plant.hopper.level_kg) <= 5.0,
     "any_unacknowledged_trip": lambda rig: rig.line.alarms.any_unacknowledged_trip(),
     "latched_alarm_ids": lambda rig: sorted(a.id for a in rig.line.alarms.latched_alarms),
     # The first-out alarm's id, or null: which alarm started this episode.

@@ -181,6 +181,8 @@ class LineController:
             inhibit |= StartInhibit.HOPPER_HIGH_HIGH
         if self.interlocks.bin_low:
             inhibit |= StartInhibit.BIN_LOW
+        if self.interlocks.hopper_weight_failed:
+            inhibit |= StartInhibit.SENSOR_FAILED
         if unacked_trips:
             inhibit |= StartInhibit.UNACKNOWLEDGED_ALARM
         self.start_inhibit = inhibit
@@ -247,6 +249,8 @@ class LineController:
             return "feeder trip"
         if self.interlocks.feeder_plugged:
             return "feeder jam"
+        if self.interlocks.hopper_weight_failed:
+            return "hopper weight signal failed"
         if self.conveyor_ctrl.start_proof_fault:
             return "conveyor failed to prove running"
         if self.feeder_ctrl.start_proof_fault:
@@ -296,6 +300,11 @@ class LineController:
             # The drive still reports RUNNING through a jam (current limit),
             # so feeder_ctrl.faulted never sees it -- only the plug switch does.
             return "feeder jam"
+        if self.interlocks.hopper_weight_failed:
+            # The feed/no-feed decision below reads WT-105; with its signal
+            # gone that decision can't be made. Unknown means stopped (§8).
+            # STOPPING doesn't trip on it: the stop sequence never reads WT-105.
+            return "hopper weight signal failed"
         if self.conveyor_ctrl.faulted:
             return "conveyor trip"
         if not self.interlocks.conveyor_confirmed_running:
@@ -384,6 +393,7 @@ class LineController:
             or self.conveyor_ctrl.faulted
             or self.feeder_ctrl.faulted
             or self.interlocks.feeder_plugged  # the jam is still in the chute
+            or self.interlocks.hopper_weight_failed  # the signal hasn't been restored
         )
 
     def _clear_all_device_faults(self) -> None:

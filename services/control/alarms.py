@@ -119,6 +119,7 @@ class AlarmManager:
         # can't coincide with another trip's rising edge in practice: it takes
         # plug_detect_s of the feeder running jammed to make.
         self._register("LSH-103.JAM", "Feeder jam (discharge chute plugged)", lambda: self._il.feeder_plugged)
+        self._register("WT-105.FAIL", "Hopper weight transmitter failed", lambda: self._il.hopper_weight_failed)
 
     def _register(self, alarm_id: str, description: str, condition: AlarmCondition, is_warning: bool = False) -> None:
         alarm = Alarm(id=alarm_id, description=description, is_warning=is_warning)

@@ -80,6 +80,7 @@ INTERLOCKS: list[InterlockRow] = [
     InterlockRow("Any motor fail-to-start / trip", "Trip"),
     InterlockRow("Gate travel timeout", "Trip"),
     InterlockRow("Feeder jam", "Trip"),
+    InterlockRow("Hopper weight signal healthy", "Permissive + trip"),
 ]
 
 

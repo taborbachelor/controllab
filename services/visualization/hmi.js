@@ -75,7 +75,9 @@ function renderMimic(v, animate) {
   const kg = v["WT-105"], hopPct = Math.max(0, Math.min(100, 100 * kg / PLANT.hopper_capacity_kg));
   $("hop-fill").setAttribute("y", HOP_TOP + HOP_H * (1 - hopPct / 100));
   $("hop-fill").setAttribute("height", HOP_H * hopPct / 100);
-  $("wt105").textContent = `WT-105  ${kg.toFixed(0)} kg  (${hopPct.toFixed(1)} %)`;
+  // A failed transmitter reads 0 kg, the same as an empty hopper; only its
+  // channel fault (WT-105.FLT) says the number is meaningless.
+  $("wt105").textContent = v["WT-105.FLT"] ? "WT-105  FAILED (channel fault)" : `WT-105  ${kg.toFixed(0)} kg  (${hopPct.toFixed(1)} %)`;
   lamp("lsh105", v["LSH-105"], WARN);
   lamp("lshh105", v["LSHH-105"], TRIP);
 

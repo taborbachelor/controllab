@@ -984,6 +984,18 @@ issue and propose the change"):
 - **Vocabulary** — `feeder_jam`; read fields `feeder_flowing`,
   `first_out` (a controller field).
 
+## Module responsibilities (Phase 4 completion, 4c: sensor failure)
+
+- **`services/simulation/equipment/instruments.py`** — `Instruments`
+  (`stick` / `fail` / `restore`, `report`, `channel_fault`), held by
+  `Plant`; `plant_io.publish_plant_inputs` publishes every input through
+  it and publishes `WT-105.FLT` from the channel diagnostic.
+- **`Interlocks.hopper_weight_failed`** — start permissive
+  (`StartInhibit.SENSOR_FAILED`), STARTING/RUNNING trip, reset gate;
+  alarm `WT-105.FAIL`.
+- **Vocabulary** — `sensor_stuck`, `sensor_failed`, `sensor_restored`
+  (value: an input tag); read field `hopper_weight_agrees`.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |

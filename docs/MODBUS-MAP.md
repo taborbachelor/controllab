@@ -10,7 +10,7 @@ Everything a controller needs is five contiguous ranges, one per table — exact
 
 | Table | Direction | Start | Size | Contents |
 |---|---|---:|---:|---|
-| Discrete inputs (FC 02) | read | 0 | 12 | field sensors |
+| Discrete inputs (FC 02) | read | 0 | 13 | field sensors |
 | Input registers (FC 04) | read | 0 | 2 | analog sensors |
 | Holding registers (FC 03) | read | 100 | 1 | HMI request word |
 | Coils (FC 15) | write | 0 | 3 | field outputs |
@@ -32,6 +32,7 @@ Everything a controller needs is five contiguous ranges, one per table — exact
 | 9 | 10010 | `LSHH-105` | Hopper high-high level switch (95%) |
 | 10 | 10011 | `ES-001` | E-stop healthy (1 = healthy; fail-safe polarity) |
 | 11 | 10012 | `LSH-103` | Feeder discharge chute plug switch (jam) |
+| 12 | 10013 | `WT-105.FLT` | Hopper weight input channel fault (wire break / transmitter failed) |
 
 ## Input registers (FC 04, read-only)
 
@@ -114,6 +115,7 @@ Kept apart from field I/O and outside the controller view: writing 1 issues the 
 | 8 | conveyor lost confirmation |
 | 9 | gate travel fault |
 | 10 | feeder jam |
+| 11 | hopper weight signal failed |
 
 ### Alarm bits (`alarms_active`, `alarms_unacked`; `first_out` = bit + 1)
 
@@ -129,6 +131,7 @@ Kept apart from field I/O and outside the controller view: writing 1 issues the 
 | 7 | `M-104.START_PROOF` | Conveyor failed to prove running | trip |
 | 8 | `WT-105.HIGH_HIGH` | Hopper high-high | trip |
 | 9 | `LSH-103.JAM` | Feeder jam (discharge chute plugged) | trip |
+| 10 | `WT-105.FAIL` | Hopper weight transmitter failed | trip |
 
 ### `start_inhibit` bits (why the most recent start request was refused; 0 = NONE)
 
@@ -139,6 +142,7 @@ Kept apart from field I/O and outside the controller view: writing 1 issues the 
 | 4 | UNACKNOWLEDGED_ALARM |
 | 8 | ESTOP_ACTIVE |
 | 16 | LINE_FAULTED |
+| 32 | SENSOR_FAILED |
 
 Set only when a start command is evaluated: NONE after an accepted start, unchanged when no start is requested -- so it proves a start was actually issued.
 

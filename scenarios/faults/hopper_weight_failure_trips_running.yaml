@@ -1,0 +1,30 @@
+name: Hopper Weight Transmitter Failure Trips A Running Line
+
+# WT-105's signal is lost: its value reads 0 kg -- exactly what an empty
+# hopper reads -- and only the input channel's fault bit (WT-105.FLT) says
+# the reading is meaningless. The feed decision depends on WT-105, so the
+# controller can't keep deciding it: unknown means stopped.
+
+# The hopper is half full, so the failed reading visibly disagrees with the
+# truth. From an EMPTY hopper it wouldn't: 0 kg failed and 0 kg real read
+# the same, which is the whole reason the channel fault bit exists
+# (tests/integration/test_sensor_failure.py pins that case).
+
+given:
+  hopper_level_pct: 50
+  line_state: running
+
+when:
+  sensor_failed: "WT-105"
+
+expect:
+  line_state: faulted
+  fault_reason: "hopper weight signal failed"
+  first_out: "WT-105.FAIL"
+  feeder_running: false
+  hopper_weight_agrees: false
+
+within:
+  seconds: 0.5
+
+interlock: "Hopper weight signal healthy"
