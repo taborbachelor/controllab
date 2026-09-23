@@ -9,6 +9,9 @@ dependencies = ["pyyaml>=6.0"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pymodbus>=3.10,<4"]  # pymodbus: interop tests only, never imported at runtime
+# Optional AI engineering assistance (Phase 8). Never needed for simulation,
+# control, testing, protocols, or the dashboard.
+ai = ["anthropic>=1.8,<2"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
