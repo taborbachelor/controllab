@@ -5,7 +5,7 @@ simulated plant before the logic ever reaches real equipment.**
 
 ### ▶ [Watch a test run in your browser](https://taborbachelor.github.io/controllab/): recorded runs, nothing to install
 
-[![A feeder-jam commissioning test mid-run: the simulated line on the left is tripped with the feeder jammed; the first-out alarm is the chute plug switch; the test on the right shows stage 1 (trip within 1 s) and stage 2 (reset refused while the chute is plugged) passed](docs/images/demo-feeder-jam.jpg)](https://taborbachelor.github.io/controllab/)
+[![A feeder-jam commissioning test mid-run: the simulated line on the left is tripped with the feeder jammed; the conveyor is still running to clear the belt, and the first-out alarm is the chute plug switch; the test on the right shows stage 1 (trip within 1 s) and stage 2 (reset refused while the chute is plugged) passed](docs/images/demo-feeder-jam.jpg)](https://taborbachelor.github.io/controllab/)
 
 **What you're looking at.** On the left is a small bulk-material handling
 line: bin → slide gate → screw feeder → inclined conveyor → weighed hopper.
@@ -16,7 +16,9 @@ the feeder, then checks the controller's response one stage at a time, each
 against a time limit: the line must trip within 1 s, a reset must be refused
 while the chute is still plugged, and the line may recover only in the right
 order. In the frame above, stage 2 has just passed: the line is faulted, the
-chute plug switch has caught the jam, and the operator's reset was refused.
+chute plug switch has caught the jam, the operator's reset was refused, and
+the conveyor is still running to clear the belt (trips cascade upstream;
+what's downstream of the fault keeps running so it can clear).
 
 **Why it exists.** The question it answers: *can we change control software
 without breaking the machine?* Control logic gets changed all the time: a
