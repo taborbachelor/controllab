@@ -1,0 +1,30 @@
+# The full test suite on every push and pull request: the plant models, the
+# controller, every scenario (in process, over Modbus, and against a
+# free-running controller in real time), the deliberate regressions, and the
+# drift guards on the OpenPLC program. OpenPLC itself is not run here
+# (examples/openplc/COMMISSIONING-REPORT.md is that record).
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev]"
+      - run: pytest -q
