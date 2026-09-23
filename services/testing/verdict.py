@@ -91,6 +91,58 @@ def classify(key: str, value: object) -> str:
     raise KeyError(key)
 
 
+# What each stimulus DOES, in a sentence a newcomer can read: the stage
+# narration on the replay page. (true-text, false-text); an instrument key
+# formats its tag, a level key its percentage. A drift test keeps this
+# complete against vocabulary.APPLY_ACTIONS.
+_PHRASES: dict[str, tuple[str, str]] = {
+    "start": ("Operator presses Start", ""),
+    "stop": ("Operator presses Stop", ""),
+    "reset": ("Operator presses Reset", ""),
+    "acknowledge": ("Operator acknowledges the alarm", ""),
+    "conveyor_trip": ("The conveyor motor's overload trips", "The cause of the conveyor overload is removed"),
+    "feeder_trip": ("The feeder drive faults", "The cause of the feeder drive fault is removed"),
+    "conveyor_fail_to_start": ("The conveyor motor will not start when told to", "The conveyor motor is repaired"),
+    "feeder_fail_to_start": ("The feeder drive will not start when told to", "The feeder drive is repaired"),
+    "gate_stuck": ("The gate actuator sticks", "The gate actuator is freed"),
+    "belt_slip": ("The conveyor belt starts slipping (motor on, belt not moving)", "The belt slip is fixed"),
+    "feeder_jam": ("The feeder jams: its drive keeps turning but the discharge chute plugs",
+                   "The jam is cleared at the feeder"),
+    "feeder_drive_reset": ("The feeder drive is reset at the field", ""),
+    "conveyor_overload_reset": ("The conveyor overload is reset at the field", ""),
+    "gate_reset": ("The gate actuator is reset at the field", ""),
+}
+
+
+def describe_action(key: str, value: object) -> str:
+    """A scenario action as a plain sentence."""
+    if key == "estop":
+        return "Someone presses the E-stop" if value == "tripped" else "The E-stop is released"
+    if key == "sensor_stuck":
+        return f"{value} sticks at its last reading"
+    if key == "sensor_failed":
+        return f"{value} loses its signal"
+    if key == "sensor_restored":
+        return f"{value} is repaired"
+    if key == "hopper_level_pct":
+        return f"The hopper is at {value:g} % full"
+    if key == "bin_level_pct":
+        return f"The bin is at {value:g} % full"
+    on, off = _PHRASES[key]
+    return on if value or not off else off
+
+
+def describe_setup(given: dict) -> list[str]:
+    """A scenario's `given` as plain sentences: the starting condition."""
+    out = []
+    for key, value in given.items():
+        if key == "line_state":
+            out.append("The line is started and running" if value == "running" else "The line is stopped and ready")
+        else:
+            out.append(describe_action(key, value))
+    return out
+
+
 @dataclass
 class Check:
     key: str
@@ -104,7 +156,7 @@ class Check:
 class StageSummary:
     n: int
     title: str
-    actions: list[dict]  # {key, value, kind}
+    actions: list[dict]  # {key, value, kind, text}
     within_s: float
     status: str  # passed | failed | not_run | not_observable
     applied_t: float | None
@@ -134,6 +186,7 @@ class RunSummary:
     wall_time_s: float | None
     regression: str | None = None
     notes: list[str] = field(default_factory=list)
+    setup_text: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -185,7 +238,8 @@ def summarize(
                 checks.append(Check(key, label, expected, None, "not_run"))
         summaries.append(StageSummary(
             n=n, title=stage.title,
-            actions=[{"key": k, "value": v, "kind": classify(k, v)} for k, v in stage.when.items()],
+            actions=[{"key": k, "value": v, "kind": classify(k, v), "text": describe_action(k, v)}
+                     for k, v in stage.when.items()],
             within_s=stage.within_s, status=status, applied_t=stage_applied, response_s=response, checks=checks,
         ))
         if status == "passed" and applied is not None:
@@ -245,6 +299,7 @@ def summarize(
             "held on every tick" if not setup_failed else "not checked past setup"),
         first_out=first_out, first_divergence=first_divergence,
         plant_time_s=plant_t, wall_time_s=wall_time_s, regression=regression,
+        setup_text=describe_setup(scenario.given),
     )
 
 

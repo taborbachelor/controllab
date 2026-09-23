@@ -8,7 +8,8 @@ from services.control.line_controller import LineController
 from services.testing.regressions import REGRESSIONS
 from services.testing.runner import run_scenario
 from services.testing.scenario import Scenario, ScenarioLoadError
-from services.testing.verdict import LABELS, classify, event_signature, render_text, summarize
+from services.testing.verdict import (LABELS, classify, describe_action, describe_setup, event_signature, render_text,
+                                      summarize)
 from services.testing.vocabulary import APPLY_ACTIONS, READ_FIELDS
 
 SCENARIOS = Path(__file__).resolve().parents[2] / "scenarios"
@@ -26,6 +27,20 @@ def test_every_read_field_has_a_plain_label_and_every_action_a_kind():
                 pytest.fail(f"{key} is not classified")
 
 
+def test_every_action_reads_as_a_plain_sentence():
+    """The replay page narrates stages with these; a new vocabulary key
+    without a phrase fails here, not as a KeyError on someone's page."""
+    for key in APPLY_ACTIONS:
+        for value in ((True, False) if key not in ("estop", "sensor_stuck", "sensor_failed", "sensor_restored",
+                                                   "hopper_level_pct", "bin_level_pct")
+                      else ("tripped", "healthy") if key == "estop" else (50,) if key.endswith("_pct") else ("WT-105",)):
+            text = describe_action(key, value)
+            assert text and "_" not in text, (key, value, text)
+    assert describe_action("feeder_jam", True) != describe_action("feeder_jam", False)
+    assert describe_setup({"line_state": "running", "bin_level_pct": 5.0}) == [
+        "The line is started and running", "The bin is at 5 % full"]
+
+
 def test_a_passing_multistage_run():
     scenario = Scenario.load(JAM)
     s = summarize(scenario, run_scenario(scenario), "Python controller", root=SCENARIOS)
@@ -35,6 +50,8 @@ def test_a_passing_multistage_run():
     assert s.first_out == "LSH-103.JAM"  # from the event log
     assert s.invariants == "held on every tick" and s.first_divergence is None
     assert s.stages[1].title == "Reset is refused while the chute is still plugged"
+    assert s.stages[1].actions[1]["text"] == "Operator presses Reset"
+    assert s.setup_text == ["The line is started and running"]
     # stage start times chain: each stage begins when the previous one's checks all held
     for a, b in zip(s.stages, s.stages[1:]):
         assert b.applied_t == pytest.approx(a.applied_t + a.response_s)

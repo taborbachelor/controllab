@@ -113,3 +113,25 @@ def test_pacer_steps_in_real_time_and_stops_cleanly():
         pacer.stop()
         pacer.join(timeout=2)
     assert not pacer.is_alive()
+
+
+def test_the_latest_run_replay_carries_its_run_summary(server):
+    """'Watch this run' opens the self-explaining replay: the recording plus
+    the verifier's own run summary, regression build named."""
+    import re
+    import time
+
+    base, _, pacer = server
+    pacer.speed = 10.0  # the Pacer isn't started; run_live paces on its speed alone
+    assert request(base + "/api/replay/latest")[0] == 404
+    body = {"file": "faults/feeder_jam_recovery.yaml", "runtime": "python", "regression": "reset-ignores-jam"}
+    assert request(base + "/api/verify", body)[0] == 200
+    deadline = time.monotonic() + 30
+    while json.loads(request(base + "/api/state")[1])["verification"]["busy"] and time.monotonic() < deadline:
+        time.sleep(0.05)
+    status, html, _ = request(base + "/api/replay/latest")
+    assert status == 200
+    data = json.loads(re.search(r"const R = (.*?);\n", html).group(1).replace(r"<\/", "</"))
+    assert data["summary"]["verdict"] == "FAIL" and data["summary"]["regression"] == "reset-ignores-jam"
+    assert data["summary"]["first_divergence"]["stage"] == 2
+    assert "plugged" in data["meta"]["regression_change"]

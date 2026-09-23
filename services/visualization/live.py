@@ -54,6 +54,7 @@ from services.telemetry.events import Event, EventLog
 from services.telemetry.tag_history import TagHistory
 from services.simulation.equipment.instruments import InstrumentFault
 from services.testing.invariants import InvariantViolation, Invariants
+from services.testing.regressions import REGRESSIONS
 from services.testing.runner import _Telemetry, execute
 from services.testing.rig import DEFAULT_PLANT_CONFIG, DT, build_rig, tick
 from services.testing.vocabulary import apply_field
@@ -543,9 +544,12 @@ def make_handler(session: LiveSession, pacer: Pacer) -> type[BaseHTTPRequestHand
                 if verifier.latest_result is None:
                     return self._json(404, {"error": "no verification has run yet"})
                 scenario, result = verifier.latest_result
+                first = verifier.latest["runs"][0]
+                reg = REGRESSIONS.get(first["regression"]) if first["regression"] else None
                 replay = build_replay(scenario.name, result.events, result.tags, PLANT, meta={
                     "passed": result.passed, "file": scenario.path.name, "detail": result.detail,
-                    "when_applied_t": result.when_applied_t})
+                    "when_applied_t": result.when_applied_t, "regression_change": reg.change if reg else None},
+                    summary=first)
                 return self._send(200, render_html(replay).encode("utf-8"), "text/html; charset=utf-8")
             if url.path == "/api/replay":
                 return self._send(

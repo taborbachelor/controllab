@@ -1156,6 +1156,23 @@ issue and propose the change"):
   compared: lockstep runs event by event, real-time runs by verdict and
   checks. `POST /api/verify`, `GET /api/replay/latest`.
 
+## The self-explaining replay (readable cold)
+
+A replay of a scenario run carries the run's summary
+(`build_replay(..., summary=RunSummary.to_dict())`), and the page then
+explains itself to someone who has never seen ControlLab: an intro saying
+what they're looking at, a caption narrating the current moment, and the
+test itself beside the line, each stage turning passed or failed when
+playback reaches the time the runner recorded for it (a passed stage ends
+at `applied_t + response_s`, the failed one at its deadline). The page
+judges nothing; every status and time is the summary's. Playback starts
+itself and pauses briefly on each stage outcome. `verdict.describe_action()`
+and `describe_setup()` give each action and starting condition a plain
+sentence (drift-tested against the vocabulary). `scripts/replay.py` and the
+dashboard's *Watch this run* both produce this page; `scripts/replay.py
+--regression NAME` records a run against a deliberate-regression build. A
+live-session recording has no summary and gets the plain replay.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |

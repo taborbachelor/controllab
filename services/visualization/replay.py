@@ -100,16 +100,25 @@ def _apply(event: Event, state: str, board: dict[str, AlarmView]) -> str:
 
 
 def build_replay(
-    title: str, events: list[Event], tags: TagHistory, plant: dict, meta: dict | None = None, initial_state: str = "idle"
+    title: str, events: list[Event], tags: TagHistory, plant: dict, meta: dict | None = None, initial_state: str = "idle",
+    summary: dict | None = None,
 ) -> dict:
     """Everything the page needs, as one JSON-serializable dict. `plant`
     carries the physical constants the mimic needs to draw levels
     (hopper capacity and switch setpoints -- WT-105 is in kg, not %).
     `meta` is free-form run context shown in the header (pass/fail,
-    source file, ...)."""
+    source file, ...).
+
+    `summary` is the run's engineering result (verdict.RunSummary.to_dict())
+    when the recording is a scenario run. With it, the page explains
+    itself: it shows the test beside the line, and each stage turns
+    passed or failed as playback reaches the moment the runner recorded
+    it, using the summary's own stage times -- nothing is re-judged here.
+    Without it (a live-session recording) the page is the plain replay."""
     return {
         "title": title,
         "meta": meta or {},
+        "summary": summary,
         "plant": plant,
         "tags": [
             {"name": n, "type": tags.io.tag(n).type.name, "units": tags.io.tag(n).units, "description": tags.io.tag(n).description}

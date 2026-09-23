@@ -11,6 +11,14 @@
   shared hmi.css / mimic.svg.html / hmi.js (page.py inlines them). Plain
   JS + inline SVG, no dependencies, no network.
 
+  Two modes. A scenario run carries its run summary (verdict.py), and the
+  page explains itself: an intro saying what this is, a caption narrating
+  the current moment, and the test script beside the line, each stage
+  turning passed/failed when playback reaches the time the runner recorded
+  for it. Nothing is re-judged in the page -- every status and time comes
+  from the summary. A live-session recording has no summary and shows the
+  plain replay: line, alarms, events, tags.
+
   Display convention (high-performance HMI style): equipment is drawn in
   grays; a dark fill means running/open, an outline means stopped/closed.
   Color is reserved for abnormal conditions -- red for a trip, amber for a
@@ -19,9 +27,94 @@
 <style>
 /*__HMI_CSS__*/
 </style>
+<style>
+  [hidden] { display: none !important; }
+  .rp-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; padding: 10px 20px;
+            background: var(--run); color: #fff; border: none; }
+  .rp-bar a { color: #fff; }
+  .rp-brand { font-weight: 700; font-size: 16px; text-decoration: none; letter-spacing: .01em; }
+  .rp-tagline { font-size: 13px; opacity: .85; }
+  .rp-bar .rp-src { margin-left: auto; font-size: 13px; }
+  .rp-nav { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 20px 0; }
+  .rp-nav a { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 6px;
+              border: 1px solid var(--grid); background: var(--panel); color: var(--ink); text-decoration: none; font-size: 14px; }
+  .rp-nav a:hover, .rp-nav a:focus-visible { border-color: var(--accent); }
+  .rp-nav a[aria-current="page"] { border-color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); font-weight: 600; }
+  .rp-nav .n { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 3px; color: #fff; background: var(--run); }
+  .rp-nav .n.fail { background: var(--trip); }
+  .rp-intro { margin: 12px 20px 0; padding: 14px 18px; background: var(--panel); border: 1px solid var(--grid); border-radius: 8px; }
+  .rp-kicker { margin: 0; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .rp-kicker.fail { color: var(--trip); }
+  .rp-intro h1 { margin: 2px 0 2px; font-size: 24px; line-height: 1.2; }
+  .rp-sub { margin: 0 0 6px; font-size: 16px; color: var(--muted); }
+  .rp-lede { margin: 0 0 8px; font-size: 15px; max-width: 80ch; }
+  .rp-what { margin: 0; font-size: 13px; color: var(--muted); max-width: 100ch; }
+  .rp-bug { margin: 8px 0 0; padding: 8px 12px; border-left: 4px solid var(--trip); background: #fff5f5; font-size: 14px; max-width: 100ch; }
+
+  .now { margin: 0 0 10px; padding: 10px 14px; border-radius: 6px; border-left: 6px solid var(--accent); background: var(--hollow); min-height: 68px; }
+  .now.ok { border-left-color: var(--run); } .now.warn { border-left-color: var(--warn); } .now.trip { border-left-color: var(--trip); }
+  .now-k { margin: 0; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .now-t { margin: 2px 0 0; font-size: 17px; font-weight: 600; line-height: 1.35; }
+  .now.trip .now-t { color: var(--trip); }
+
+  .tst { list-style: none; margin: 0; padding: 0; }
+  .tst > li { border-left: 4px solid var(--grid); padding: 6px 0 8px 12px; margin: 0 0 6px; transition: background .3s; }
+  .tst > li.running { border-left-color: var(--accent); background: #e9f0f7; }
+  .tst > li.passed { border-left-color: var(--run); }
+  .tst > li.failed { border-left-color: var(--trip); background: #fff5f5; }
+  .tst > li.pending, .tst > li.not_run { opacity: .6; }
+  .tst-h { margin: 0; display: flex; gap: 8px; align-items: baseline; font-weight: 600; font-size: 14px; }
+  .tst-mk { width: 1.1em; flex: none; text-align: center; font-weight: 800; }
+  .passed .tst-mk { color: var(--run); } .failed .tst-mk, .failed .tst-h { color: var(--trip); } .running .tst-mk { color: var(--accent); }
+  .tst-time { margin: 1px 0 0 1.7em; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .failed .tst-time { color: var(--trip); font-weight: 600; }
+  .tst-do { margin: 4px 0 0 1.7em; font-size: 13px; }
+  .tst-do span { display: inline-block; padding: 1px 7px; margin: 1px 4px 1px 0; border-radius: 10px; border: 1px solid var(--grid); background: var(--hollow); font-size: 12px; }
+  .tst-do span.fault { border-color: var(--trip); color: var(--trip); } .tst-do span.operator { border-color: var(--accent); color: var(--accent); }
+  .tst-do span.repair { border-color: var(--run); }
+  .tst-x { margin: 4px 0 0 1.7em; border-collapse: collapse; width: auto; font-size: 12px; }
+  .tst-x td { border: none; padding: 1px 12px 1px 0; }
+  .tst-x .mk { font-weight: 700; white-space: nowrap; color: var(--muted); }
+  .tst-x tr.match .mk { color: var(--run); } .tst-x tr.mismatch td { color: var(--trip); font-weight: 600; }
+  .tst-file { margin: -4px 0 10px; font-size: 12px; color: var(--muted); }
+  body.explained main { grid-template-columns: minmax(0, 1fr) 440px; }
+  @media (max-width: 1000px) { body.explained main { grid-template-columns: minmax(0, 1fr); } }
+  .tst-foot { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+
+  .final { margin-top: 12px; padding: 10px 14px; border-radius: 6px; border: 2px solid var(--run); background: var(--hollow); }
+  .final.fail { border-color: var(--trip); background: #fff5f5; }
+  .final-v { display: flex; gap: 12px; align-items: center; }
+  .final-v b { font-size: 20px; padding: 2px 10px; border-radius: 5px; color: #fff; background: var(--run); letter-spacing: .03em; }
+  .final.fail .final-v b { background: var(--trip); }
+  .final p { margin: 6px 0 0; font-size: 13px; }
+
+  details.detail { margin: 0 20px 20px; }
+  details.detail > summary { cursor: pointer; font-weight: 600; font-size: 14px; padding: 8px 0; }
+  .detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; }
+  @media (max-width: 1000px) { .detail-grid { grid-template-columns: minmax(0, 1fr); } }
+  .controls label { font-size: 12px; color: var(--muted); display: inline-flex; gap: 4px; align-items: center; }
+</style>
 </head>
 <body>
-<header>
+<header class="rp-bar" id="rp-bar" hidden>
+  <a class="rp-brand" id="rp-brand">ControlLab</a>
+  <span class="rp-tagline">Automated commissioning tests for industrial control logic, against a simulated line</span>
+  <a class="rp-src" id="rp-src" hidden>Source on GitHub</a>
+</header>
+<nav class="rp-nav" id="rp-nav" aria-label="Recorded runs" hidden></nav>
+<section class="rp-intro" id="rp-intro" hidden>
+  <p class="rp-kicker" id="rp-kicker"></p>
+  <h1 id="rp-title"></h1>
+  <p class="rp-sub" id="rp-sub"></p>
+  <p class="rp-lede" id="rp-lede"></p>
+  <p class="rp-what"><strong>What you're looking at:</strong> a recording of one automated commissioning test.
+    On the left, a simulated bulk-material line (bin → gate → feeder → conveyor → hopper) run by its control
+    program, which sees only I/O, exactly as a PLC would. On the right, the test: it operates the line, injects the
+    fault, and checks the controller's response stage by stage, each against a time limit. The playback is the
+    run's own recorded telemetry, not an animation.</p>
+  <p class="rp-bug" id="rp-bug" hidden></p>
+</section>
+<header id="plain-head">
   <h1 id="title"></h1>
   <span id="verdict" class="verdict"></span>
   <span id="meta" class="meta"></span>
@@ -29,54 +122,116 @@
 <main>
   <div class="col">
     <section aria-label="Line mimic">
-      <h2>Line</h2>
+      <div class="now" id="now" aria-live="polite" hidden><p class="now-k" id="now-k"></p><p class="now-t" id="now-t"></p></div>
+      <h2 id="line-h">Line</h2>
 <!--__MIMIC_SVG__-->
       <div class="controls">
         <button id="play" type="button" aria-label="Play">▶ Play</button>
         <button id="prev-ev" type="button" title="Previous event (←)">⏮ Event</button>
         <button id="next-ev" type="button" title="Next event (→)">Event ⏭</button>
         <select id="speed" aria-label="Playback speed">
-          <option value="1">1×</option><option value="2">2×</option><option value="5" selected>5×</option><option value="10">10×</option>
+          <option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1">1×</option>
+          <option value="2">2×</option><option value="5">5×</option><option value="10">10×</option>
         </select>
+        <label id="hold-l" hidden><input type="checkbox" id="hold" checked> pause at each stage</label>
         <input id="scrub" type="range" min="0" value="0" aria-label="Replay position">
         <span class="clock" id="clock"></span>
         <span class="state" id="state"></span>
       </div>
     </section>
-    <section aria-label="Event log">
-      <h2>Events</h2>
-      <div id="events"></div>
-    </section>
-  </div>
-  <div class="col">
     <section aria-label="Alarms">
       <h2>Alarms</h2>
       <div id="alarms"></div>
     </section>
-    <section aria-label="Tags">
-      <h2>I/O tags</h2>
-      <div class="tagwrap"><table><thead><tr><th>Tag</th><th>Type</th><th class="num">Value</th></tr></thead><tbody id="tags"></tbody></table></div>
+  </div>
+  <div class="col">
+    <section aria-label="The test" id="test-panel" hidden>
+      <h2>The test</h2>
+      <p class="tst-file">Scenario file <code id="test-file"></code>: setup, then each stage's action and what the controller must do, within a time limit.</p>
+      <ol class="tst" id="test"></ol>
+      <div class="final" id="final" hidden></div>
+      <p class="tst-foot" id="test-foot"></p>
+    </section>
+    <section aria-label="Event log" id="events-home">
+      <h2>Events</h2>
+      <div id="events"></div>
     </section>
   </div>
 </main>
+<details class="detail" id="detail">
+  <summary>Engineer detail: the event log and every I/O signal, tick by tick</summary>
+  <div class="detail-grid">
+    <section aria-label="Event log (detail)" id="events-detail"><h2>Event log</h2></section>
+    <section aria-label="Tags">
+      <h2>I/O tags</h2>
+      <p class="note" style="margin-top:0">DI/AI are inputs from sensors, DO/AO are outputs to motors and valves. Hover a row for its description; a highlighted row changed this tick.</p>
+      <div class="tagwrap"><table><thead><tr><th>Tag</th><th>Type</th><th class="num">Value</th></tr></thead><tbody id="tags"></tbody></table></div>
+    </section>
+  </div>
+</details>
 <script>
 /*__HMI_JS__*/
 </script>
 <script>
 const R = /*__REPLAY_DATA__*/null;
 const F = R.frames;
+const S = R.summary || null;
+const M = R.meta || {};
+const EPS = 1e-6, HOLD_MS = 1600;
+const LAST = F.length - 1, END_T = F[LAST].t;
 
-$("title").textContent = R.title;
-document.title = R.title + " · ControlLab Replay";
-if ("passed" in R.meta) {
-  $("verdict").textContent = R.meta.passed ? "PASS" : "FAIL";
-  $("verdict").className = "verdict " + (R.meta.passed ? "pass" : "fail");
-}
-$("meta").textContent = [R.meta.file, R.meta.detail].filter(Boolean).join(" · ");
-$("scrub").max = F.length - 1;
+$("scrub").max = LAST;
 initMimic(R.plant);
 
-const whenT = R.meta.when_applied_t;
+// ---- header: plain for a live recording, explained for a scenario run ----
+const [mainTitle, subTitle] = R.title.split(" -- ");
+if (S) {
+  $("plain-head").hidden = true;
+  $("rp-bar").hidden = false;
+  if (M.repo) { $("rp-brand").href = M.repo; $("rp-src").href = M.repo; $("rp-src").hidden = false; }
+  if (M.nav && M.nav.length) {
+    $("rp-nav").hidden = false;
+    $("rp-nav").innerHTML = M.nav.map((n) =>
+      `<a href="${esc(n.href)}"${n.current ? ' aria-current="page"' : ""}>${esc(n.label)}` +
+      `<span class="n ${n.passed ? "" : "fail"}">${n.passed ? "PASS" : "FAIL"}</span></a>`).join("");
+  }
+  $("rp-intro").hidden = false;
+  $("rp-kicker").textContent = S.regression
+    ? `Recorded test run · ${S.verdict} · same test, deliberately broken controller`
+    : `Recorded test run · ${S.verdict}`;
+  $("rp-kicker").classList.toggle("fail", !S.passed);
+  $("rp-title").textContent = mainTitle;
+  $("rp-sub").textContent = subTitle || "";
+  $("rp-lede").textContent = S.description;
+  if (S.regression) {
+    $("rp-bug").hidden = false;
+    $("rp-bug").innerHTML = "<strong>The controller under test has a deliberate bug:</strong> " + esc(M.regression_change || S.regression) +
+      " Watch the test catch it. (A named testing fixture, <code>" + esc(S.regression) + "</code>; the production controller is never modified.)";
+  }
+  $("now").hidden = false;
+  $("line-h").textContent = "The line (simulated) · its control program sees only I/O";
+  $("test-panel").hidden = false;
+  $("test-file").textContent = S.file;
+  document.body.classList.add("explained");
+  $("hold-l").hidden = false;
+  $("events-detail").appendChild($("events"));
+  $("events-home").hidden = true;
+  $("speed").value = "0.5";
+  document.title = mainTitle + " · ControlLab";
+} else {
+  $("title").textContent = R.title;
+  if ("passed" in M) {
+    $("verdict").textContent = M.passed ? "PASS" : "FAIL";
+    $("verdict").className = "verdict " + (M.passed ? "pass" : "fail");
+  }
+  $("meta").textContent = [M.file, M.detail].filter(Boolean).join(" · ");
+  $("speed").value = "5";
+  $("detail").open = true;
+  document.title = R.title + " · ControlLab Replay";
+}
+
+// ---- event log ----
+const whenT = M.when_applied_t;
 $("events").innerHTML = R.events.length ? "<table><tbody>" + R.events.map((e, k) =>
   `<tr data-k="${k}"><td class="num">${e.t.toFixed(2)} s</td>` +
   (whenT == null ? "" : `<td>${e.t <= whenT ? "setup" : "response"}</td>`) + `<td>${describe(e)}</td></tr>`).join("") +
@@ -91,13 +246,141 @@ function renderEvents(i) {
     tr.classList.toggle("future", e.t > t);
     tr.classList.toggle("now", F[i].events.includes(+tr.dataset.k));
   });
-  const now = document.querySelector("#events tr.now");
-  if (now) now.scrollIntoView({ block: "nearest" });
+  // Scroll the log box only, never the page.
+  const now = document.querySelector("#events tr.now"), box = $("events");
+  if (now && box.clientHeight) box.scrollTop = now.offsetTop - box.clientHeight / 2;
 }
 
+// ---- the test script (scenario runs only) ----
+// Each stage's start/end in plant time, straight from the summary: a passed
+// stage ends at applied_t + response_s; the failed stage at its deadline
+// (first divergence t), or at the end of the recording for an invariant stop.
+const frameAt = (t) => { const i = F.findIndex((f) => f.t >= t - EPS); return i < 0 ? LAST : i; };
+const MARK = { pending: "○", running: "▶", passed: "✓", failed: "✗", not_run: "–", not_observable: "?", done: "✓" };
+const CHECK = { match: "MATCH", mismatch: "MISMATCH", not_reached: "not reached", not_run: "not run", not_observed: "not observed" };
+function val(v) {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "boolean") return v ? "yes" : "no";
+  if (Array.isArray(v)) return v.length ? v.join(", ") : "none";
+  return String(v);
+}
+let TIMES = [], firstApplied = null, moments = new Map();
+if (S) {
+  firstApplied = S.stages.length && S.stages[0].applied_t != null ? S.stages[0].applied_t : null;
+  TIMES = S.stages.map((st) => {
+    if (st.applied_t == null) return null;
+    if (st.status === "passed") return { start: st.applied_t, end: st.applied_t + st.response_s, outcome: "passed" };
+    if (st.status === "failed") {
+      const d = S.first_divergence;
+      return { start: st.applied_t, end: d && d.t != null ? d.t : END_T, outcome: "failed" };
+    }
+    return { start: st.applied_t, end: END_T, outcome: st.status };
+  });
+  // The frames playback pauses on: setup complete, and each stage's outcome.
+  if (firstApplied != null) moments.set(frameAt(firstApplied), { kind: "setup" });
+  TIMES.forEach((tm, k) => { if (tm) moments.set(frameAt(tm.end), { kind: "stage", n: k + 1 }); });
+
+  const setupLi = `<li id="st-0"><p class="tst-h"><span class="tst-mk"></span><span>Setup: bring the line to the starting condition</span></p>` +
+    `<p class="tst-do">${S.setup_text.map((x) => `<span>${esc(x)}</span>`).join("")}</p></li>`;
+  $("test").innerHTML = setupLi + S.stages.map((st) =>
+    `<li id="st-${st.n}"><p class="tst-h"><span class="tst-mk"></span><span>Stage ${st.n}: ${esc(st.title || "")}</span></p>` +
+    `<p class="tst-time"></p>` +
+    `<p class="tst-do">${st.actions.length ? st.actions.map((a) => `<span class="${a.kind}">${esc(a.text)}</span>`).join("")
+                                            : "<span>No action: keep watching</span>"}</p>` +
+    `<table class="tst-x"><tbody>${st.checks.map((c, j) =>
+      `<tr data-j="${j}"><td class="mk">expect</td><td>${esc(c.label)}</td><td class="v">${esc(val(c.expected))}</td></tr>`).join("")}</tbody></table></li>`).join("");
+  $("test-foot").textContent = `Runtime: ${S.runtime}. Checks and physical invariants (mass conserved, no feeder onto an ` +
+    "unproven belt, nothing energized in E-stop) are evaluated on every 0.1 s scan.";
+}
+
+function stageStatus(k, t) {
+  const tm = TIMES[k];
+  if (!tm) return t >= END_T - EPS ? "not_run" : "pending";
+  if (t < tm.start - EPS) return "pending";
+  if (t < tm.end - EPS) return "running";
+  return tm.outcome;
+}
+
+function renderTest(i) {
+  const t = F[i].t;
+  const setupState = firstApplied == null ? (t >= END_T - EPS ? "failed" : "running") : t < firstApplied - EPS ? "running" : "done";
+  const s0 = $("st-0");
+  s0.className = setupState === "done" ? "passed" : setupState;
+  s0.querySelector(".tst-mk").textContent = MARK[setupState];
+  S.stages.forEach((st, k) => {
+    const status = stageStatus(k, t), li = $(`st-${st.n}`), tm = TIMES[k];
+    li.className = status;
+    li.querySelector(".tst-mk").textContent = MARK[status];
+    li.querySelector(".tst-time").textContent =
+      status === "running" ? `${(t - tm.start).toFixed(1)} s elapsed · limit ${st.within_s} s` :
+      status === "passed" ? `passed in ${st.response_s.toFixed(2)} s · limit ${st.within_s} s` :
+      status === "failed" ? (S.first_divergence && S.first_divergence.t != null ? `FAILED at its ${st.within_s} s deadline` : "FAILED: run stopped") :
+      status === "not_run" ? "not run (the test stops at the first failure)" : `limit ${st.within_s} s`;
+    li.querySelectorAll("tr").forEach((tr) => {
+      const c = st.checks[+tr.dataset.j];
+      const shown = status === "passed" || status === "failed" || status === "not_observable" ? c.status : null;
+      tr.className = shown || "";
+      tr.querySelector(".mk").textContent = shown ? CHECK[shown] : "expect";
+      tr.querySelector(".v").textContent = shown === "mismatch" ? `${val(c.expected)}, but got ${val(c.actual)}` : val(c.expected);
+    });
+  });
+  const fin = $("final");
+  if (i === LAST) {
+    fin.hidden = false;
+    fin.className = "final" + (S.passed ? "" : " fail");
+    const d = S.first_divergence;
+    fin.innerHTML = `<div class="final-v"><b>${esc(S.verdict)}</b><span><strong>${S.checks_passed}/${S.checks_evaluated}</strong> checks matched` +
+      (S.checks_total !== S.checks_evaluated ? ` (${S.checks_total - S.checks_evaluated} not run)` : "") + "</span></div>" +
+      (d ? `<p><strong>First divergence:</strong> stage ${d.stage ?? "setup"}${d.t != null ? " at t = " + d.t.toFixed(2) + " s" : ""}` +
+           ` — ${esc(d.kind)}${d.unmet.length ? ": " + d.unmet.map((u) => `${esc(u.label)} expected ${esc(val(u.expected))}, actual ${esc(val(u.actual))}`).join("; ") : ""}.</p>` : "") +
+      (S.regression ? `<p>${S.passed ? "The regression was NOT caught." : "<strong>Regression caught.</strong> This bad change would have been stopped before it reached the equipment."}</p>` : "") +
+      `<p>First-out alarm: <strong>${esc(val(S.first_out))}</strong> · Invariants: ${esc(S.invariants)} · ${S.plant_time_s != null ? S.plant_time_s.toFixed(1) + " s of plant time" : ""}</p>`;
+  } else {
+    fin.hidden = true;
+  }
+}
+
+function renderNow(i) {
+  const t = F[i].t, m = moments.get(i);
+  let tone = "info", k = "", text = "";
+  if (i === LAST) {
+    const d = S.first_divergence;
+    tone = S.passed ? "ok" : "trip";
+    k = "Test complete";
+    text = S.passed
+      ? `PASS: every stage met its expectations within its time limit, and the invariants held on every scan.`
+      : `FAIL at stage ${d && d.stage ? d.stage : "setup"}: ` + (d && d.unmet.length
+          ? d.unmet.map((u) => `${u.label.toLowerCase()} should be ${val(u.expected)} but is ${u.actual == null ? "empty" : val(u.actual)}`).join("; ") + "."
+          : (d ? d.kind : "")) + (S.regression ? " The test caught the bad change." : "");
+  } else if (m && m.kind === "stage") {
+    const st = S.stages[m.n - 1], status = stageStatus(m.n - 1, t);
+    tone = status === "passed" ? "ok" : "trip";
+    k = `Stage ${m.n} of ${S.stages.length} · ${status === "passed" ? "passed" : "FAILED"}`;
+    text = status === "passed"
+      ? `✓ ${st.title} (in ${st.response_s.toFixed(2)} s, limit ${st.within_s} s)`
+      : `✗ Expected: ${st.title}. Not met by the ${st.within_s} s deadline.`;
+  } else if (firstApplied == null || t < firstApplied - EPS || (m && m.kind === "setup")) {
+    k = "Setup";
+    text = `Bringing the line to the test's starting condition: ${S.setup_text.join("; ").toLowerCase() || "as recorded"}.`;
+    if (m && m.kind === "setup") text = `Starting condition reached: ${S.setup_text.join("; ").toLowerCase()}. The test begins.`;
+  } else {
+    const k0 = S.stages.findIndex((_, j) => stageStatus(j, t) === "running");
+    const st = S.stages[k0 < 0 ? S.stages.length - 1 : k0];
+    const acts = st.actions.map((a) => a.text);
+    tone = st.actions.some((a) => a.kind === "fault") ? "warn" : "info";
+    k = `Stage ${st.n} of ${S.stages.length} · running`;
+    text = (acts.length ? acts.join(" and ") + ". " : "") + `The test expects: ${st.title.charAt(0).toLowerCase() + st.title.slice(1)}` +
+      ` (within ${st.within_s} s).`;
+  }
+  $("now").className = "now " + tone;
+  $("now-k").textContent = k;
+  $("now-t").textContent = text;
+}
+
+// ---- playback ----
 let idx = 0, playing = false, timer = null;
 function show(i) {
-  idx = Math.max(0, Math.min(F.length - 1, i));
+  idx = Math.max(0, Math.min(LAST, i));
   const f = F[idx];
   $("scrub").value = idx;
   $("clock").textContent = `t = ${f.t.toFixed(2)} s`;
@@ -106,19 +389,29 @@ function show(i) {
   renderTags(R.tags, f.values, idx > 0 ? F[idx - 1].values : null);
   renderAlarms(f.alarms);
   renderEvents(idx);
+  if (S) { renderTest(idx); renderNow(idx); }
 }
 
+function frameMs() { return 1000 * (F.length > 1 ? F[1].t - F[0].t : 0.1) / +$("speed").value; }
+function step() {
+  if (!playing) return;
+  if (idx >= LAST) { setPlaying(false); return; }
+  show(idx + 1);
+  const hold = S && $("hold").checked && moments.has(idx) ? HOLD_MS : 0;
+  timer = setTimeout(step, frameMs() + hold);
+}
 function setPlaying(on) {
   playing = on;
-  $("play").textContent = on ? "⏸ Pause" : "▶ Play";
+  $("play").textContent = on ? "⏸ Pause" : (idx >= LAST ? "↻ Play again" : "▶ Play");
   $("play").setAttribute("aria-label", on ? "Pause" : "Play");
-  clearInterval(timer);
+  clearTimeout(timer);
   if (on) {
-    if (idx >= F.length - 1) idx = 0;
-    const dt = F.length > 1 ? (F[1].t - F[0].t) : 0.1;
-    timer = setInterval(() => { if (idx >= F.length - 1) setPlaying(false); else show(idx + 1); }, 1000 * dt / +$("speed").value);
+    if (idx >= LAST) idx = 0;
+    show(idx);
+    timer = setTimeout(step, frameMs());
+  } else {
+    show(idx);
   }
-  show(idx);
 }
 
 function jumpEvent(dir) {
@@ -129,7 +422,7 @@ function jumpEvent(dir) {
 
 $("play").addEventListener("click", () => setPlaying(!playing));
 $("speed").addEventListener("change", () => { if (playing) setPlaying(true); });
-$("scrub").addEventListener("input", (e) => show(+e.target.value));
+$("scrub").addEventListener("input", (e) => { if (playing) setPlaying(false); show(+e.target.value); });
 $("prev-ev").addEventListener("click", () => jumpEvent(-1));
 $("next-ev").addEventListener("click", () => jumpEvent(1));
 document.addEventListener("keydown", (e) => {
@@ -139,6 +432,8 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "ArrowLeft") jumpEvent(-1);
 });
 show(0);
+// A scenario run starts itself: the page should be moving when it opens.
+if (S) setTimeout(() => { if (!playing && idx === 0) setPlaying(true); }, 900);
 </script>
 </body>
 </html>

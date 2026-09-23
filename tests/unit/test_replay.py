@@ -73,3 +73,15 @@ def test_render_html_embeds_the_data_and_cannot_be_broken_out_of():
 def test_build_replay_carries_tag_metadata_for_the_tag_table():
     replay = build_replay("T", [], history(1), plant={})
     assert replay["tags"] == [{"name": "X-1", "type": "DI", "units": "", "description": "a switch"}]
+
+
+def test_a_scenario_replay_carries_the_run_summary_and_a_live_one_does_not():
+    """The summary is what makes the page explain itself (the test beside
+    the line); a live-session recording has none and gets the plain page."""
+    summary = {"verdict": "PASS", "stages": []}
+    with_summary = build_replay("T", [], history(1), plant={}, summary=summary)
+    assert with_summary["summary"] == summary
+    assert build_replay("T", [], history(1), plant={})["summary"] is None
+    html = render_html(with_summary)
+    embedded = json.loads(re.search(r"const R = (.*?);\n", html).group(1).replace(r"<\/", "</"))
+    assert embedded["summary"]["verdict"] == "PASS"
