@@ -24,13 +24,12 @@ Success looks like: someone experienced in industrial automation looks at the re
 
 ## 3. Business / Professional Context — Boundary
 
-The developer is interested in eventually working in industrial automation, controls, systems integration, and related technical roles. The project was inspired partly by conversations about modern control architectures and commissioning — including a conversation with **KSi**.
+The developer is interested in eventually working in industrial automation, controls, systems integration, and related technical roles. The project was inspired partly by general conversations about modern control architectures and commissioning.
 
 **Hard boundary, no exceptions:**
-- KSi is **not** the customer and must **never** be mentioned in the product, source code, documentation, UI, package names, test scenarios, or marketing copy.
-- Never claim this is a KSi project, that KSi endorsed it, or that it reflects what KSi uses internally.
-- Never use proprietary KSi information, architecture, internal terminology, unpublished specifications, source code, or data — and never reproduce KSi-specific architecture.
-- Never use KSi branding.
+- No company or person is the customer, and none may be named, credited, or implied as a customer, endorser, or source anywhere in the product, source code, documentation, UI, package names, test scenarios, commit messages, or marketing copy.
+- Never use any organization's proprietary information, architecture, internal terminology, unpublished specifications, source code, data, or branding.
+- Specific names this rule covers are kept in a local, untracked `CLAUDE.local.md`, never in the repository. Read it if present.
 
 ControlLab is a general-purpose industrial automation project inspired by publicly observable engineering problems, useful to a broad range of automation engineers and developers. Generalize anything that starts to look company-specific.
 
