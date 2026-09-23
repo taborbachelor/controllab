@@ -5,7 +5,7 @@ simulated plant before the logic ever reaches real equipment.**
 
 ### ▶ [Watch a test run in your browser](https://taborbachelor.github.io/controllab/): recorded runs, nothing to install
 
-[![A feeder-jam commissioning test mid-run: the simulated line on the left is tripped with the feeder jammed; the test on the right shows stage 1 (trip within 1 s) and stage 2 (reset refused while the chute is plugged) passed](docs/images/demo-feeder-jam.jpg)](https://taborbachelor.github.io/controllab/)
+[![A feeder-jam commissioning test mid-run: the simulated line on the left is tripped with the feeder jammed; the first-out alarm is the chute plug switch; the test on the right shows stage 1 (trip within 1 s) and stage 2 (reset refused while the chute is plugged) passed](docs/images/demo-feeder-jam.jpg)](https://taborbachelor.github.io/controllab/)
 
 **What you're looking at.** On the left is a small bulk-material handling
 line: bin → slide gate → screw feeder → inclined conveyor → weighed hopper.
