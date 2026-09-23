@@ -18,6 +18,8 @@ class FakeScenario:
 @dataclass
 class FakeResult:
     passed: bool
+    not_observable: bool = False
+    not_observed: tuple = ()
 
 
 def test_a_row_with_no_matching_scenario_is_not_covered():
@@ -132,3 +134,33 @@ def test_interlocks_table_has_exactly_the_eight_docs_rows():
     over-counts."""
     assert len(INTERLOCKS) == 8
     assert len({row.name for row in INTERLOCKS}) == 8  # no duplicate rows
+
+
+def test_a_row_whose_scenarios_observed_nothing_is_not_observable_not_a_gap():
+    """Phase 9 step 3: against a controller with no status block, a
+    scenario that could observe nothing neither covers its row nor leaves
+    a gap -- the test exists, it just can't see anything here."""
+    report = build_report([(FakeScenario("S1", "Hopper not high-high"), FakeResult(False, not_observable=True))])
+    row = next(r for r in report.rows if r.row.name == "Hopper not high-high")
+    assert row.status == "not_observable"
+    assert report.failed_count == 0 and report.not_observable_count == 1
+
+
+def test_one_observing_scenario_is_enough_to_cover_the_row():
+    report = build_report([
+        (FakeScenario("S1", "E-stop healthy"), FakeResult(False, not_observable=True)),
+        (FakeScenario("S2", "E-stop healthy"), FakeResult(True, not_observed=("line_state",))),
+    ])
+    row = next(r for r in report.rows if r.row.name == "E-stop healthy")
+    assert row.status == "covered"
+
+
+def test_verdict_is_partial_when_nothing_failed_but_something_went_unobserved():
+    from services.testing.report import INTERLOCKS
+
+    every_row = [(FakeScenario(f"S{i}", row.name), FakeResult(True)) for i, row in enumerate(INTERLOCKS)]
+    assert build_report(every_row).verdict == "PASS"
+    partly = every_row[:-1] + [(every_row[-1][0], FakeResult(True, not_observed=("line_state",)))]
+    assert build_report(partly).verdict == "PARTIAL"
+    failing = every_row[:-1] + [(every_row[-1][0], FakeResult(False))]
+    assert build_report(failing).verdict == "FAIL"

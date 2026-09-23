@@ -42,6 +42,14 @@ What changes, and why each is explicit rather than hidden:
 `speed` above 1 is only valid for a controller whose timers follow the
 plant (our reference controller counts DT per scan). A real PLC's timers
 run on wall time, so a real PLC runs at 1.
+
+`status=False` (Phase 9 step 3) is for a controller that doesn't publish
+ControlLab's status block: expectations on its state are reported not
+observed (runner.py), the event log records commands only, and the
+power-up procedure runs blind -- acknowledge, reset, then wait until
+every discrete output has been off for POWER_UP_QUIET_S, the field's
+evidence of an idle line. It is declared, not detected: an unwritten
+status block reads 0 = IDLE, indistinguishable from a real IDLE.
 """
 from __future__ import annotations
 
@@ -56,7 +64,7 @@ from typing import Protocol
 from services.protocols import external_controller
 from services.protocols.line_map import LINE_REGISTER_MAP
 from services.protocols.modbus import ModbusClient, ModbusServer
-from services.protocols.register_map import HmiHandshake, IOImageDataStore, ModbusIOSync, RegisterMap
+from services.protocols.register_map import COIL, HmiHandshake, IOImageDataStore, ModbusIOSync, RegisterMap
 from services.simulation.engine.plant_io import scan as plant_scan
 from services.telemetry.events import EventLog
 from services.telemetry.tag_history import TagHistory
@@ -81,6 +89,10 @@ MAX_LAG_S = 0.1
 
 # Wall-clock cap on reaching a clean IDLE after a controller restart.
 READY_TIMEOUT_S = 15.0
+
+# Without a status block: every discrete output off this long (plant
+# seconds) after the blind acknowledge + reset counts as idle.
+POWER_UP_QUIET_S = 0.5
 
 
 class ControllerUnderTest(Protocol):
@@ -222,10 +234,12 @@ def run_realtime(
     speed: float = 1.0,
     latency_s: float = LATENCY_S,
     ready_timeout_s: float = READY_TIMEOUT_S,
+    status: bool = True,
 ) -> ScenarioResult:
     rig = plant.fresh()
     controller.restart()
-    rig.line = ObservedLine(plant.handshake, ModbusIOSync(ModbusClient(plant.host, plant.port), plant.map, rig.io), plant.lock)
+    observer = ModbusIOSync(ModbusClient(plant.host, plant.port), plant.map, rig.io)
+    rig.line = ObservedLine(plant.handshake, observer, plant.lock, status=status)
     try:
         pacer = _Pacer(plant, rig, speed)
         not_ready = _bring_to_clean_idle(plant, rig, pacer, ready_timeout_s)
@@ -234,7 +248,7 @@ def run_realtime(
 
         latency_ticks = math.ceil(latency_s / DT - 1e-9)
         invariants = Invariants(rig, feeder_grace_ticks=max(1, latency_ticks))
-        pacer.telemetry = _Telemetry(EventLog(rig.line), TagHistory(rig.io))
+        pacer.telemetry = _Telemetry(EventLog(rig.line, controller_state=status), TagHistory(rig.io))
         try:
             result = execute(
                 rig, scenario, pacer.step, invariants, pacer.telemetry,
@@ -243,10 +257,11 @@ def run_realtime(
         except _ControllerSilent as e:
             result = _invalid(scenario, pacer, str(e))
         except GivenUnreachable:
+            seen = (f"state {rig.line.state.name}, fault {rig.line.fault_reason!r}" if status
+                    else "judged from the field: conveyor running, gate open, feeder running")
             result = ScenarioResult(
                 scenario, False, 0.0,
-                f"controller never reached RUNNING for given.line_state within the runner's run-up cap "
-                f"(state {rig.line.state.name}, fault {rig.line.fault_reason!r})",
+                f"controller never reached RUNNING for given.line_state within the runner's run-up cap ({seen})",
                 events=pacer.telemetry.events.events, tags=pacer.telemetry.tags,
             )
         return _judge_timing(result, pacer)
@@ -279,6 +294,8 @@ def _bring_to_clean_idle(plant: RealtimePlant, rig: Rig, pacer: _Pacer, timeout_
     rig.line.refresh()
 
     line = rig.line
+    if not line.publishes_status:
+        return _blind_power_up(plant, rig, pacer, deadline)
     for command in itertools.cycle(("acknowledge", "reset")):
         for _ in range(round(0.5 / DT)):
             if line.state.name == "IDLE" and not line.alarms.latched_alarms and not line.handshake.outstanding():
@@ -290,6 +307,31 @@ def _bring_to_clean_idle(plant: RealtimePlant, rig: Rig, pacer: _Pacer, timeout_
             pacer.step()
         getattr(line, command)()
     raise AssertionError("unreachable")
+
+
+def _blind_power_up(plant: RealtimePlant, rig: Rig, pacer: _Pacer, deadline: float) -> str | None:
+    """The power-up procedure for a controller that publishes no state:
+    acknowledge and reset once each (waiting for the controller to take
+    each through the HMI handshake), then wait until every discrete
+    output has stayed off for POWER_UP_QUIET_S."""
+    line = rig.line
+    for command in ("acknowledge", "reset"):
+        getattr(line, command)()
+        while line.handshake.outstanding():
+            if time.monotonic() > deadline:
+                return f"controller never took the {command} request after restart (HMI handshake)"
+            pacer.step()
+    outputs = [p.tag for p in plant.map.by_table(COIL).values()]  # the discrete outputs
+    quiet = 0
+    need = round(POWER_UP_QUIET_S / DT)
+    while quiet < need:
+        if time.monotonic() > deadline:
+            on = [t for t in outputs if rig.io.read(t)]
+            return f"controller's outputs never all went off after restart: {on} still on"
+        pacer.step()
+        quiet = 0 if any(rig.io.read(t) for t in outputs) else quiet + 1
+    pacer.ready()
+    return None
 
 
 def _invalid(scenario: Scenario, pacer: _Pacer, why: str) -> ScenarioResult:
@@ -320,7 +362,8 @@ class RepeatedRuns:
 
     @property
     def responses(self) -> list[float | None]:
-        """Response time of each run in order; None where it failed."""
+        """Response time of each run in order; None where it failed or
+        couldn't be observed."""
         return [r.elapsed_s if r.passed else None for r in self.runs]
 
     def combined(self) -> ScenarioResult:
@@ -328,6 +371,8 @@ class RepeatedRuns:
         if every run passed. It carries the worst run's record -- the
         first failure, or else the slowest pass -- so what the report
         shows is the case that needs looking at, never the best one."""
+        if all(r.not_observable for r in self.runs):
+            return self.runs[0]
         failures = [(i, r) for i, r in enumerate(self.runs, 1) if not r.passed]
         if failures:
             i, first = failures[0]
@@ -347,6 +392,7 @@ def run_suite_realtime(
     speed: float = 1.0,
     latency_s: float = LATENCY_S,
     on_result: Callable[[int, Scenario, ScenarioResult], None] | None = None,
+    status: bool = True,
 ) -> list[RepeatedRuns]:
     """The whole suite, `repeat` times over (each pass complete before the
     next starts, so the passes are independent), every scenario from its
@@ -357,7 +403,7 @@ def run_suite_realtime(
     collected = [RepeatedRuns(s, []) for s in scenarios]
     for n in range(1, repeat + 1):
         for entry in collected:
-            result = run_realtime(entry.scenario, plant, controller, speed=speed, latency_s=latency_s)
+            result = run_realtime(entry.scenario, plant, controller, speed=speed, latency_s=latency_s, status=status)
             entry.runs.append(result)
             if on_result is not None:
                 on_result(n, entry.scenario, result)

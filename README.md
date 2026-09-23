@@ -133,7 +133,10 @@ python scripts/scenario_report.py --realtime openplc --repeat 3        # a real 
 
 Limits are still checked in plant time, with a stated I/O latency
 tolerance; a result met only inside it is reported as such, and repeat
-passes report the response-time spread. Against OpenPLC running a
+passes report the response-time spread. For a controller that doesn't
+publish ControlLab's status block, `--no-status` reports expectations on
+its internal state as *not observable* rather than reading registers
+nobody wrote. Against OpenPLC running a
 Structured Text port of the controller, all 15 scenarios pass in all 3
 passes: [`examples/openplc/COMMISSIONING-REPORT.md`](examples/openplc/COMMISSIONING-REPORT.md).
 

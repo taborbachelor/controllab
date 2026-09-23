@@ -130,3 +130,15 @@ def test_repeated_passes_give_a_spread_and_one_combined_verdict(rt):
         assert len(entry.responses) == 2 and all(t is not None for t in entry.responses)
         combined = entry.combined()
         assert combined.passed and combined.elapsed_s == max(entry.responses)
+
+
+def test_a_controller_without_a_status_block_is_judged_on_the_field_alone(rt):
+    """Declared status-less: the power-up runs blind, observable
+    expectations still decide, and a scenario that can only be judged
+    from the controller's state is reported not observable."""
+    plant, controller = rt
+    ctl = controller()
+    partial = run_realtime(scenario("safety/estop_from_running.yaml"), plant, ctl, speed=SPEED, status=False)
+    assert partial.passed and partial.not_observed == ("line_state",), partial.detail
+    blind = run_realtime(scenario("faults/bin_low_blocks_start.yaml"), plant, ctl, speed=SPEED, status=False)
+    assert blind.not_observable and not blind.passed

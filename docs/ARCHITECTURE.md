@@ -921,6 +921,26 @@ issue and propose the change"):
   `--repeat`, `--latency`, `--speed` (reference only), `--modbus-port`,
   `--plc`.
 
+## Module responsibilities (Phase 9 step 3)
+
+- **`vocabulary.CONTROLLER_FIELDS` / `NotObservable`** — the read
+  fields that come from the controller, and the exception a
+  status-less controller raises for them. A test ties the set to
+  `READ_FIELDS`.
+- **`ObservedLine(status=False)`** — never reads the status registers;
+  every state property raises `NotObservable`. Commands still use the
+  HMI handshake.
+- **`EventLog(controller_state=False)`** — commands only.
+- **Runner** — `ScenarioResult.not_observed` (skipped expectations) and
+  `not_observable` (none observable: neither pass nor fail);
+  `_line_running()` judges `given: running` from field evidence when
+  the controller's state can't be read.
+- **`report.py`** — `RowCoverage.unobservable`, a `not_observable` row
+  status, `failed_count` (excludes not observable), and `verdict`
+  (PASS / PARTIAL / FAIL). Both renderers show the new marks.
+- **`run_realtime(status=False)`** — blind power-up
+  (`_blind_power_up`: acknowledge, reset, outputs quiet 0.5 s).
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |
@@ -934,7 +954,7 @@ issue and propose the change"):
 | 6 | Visualization | done — tag history in every scenario run; HTML replay viewer; live localhost dashboard with operator commands, fault injection, and replay download |
 | 7 | Protocols | done — Modbus server + client; register map (five PLC-master ranges); external-controller mode with the full scenario suite passing across Modbus; OpenPLC running a Structured Text port of the controller against the plant |
 | 8 | AI engineering assistance | done — deterministic candidate review gate; start inhibit; optional AI (provider abstraction, Anthropic first): gated scenario generation, bounded failed-run analysis |
-| 9 | Virtual commissioning | in progress — steps 1-2 done: real-time runner (unchanged scenarios against a free-running external controller, latency tolerance, known starting state); the commissioning report against OpenPLC (45/45 runs, 3 passes) |
+| 9 | Virtual commissioning | in progress — steps 1-3 done: real-time runner (unchanged scenarios against a free-running external controller, latency tolerance, known starting state); the commissioning report against OpenPLC (45/45 runs, 3 passes); *not observable* as an outcome for controllers without a status block |
 
 Full detail and "done when" criteria per phase: `CONTROL-LAB.md` §10.
 

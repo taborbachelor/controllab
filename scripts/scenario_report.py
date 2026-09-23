@@ -48,6 +48,7 @@ STATUS_LABEL = {
     "covered_but_failing": "FAILING",
     "not_covered": "GAP",
     "not_applicable": "N/A",
+    "not_observable": "N/O",
 }
 
 
@@ -58,14 +59,17 @@ def render(report: CoverageReport) -> str:
     lines.append("")
     lines.append(f"Scenarios run: {len(report.results)}")
     lines.append(f"  Passed: {report.passed_count}")
-    lines.append(f"  Failed: {len(report.results) - report.passed_count}")
+    lines.append(f"  Failed: {report.failed_count}")
+    if report.not_observable_count or report.partly_observed_count:
+        lines.append(f"  Not observable: {report.not_observable_count}  (N/O: every expectation needs the status block)")
+        lines.append(f"  Passed, partly observed: {report.partly_observed_count}")
     lines.append("")
     lines.append("Results:")
     for scenario, result in report.results:
         rel = scenario.path.relative_to(SCENARIOS_DIR).as_posix()
-        mark = ("PASS~" if result.within_tolerance else "PASS") if result.passed else "FAIL"
+        mark = console_mark(result)
         lines.append(f"  {mark:5} {scenario.name}  (t={result.elapsed_s:.2f}s)  {rel}")
-        if not result.passed or result.within_tolerance:
+        if not result.passed or result.within_tolerance or result.not_observed:
             lines.append(f"        {result.detail}")
     lines.append("")
 
@@ -78,6 +82,9 @@ def render(report: CoverageReport) -> str:
         row = row_cov.row
         if row_cov.status == "not_applicable":
             detail = f"not applicable yet -- {row.note}"
+        elif row_cov.status == "not_observable":
+            names = ", ".join(row_cov.unobservable)
+            detail = f"{len(row_cov.unobservable)} scenario(s), none observable without a status block: {names}"
         elif row_cov.scenarios:
             names = ", ".join(n for n, _ in row_cov.scenarios)
             detail = f"{len(row_cov.scenarios)} scenario(s): {names}"
@@ -97,9 +104,22 @@ def render(report: CoverageReport) -> str:
     total = len(report.rows)
     lines.append(
         f"{report.covered_count}/{total} interlocks covered by at least one passing scenario "
-        f"({report.not_applicable_count} not yet applicable, {report.gap_count} real gap(s))."
+        f"({report.not_applicable_count} not yet applicable, {report.gap_count} real gap(s)"
+        + (f", {report.not_observable_row_count} not observable" if report.not_observable_row_count else "")
+        + ")."
     )
+    lines.append(f"Overall: {report.verdict}")
     return "\n".join(lines)
+
+
+def console_mark(result) -> str:
+    """PASS / PASS~ (inside the latency tolerance) / FAIL / N/O (not
+    observable); a trailing * = passed, partly observed."""
+    if result.not_observable:
+        return "N/O"
+    if not result.passed:
+        return "FAIL"
+    return ("PASS~" if result.within_tolerance else "PASS") + ("*" if result.not_observed else "")
 
 
 def main() -> int:
@@ -121,9 +141,16 @@ def main() -> int:
     rt.add_argument("--plc", default="http://127.0.0.1:8080", help="OpenPLC web UI")
     rt.add_argument("--plc-user", default="openplc")
     rt.add_argument("--plc-password", default="openplc")
+    rt.add_argument(
+        "--no-status", action="store_true",
+        help="the controller doesn't publish ControlLab's status block: expectations on its state are "
+        "reported not observable instead of read from registers nobody wrote",
+    )
     args = parser.parse_args()
     if args.realtime and args.external:
         parser.error("--realtime and --external are different modes; pick one")
+    if args.no_status and not args.realtime:
+        parser.error("--no-status applies to --realtime runs")
     if args.realtime == "openplc" and args.speed != 1.0:
         parser.error("a real PLC's timers run on wall time: --realtime openplc runs at --speed 1")
 
@@ -160,7 +187,7 @@ def main() -> int:
         args.markdown.write_text(render_markdown(report, SCENARIOS_DIR, controller_name, conditions), encoding="utf-8")
         print(f"\nWrote {args.markdown}")
 
-    return 0 if report.gap_count == 0 and report.passed_count == len(results) else 1
+    return 0 if report.gap_count == 0 and report.failed_count == 0 else 1
 
 
 def _run_realtime(args, scenarios):
@@ -176,20 +203,21 @@ def _run_realtime(args, scenarios):
         controller = ReferenceController(plant.port, speed=args.speed)
 
     def progress(n, scenario, result):
-        mark = ("PASS~" if result.within_tolerance else "PASS") if result.passed else "FAIL"
-        print(f"  pass {n}/{args.repeat}  {mark:5} {result.elapsed_s:5.2f}s  {scenario.name}", flush=True)
+        print(f"  pass {n}/{args.repeat}  {console_mark(result):5} {result.elapsed_s:5.2f}s  {scenario.name}", flush=True)
 
+    status = "no status block" if args.no_status else "status block"
     print(f"Real-time run: {controller.name}; plant on 127.0.0.1:{plant.port}, {args.speed:g}x, "
-          f"latency tolerance {latency:g}s, {args.repeat} pass(es)", flush=True)
+          f"latency tolerance {latency:g}s, {args.repeat} pass(es), {status}", flush=True)
     try:
         runs = run_suite_realtime(scenarios, plant, controller, repeat=args.repeat, speed=args.speed,
-                                  latency_s=latency, on_result=progress)
+                                  latency_s=latency, on_result=progress, status=not args.no_status)
     finally:
         controller.close()
         plant.close()
     print()
     conditions = RealtimeConditions(latency, args.speed, args.repeat, {r.scenario.path: r.responses for r in runs})
-    return [(r.scenario, r.combined()) for r in runs], conditions, controller.name
+    name = controller.name + (" (declared: publishes no status block)" if args.no_status else "")
+    return [(r.scenario, r.combined()) for r in runs], conditions, name
 
 
 def _render_spread(report: CoverageReport, conditions: RealtimeConditions) -> str:

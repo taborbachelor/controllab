@@ -16,13 +16,18 @@ them would misrepresent what's actually missing:
   exist in the codebase yet (e.g. the alarm system, Phase 4). Writing a
   scenario for it would mean fabricating coverage for something nothing
   implements — worse than leaving it visibly blank.
+- **not observable** — scenarios tag this row, but against this
+  controller none of them could observe anything: every expectation
+  needs a status block it doesn't publish (Phase 9 step 3). Not covered
+  (nothing was verified) and not a gap (the test exists and would run
+  against a controller that publishes it).
 
 Pure logic, no I/O — `scripts/scenario_report.py` is the thin CLI that
 runs the scenarios and prints this.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from services.testing.runner import ScenarioResult
 from services.testing.scenario import Scenario
@@ -80,14 +85,15 @@ INTERLOCKS: list[InterlockRow] = [
 @dataclass
 class RowCoverage:
     row: InterlockRow
-    scenarios: list[tuple[str, bool]]  # (scenario name, passed)
+    scenarios: list[tuple[str, bool]]  # (scenario name, passed) -- the ones that observed something
+    unobservable: list[str] = field(default_factory=list)  # scenario names that observed nothing
 
     @property
     def status(self) -> str:
         if not self.row.applicable:
             return "not_applicable"
         if not self.scenarios:
-            return "not_covered"
+            return "not_observable" if self.unobservable else "not_covered"
         return "covered" if all(passed for _, passed in self.scenarios) else "covered_but_failing"
 
 
@@ -102,12 +108,40 @@ class CoverageReport:
         return sum(1 for _, r in self.results if r.passed)
 
     @property
+    def failed_count(self) -> int:
+        """Ran, observed, and didn't do what was expected. A scenario that
+        couldn't observe anything is neither this nor passed."""
+        return sum(1 for _, r in self.results if not r.passed and not r.not_observable)
+
+    @property
+    def not_observable_count(self) -> int:
+        return sum(1 for _, r in self.results if r.not_observable)
+
+    @property
+    def partly_observed_count(self) -> int:
+        return sum(1 for _, r in self.results if r.passed and r.not_observed)
+
+    @property
+    def verdict(self) -> str:
+        """FAIL on any failure or gap; PARTIAL when nothing failed but
+        something went unobserved; otherwise PASS."""
+        if self.failed_count or self.gap_count:
+            return "FAIL"
+        if self.not_observable_count or self.partly_observed_count:
+            return "PARTIAL"
+        return "PASS"
+
+    @property
     def covered_count(self) -> int:
         return sum(1 for row in self.rows if row.status == "covered")
 
     @property
     def not_applicable_count(self) -> int:
         return sum(1 for row in self.rows if row.status == "not_applicable")
+
+    @property
+    def not_observable_row_count(self) -> int:
+        return sum(1 for row in self.rows if row.status == "not_observable")
 
     @property
     def gap_count(self) -> int:
@@ -126,7 +160,8 @@ def build_report(results: list[tuple[Scenario, ScenarioResult]]) -> CoverageRepo
     rows = [
         RowCoverage(
             row=row,
-            scenarios=[(s.name, r.passed) for s, r in results if s.interlock == row.name],
+            scenarios=[(s.name, r.passed) for s, r in results if s.interlock == row.name and not r.not_observable],
+            unobservable=[s.name for s, r in results if s.interlock == row.name and r.not_observable],
         )
         for row in INTERLOCKS
     ]

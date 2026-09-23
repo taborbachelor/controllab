@@ -42,6 +42,7 @@ from services.protocols.line_map import LINE_REGISTER_MAP
 from services.protocols.modbus import ModbusClient, ModbusServer
 from services.protocols.register_map import HmiHandshake, IOImageDataStore, ModbusIOSync
 from services.testing.rig import DT, Rig, build_rig
+from services.testing.vocabulary import NotObservable
 
 COMMANDS = ("start", "stop", "reset", "acknowledge")
 
@@ -55,17 +56,30 @@ class ObservedLine:
     `refresh()` reads the status over the wire, so it must never be
     called while holding `lock` (the Modbus server needs that lock to
     answer). `lock` guards the handshake when the server runs
-    concurrently (the real-time runner); lockstep needs none."""
+    concurrently (the real-time runner); lockstep needs none.
 
-    def __init__(self, handshake: HmiHandshake, observer: ModbusIOSync, lock=None) -> None:
+    `status=False` (Phase 9 step 3): the controller doesn't publish the
+    status block. Commands still go out; every state property raises
+    NotObservable instead of reporting registers nobody wrote (which
+    would read 0 = IDLE, a plausible-looking lie)."""
+
+    def __init__(self, handshake: HmiHandshake, observer: ModbusIOSync, lock=None, status: bool = True) -> None:
         self.handshake = handshake
         self._observer = observer
         self._lock = lock if lock is not None else nullcontext()
+        self.publishes_status = status
         self.command_sink: Callable[[str], None] | None = None
+        self._status = None
         self.refresh()
 
     def refresh(self) -> None:
-        self._status = controller_status.decode(self._observer.read_status())
+        if self.publishes_status:
+            self._status = controller_status.decode(self._observer.read_status())
+
+    def _published(self) -> controller_status.ControllerStatus:
+        if self._status is None:
+            raise NotObservable("the controller under test doesn't publish ControlLab's status block")
+        return self._status
 
     def scan(self, dt: float) -> None:
         self.refresh()
@@ -92,23 +106,24 @@ class ObservedLine:
 
     @property
     def state(self) -> LineState:
-        if self._status.state is None:
+        status = self._published()
+        if status.state is None:
             raise RuntimeError("the controller published a line_state code the status table doesn't know")
-        return self._status.state
+        return status.state
 
     @property
     def fault_reason(self) -> str | None:
-        return self._status.fault_reason
+        return self._published().fault_reason
 
     @property
     def start_inhibit(self):
-        return self._status.start_inhibit
+        return self._published().start_inhibit
 
     @property
     def alarms(self) -> "_AlarmView":
         # The same all_alarms/latched_alarms/any_unacknowledged_trip surface
         # as AlarmManager, rebuilt from the published status registers.
-        return _AlarmView(self._status)
+        return _AlarmView(self._published())
 
     def close(self) -> None:
         self._observer.client.close()

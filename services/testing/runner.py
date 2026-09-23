@@ -51,6 +51,16 @@ steps × DT, so both measure in plant time. `tolerance_s` (0 in
 lockstep) extends the polling window past `within` by a stated I/O
 latency allowance: expectations met inside it pass with
 `within_tolerance=True`, never silently as if on time.
+
+Against an external controller that publishes no status block (Phase 9
+step 3), an expectation on a controller field (vocabulary.CONTROLLER_
+FIELDS) raises NotObservable. It is then not checked -- neither failed
+nor counted as met -- and named in `not_observed`. A scenario whose
+observable expectations all hold passes *partly observed*; one with no
+observable expectation at all is `not_observable`: not a pass, and not a
+failure. `given.line_state: running` is then judged from field evidence
+(conveyor running, gate open, feeder running), since the controller's
+own state can't be read.
 """
 from __future__ import annotations
 
@@ -62,7 +72,7 @@ from services.telemetry.tag_history import TagHistory
 from services.testing.invariants import InvariantViolation, Invariants
 from services.testing.rig import DT, Rig, build_rig, tick
 from services.testing.scenario import GivenUnreachable, Scenario, ScenarioLoadError
-from services.testing.vocabulary import ScenarioError, apply_field, read_field, values_match
+from services.testing.vocabulary import NotObservable, ScenarioError, apply_field, read_field, values_match
 
 # Generous safety cap for driving `given.line_state` to its target -- if
 # a healthy line can't reach RUNNING this fast, the rig itself is
@@ -93,6 +103,11 @@ class ScenarioResult:
     # Met after `within` but inside the latency tolerance (real-time mode
     # only; always False in lockstep, where the tolerance is 0).
     within_tolerance: bool = False
+    # Expectations that couldn't be checked: the controller doesn't publish
+    # them (Phase 9 step 3). Non-empty on a pass = passed, partly observed.
+    not_observed: tuple[str, ...] = ()
+    # No expectation was observable at all: neither passed nor failed.
+    not_observable: bool = False
 
 
 def run_scenario(scenario: Scenario, external: bool = False) -> ScenarioResult:
@@ -193,6 +208,7 @@ def _run_from_given(
     # RUNNING until Plant.step() actually runs).
     max_ticks = round((scenario.within_s + tolerance_s) / DT)
     unmet: dict = {}
+    not_observed: tuple[str, ...] = ()
     for i in range(1, max_ticks + 1):
         step()
 
@@ -204,21 +220,34 @@ def _run_from_given(
             )
 
         try:
-            unmet = _unmet_expectations(rig, scenario)
+            unmet, not_observed = _unmet_expectations(rig, scenario)
         except ScenarioError as e:
             raise ScenarioLoadError(f"{scenario.path}: {e}") from e
+        if scenario.expect and len(not_observed) == len(scenario.expect):
+            return ScenarioResult(
+                scenario, False, 0.0,
+                f"not observable: every expectation ({', '.join(not_observed)}) needs the controller's "
+                "status block, which this controller doesn't publish",
+                when_applied_t=when_applied_t, not_observed=not_observed, not_observable=True,
+            )
         if not unmet:
             elapsed = round(i * DT, 9)
+            met = "all observable expectations met" if not_observed else "all expectations met"
+            if not_observed:
+                met += f" (not observed: {', '.join(not_observed)})"
             if elapsed <= scenario.within_s + 1e-9:
-                return ScenarioResult(scenario, True, elapsed, "all expectations met", when_applied_t=when_applied_t)
+                return ScenarioResult(
+                    scenario, True, elapsed, met, when_applied_t=when_applied_t, not_observed=not_observed
+                )
             return ScenarioResult(
                 scenario,
                 True,
                 elapsed,
-                f"all expectations met at {elapsed:.2f}s: over the {scenario.within_s}s limit, "
+                f"{met} at {elapsed:.2f}s: over the {scenario.within_s}s limit, "
                 f"inside the {tolerance_s}s latency tolerance",
                 when_applied_t=when_applied_t,
                 within_tolerance=True,
+                not_observed=not_observed,
             )
 
     window = f"{scenario.within_s}s" + (f" (+{tolerance_s}s latency tolerance)" if tolerance_s else "")
@@ -228,6 +257,7 @@ def _run_from_given(
         round(scenario.within_s + tolerance_s, 9),
         f"timed out after {window} -- unmet: {unmet}",
         when_applied_t=when_applied_t,
+        not_observed=not_observed,
     )
 
 
@@ -258,7 +288,7 @@ def _apply_given(rig: Rig, scenario: Scenario, invariants: Invariants, step: Cal
             invariants.check()
         except InvariantViolation as e:
             return ScenarioResult(scenario, False, i * DT, f"invariant violated reaching given.line_state=running: {e}")
-        if rig.line.state.name == "RUNNING":
+        if _line_running(rig):
             return None
 
     raise GivenUnreachable(f"{scenario.path}: given.line_state=running was never reached within {MAX_GIVEN_RUNUP_S}s")
@@ -269,10 +299,28 @@ def _apply_when(rig: Rig, scenario: Scenario) -> None:
         apply_field(rig, key, value)
 
 
-def _unmet_expectations(rig: Rig, scenario: Scenario) -> dict:
+def _line_running(rig: Rig) -> bool:
+    """The controller's own word when it publishes one; otherwise the
+    field evidence of a running line -- conveyor running, gate open,
+    feeder running -- which is what an engineer watching the plant
+    without an HMI would go by."""
+    try:
+        return rig.line.state.name == "RUNNING"
+    except NotObservable:
+        plant = rig.plant
+        return plant.conveyor.motor.running and plant.gate.is_open and plant.feeder.motor.running
+
+
+def _unmet_expectations(rig: Rig, scenario: Scenario) -> tuple[dict, tuple[str, ...]]:
+    """(unmet expectations, keys that couldn't be observed at all)."""
     unmet = {}
+    not_observed = []
     for key, expected in scenario.expect.items():
-        actual = read_field(rig, key)
+        try:
+            actual = read_field(rig, key)
+        except NotObservable:
+            not_observed.append(key)
+            continue
         if not values_match(actual, expected):
             unmet[key] = {"expected": expected, "actual": actual}
-    return unmet
+    return unmet, tuple(not_observed)

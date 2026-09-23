@@ -31,6 +31,14 @@ class ScenarioError(Exception):
     runtime error partway through a run."""
 
 
+class NotObservable(Exception):
+    """The field exists, but this controller doesn't publish it (Phase 9
+    step 3): an external controller without ControlLab's status block
+    has no line state, fault reason, alarms or start inhibit to read.
+    The runner reports such an expectation as not observed -- never as
+    failed, and never as silently passed."""
+
+
 def _apply_start(rig: Rig, value: bool) -> None:
     if value:
         rig.line.start()
@@ -155,6 +163,14 @@ READ_FIELDS: dict[str, Callable[[Rig], object]] = {
     # start was issued -- see StartInhibit (services/control/line_state.py).
     "start_inhibit": lambda rig: inhibit_names(rig.line.start_inhibit),
 }
+
+
+# The read fields that come from the CONTROLLER (its status block, when
+# it's external) rather than from the plant. Everything else is field
+# truth, observable against any controller. Tied to READ_FIELDS by a test
+# (tests/unit/test_observability.py), so a new controller field can't
+# silently be treated as always observable.
+CONTROLLER_FIELDS = frozenset({"line_state", "fault_reason", "any_unacknowledged_trip", "latched_alarm_ids", "start_inhibit"})
 
 
 def apply_field(rig: Rig, key: str, value: object) -> None:

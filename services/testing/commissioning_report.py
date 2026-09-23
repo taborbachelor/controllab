@@ -45,6 +45,7 @@ STATUS_LABEL = {
     "covered_but_failing": "❌ covered but failing",
     "not_covered": "⚠️ not covered",
     "not_applicable": "➖ not applicable yet",
+    "not_observable": "👁️ not observable (no status block)",
 }
 
 
@@ -71,16 +72,22 @@ def render_markdown(
     docstring."""
     lines: list[str] = []
     total = len(report.results)
-    failed = total - report.passed_count
-    verdict = "PASS" if failed == 0 and report.gap_count == 0 else "FAIL"
+    observed = ""
+    if report.not_observable_count or report.partly_observed_count or report.not_observable_row_count:
+        observed = (
+            f" Against this controller {report.not_observable_count} scenario(s) observed nothing, "
+            f"{report.partly_observed_count} passed only partly observed, and "
+            f"{report.not_observable_row_count} interlock(s) could not be observed: it doesn't publish "
+            "ControlLab's status block, so line state, fault reason, alarms and start inhibit can't be read."
+        )
 
     lines += [
         "# ControlLab — Commissioning Report",
         "",
         *([f"**Controller under test:** {controller}", ""] if controller else []),
-        f"**Overall: {verdict}** — {report.passed_count}/{total} scenarios passed; "
+        f"**Overall: {report.verdict}** — {report.passed_count}/{total} scenarios passed; "
         f"{report.covered_count}/{len(report.rows)} interlocks covered "
-        f"({report.not_applicable_count} not yet applicable, {report.gap_count} gap(s)).",
+        f"({report.not_applicable_count} not yet applicable, {report.gap_count} gap(s)).{observed}",
         "",
         "All times are simulated seconds. Response time is measured from the moment the "
         "scenario's `when` stimulus is applied until every `expect` condition holds.",
@@ -110,12 +117,7 @@ def _results_table(report: CoverageReport, scenarios_root: Path) -> list[str]:
         "|---|---|---:|---:|---:|---|",
     ]
     for scenario, result in report.results:
-        if not result.passed:
-            mark = "❌ FAIL"
-        elif result.within_tolerance:
-            mark = "🟡 PASS within tolerance"
-        else:
-            mark = "✅ PASS"
+        mark = result_mark(result)
         if result.passed:
             response = f"{result.elapsed_s:.2f} s"
             margin = f"{scenario.within_s - result.elapsed_s:.2f} s"
@@ -127,12 +129,26 @@ def _results_table(report: CoverageReport, scenarios_root: Path) -> list[str]:
         )
     lines.append("")
 
-    failures = [(s, r) for s, r in report.results if not r.passed]
+    failures = [(s, r) for s, r in report.results if not r.passed and not r.not_observable]
     if failures:
         lines += ["**Failures:**", ""]
         lines += [f"- **{_cell(s.name)}** — {_cell(r.detail)}" for s, r in failures]
         lines.append("")
+    unobserved = [(s, r) for s, r in report.results if r.not_observed]
+    if unobserved:
+        lines += ["**Not observed** (the controller doesn't publish these; neither failed nor passed):", ""]
+        lines += [f"- **{_cell(s.name)}** — {', '.join(f'`{k}`' for k in r.not_observed)}" for s, r in unobserved]
+        lines.append("")
     return lines
+
+
+def result_mark(result) -> str:
+    if result.not_observable:
+        return "👁️ NOT OBSERVABLE"
+    if not result.passed:
+        return "❌ FAIL"
+    mark = "🟡 PASS within tolerance" if result.within_tolerance else "✅ PASS"
+    return mark + (", partly observed" if result.not_observed else "")
 
 
 def _realtime_conditions(rt: RealtimeConditions) -> list[str]:
@@ -164,7 +180,10 @@ def _spread_table(report: CoverageReport, scenarios_root: Path, rt: RealtimeCond
         "| Scenario | Passed | Min | Max | Each pass |",
         "|---|---:|---:|---:|---|",
     ]
-    for scenario, _ in report.results:
+    for scenario, result in report.results:
+        if result.not_observable:
+            lines.append(f"| {_cell(scenario.name)} | not observable | — | — | — |")
+            continue
         times = rt.responses.get(scenario.path, [])
         ok = [t for t in times if t is not None]
         each = ", ".join("fail" if t is None else f"{t:.2f}" for t in times)
@@ -183,7 +202,10 @@ def _coverage_table(report: CoverageReport) -> list[str]:
         "|---|---|---|---|---|",
     ]
     for row_cov in report.rows:
-        names = "<br>".join(_cell(n) + ("" if passed else " (failing)") for n, passed in row_cov.scenarios) or "—"
+        names = "<br>".join(
+            [_cell(n) + ("" if passed else " (failing)") for n, passed in row_cov.scenarios]
+            + [_cell(n) + " (not observable)" for n in row_cov.unobservable]
+        ) or "—"
         lines.append(
             f"| {STATUS_LABEL[row_cov.status]} | {row_cov.row.name} | {row_cov.row.kind} | {names} "
             f"| {_cell(row_cov.row.note) or '—'} |"
@@ -202,7 +224,7 @@ def _sequences(report: CoverageReport, scenarios_root: Path) -> list[str]:
         "",
     ]
     for scenario, result in report.results:
-        mark = "PASS" if result.passed else "FAIL"
+        mark = "NOT OBSERVABLE" if result.not_observable else "PASS" if result.passed else "FAIL"
         lines += [f"### {scenario.name} — {mark}", "", f"`{_rel(scenario.path, scenarios_root)}`", ""]
         if not result.events:
             lines += ["*No events recorded.*", ""]

@@ -29,6 +29,8 @@ class FakeResult:
     events: list[Event] = field(default_factory=list)
     when_applied_t: float | None = 1.0
     within_tolerance: bool = False
+    not_observable: bool = False
+    not_observed: tuple = ()
 
 
 def render(*pairs) -> str:
@@ -81,7 +83,7 @@ def test_output_contains_no_absolute_path():
 
 def test_pipes_in_free_text_cannot_break_a_table_row():
     md = render((FakeScenario("A | B"), FakeResult(True)))
-    assert "A \| B" in md
+    assert r"A \| B" in md
 
 
 def test_describe_marks_first_out_and_distinguishes_warnings():
@@ -119,3 +121,19 @@ def test_a_realtime_report_states_its_conditions_and_marks_tolerance_passes():
 def test_without_realtime_the_report_has_no_realtime_sections():
     md = render((FakeScenario("S1"), FakeResult(True)))
     assert "Real-time conditions" not in md and "across" not in md
+
+
+def test_unobserved_expectations_are_named_and_never_shown_as_a_plain_pass():
+    s1, s2 = FakeScenario("Partly", path=ROOT / "a.yaml"), FakeScenario("Blind", path=ROOT / "b.yaml")
+    md = render((s1, FakeResult(True, not_observed=("line_state",))),
+                (s2, FakeResult(False, detail="not observable: ...", not_observable=True)))
+    assert "| ✅ PASS, partly observed | Partly |" in md
+    assert "| 👁️ NOT OBSERVABLE | Blind | — |" in md
+    assert "- **Partly** — `line_state`" in md
+    assert "**Failures:**" not in md  # not observable is not a failure
+    assert "### Blind — NOT OBSERVABLE" in md
+
+
+def test_a_not_observable_row_still_names_its_scenarios():
+    md = render((FakeScenario("Blind", interlock="Hopper not high-high"), FakeResult(False, not_observable=True)))
+    assert "| 👁️ not observable (no status block) | Hopper not high-high | Permissive | Blind (not observable) |" in md

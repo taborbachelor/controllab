@@ -77,8 +77,13 @@ class Event:
 
 
 class EventLog:
-    def __init__(self, line: LineController) -> None:
+    """`controller_state=False` (Phase 9 step 3): the line's controller
+    publishes no state -- an external controller without a status block --
+    so only commands are recorded; there is no state or alarm to diff."""
+
+    def __init__(self, line: LineController, controller_state: bool = True) -> None:
         self.line = line
+        self.controller_state = controller_state
         self.events: list[Event] = []
         self._last_state = None
         self._last_alarm: dict[str, tuple[bool, bool]] = {}
@@ -100,8 +105,9 @@ class EventLog:
         no baseline to establish for it and it's emitted even on the
         first call."""
         self._flush_commands(t)
-        self._sample_state(t)
-        self._sample_alarms(t)
+        if self.controller_state:
+            self._sample_state(t)
+            self._sample_alarms(t)
 
     def _flush_commands(self, t: float) -> None:
         for command in self._pending_commands:

@@ -67,7 +67,7 @@ def test_render_html_embeds_the_data_and_cannot_be_broken_out_of():
     assert html.count("</script>") == assemble("replay_template.html").count("</script>")
 
     embedded = re.search(r"const R = (.*?);\n", html).group(1)
-    assert json.loads(embedded.replace("<\/", "</"))["title"] == "T</script><script>alert(1)"
+    assert json.loads(embedded.replace(r"<\/", "</"))["title"] == "T</script><script>alert(1)"
 
 
 def test_build_replay_carries_tag_metadata_for_the_tag_table():
