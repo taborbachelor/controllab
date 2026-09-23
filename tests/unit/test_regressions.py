@@ -46,9 +46,9 @@ def test_copied_methods_differ_from_production_only_by_the_marked_change():
     branch = "if self.interlocks.feeder_plugged:\n    return 'feeder jam'\n"
     assert prod.count(branch) == 1
     assert _body(JamTripRemoved, "_running_trip_reason") == prod.replace(branch, "")
-    prod = _body(LineController, "_fault_cause_cleared")
-    assert prod.count(" or self.interlocks.feeder_plugged") == 1
-    assert _body(ResetIgnoresJam, "_fault_cause_cleared") == prod.replace(" or self.interlocks.feeder_plugged", "")
+    prod = _body(LineController, "_standing_cause")
+    assert prod.count(branch) == 1  # the same jam branch, in the reset check
+    assert _body(ResetIgnoresJam, "_standing_cause") == prod.replace(branch, "")
 
 
 def test_cli_exits_nonzero_when_it_catches_a_regression_and_zero_when_clean(capsys):

@@ -57,8 +57,16 @@ class Motor:
         self.run_command = run
 
     def estop(self) -> None:
-        self.state = MotorState.ESTOP
+        """Power removed. A motor already in FAULT stays there: removing
+        power doesn't reset a tripped overload relay or a VFD fault, so the
+        fault still needs its own clear_fault() afterwards. (It became ESTOP
+        with the fault flag still set, and estop_reset() then left it
+        STOPPED-but-faulted, a state clear_fault() couldn't leave -- the
+        overload could never be reset. Found in the 2026-09-23 logic review.)"""
         self.run_command = False
+        if self.state == MotorState.FAULT:
+            return
+        self.state = MotorState.ESTOP
         self._elapsed_s = 0.0
 
     def estop_reset(self) -> None:

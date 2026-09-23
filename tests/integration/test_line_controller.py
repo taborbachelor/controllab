@@ -568,6 +568,38 @@ def test_reset_alone_does_not_recover_from_estopped_without_the_estop_released()
     assert line.state == LineState.IDLE
 
 
+def test_an_estop_reset_returns_to_faulted_while_another_trip_cause_stands():
+    """Resetting the E-stop clears the E-stop, not a motor overload that is
+    still tripped: the line goes to FAULTED on the overload (it went to IDLE,
+    and a start was then accepted onto the known fault), and only a field
+    reset of the overload plus a line reset gets back to IDLE."""
+    plant, io, line = make_rig()
+    line.start()
+    run(plant, io, line, 3.0)
+    plant.conveyor.motor.trip_now = True
+    run(plant, io, line, 0.3)
+    assert (line.state, line.fault_reason) == (LineState.FAULTED, "conveyor trip")
+
+    plant.estop.trip()
+    run(plant, io, line, 0.2)
+    plant.estop.reset()
+    run(plant, io, line, 0.2)
+    line.acknowledge()
+    line.reset()
+    tick(plant, io, line)
+    assert (line.state, line.fault_reason) == (LineState.FAULTED, "conveyor trip")
+    line.start()
+    run(plant, io, line, 0.3)
+    assert line.state == LineState.FAULTED and plant.conveyor.motor.run_command is False
+
+    plant.conveyor.motor.trip_now = False
+    plant.conveyor.motor.clear_fault()  # the overload reset at the MCC
+    run(plant, io, line, 0.2)
+    line.reset()
+    tick(plant, io, line)
+    assert (line.state, line.fault_reason) == (LineState.IDLE, None)
+
+
 def test_estop_holds_everything_off_and_requires_explicit_restart():
     """Proves LineController closes the gap demonstrated in
     tests/integration/test_plant_io.py::

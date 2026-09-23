@@ -92,3 +92,18 @@ def test_estop_overrides_and_requires_explicit_reset():
     m.estop_reset()
     assert m.state == MotorState.STOPPED
     assert not m.running  # no auto-restart after reset
+
+
+def test_a_tripped_motor_stays_faulted_through_an_estop_and_can_still_be_reset():
+    m = Motor("M", start_delay_s=0.0)
+    m.command(True)
+    m.step(0.1)
+    m.trip_now = True
+    m.step(0.1)
+    m.estop()
+    assert m.state == MotorState.FAULT and m.fault  # power removal doesn't reset an overload
+    m.estop_reset()
+    assert m.state == MotorState.FAULT
+    m.trip_now = False
+    m.clear_fault()
+    assert m.state == MotorState.STOPPED and not m.fault

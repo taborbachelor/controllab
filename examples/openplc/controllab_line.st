@@ -336,14 +336,26 @@ PROGRAM controllab_line
         state := 0; fault_reason := 0;
       END_IF;
 
-    5: (* ESTOPPED -- off; reset once the e-stop is healthy again *)
+    5: (* ESTOPPED -- off; reset once the e-stop is healthy again; a trip cause
+          still standing sends the line to FAULTED on it, never to IDLE *)
       M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE;
       IF start_req THEN start_inhibit := 16#0008; END_IF;          (* refused, as always; now reported *)
       IF ES_001 AND reset_req THEN
         conv_proof_fault := FALSE; conv_proof_scans := 0;
         feed_proof_fault := FALSE; feed_proof_scans := 0;
         gate_travel_fault := FALSE; gate_scans := 0;
-        state := 0; fault_reason := 0;
+        trip := 0;                                                 (* same order as _standing_cause *)
+        IF hopper_high_high THEN trip := 2;
+        ELSIF M104_OL THEN trip := 4;
+        ELSIF M103_FAULT THEN trip := 3;
+        ELSIF LSH_103 THEN trip := 10;
+        ELSIF WT105_FLT THEN trip := 11;
+        END_IF;
+        IF trip <> 0 THEN
+          state := 4; fault_reason := trip;
+        ELSE
+          state := 0; fault_reason := 0;
+        END_IF;
       END_IF;
   END_CASE;
 

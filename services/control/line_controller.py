@@ -397,13 +397,23 @@ class LineController:
         _clear_all_device_faults() once this passes; if the underlying
         problem is still there, the next start attempt fails again on
         its own."""
-        return not (
-            self.interlocks.hopper_high_high
-            or self.conveyor_ctrl.faulted
-            or self.feeder_ctrl.faulted
-            or self.interlocks.feeder_plugged  # the jam is still in the chute
-            or self.interlocks.hopper_weight_failed  # the signal hasn't been restored
-        )
+        return self._standing_cause() is None
+
+    def _standing_cause(self) -> str | None:
+        """The trip cause still observably present, or None: what a reset
+        from FAULTED -- and from ESTOPPED -- has to wait out. One list, so
+        the two reset paths can't drift apart."""
+        if self.interlocks.hopper_high_high:
+            return "hopper high-high"
+        if self.conveyor_ctrl.faulted:
+            return "conveyor trip"
+        if self.feeder_ctrl.faulted:
+            return "feeder trip"
+        if self.interlocks.feeder_plugged:  # the jam is still in the chute
+            return "feeder jam"
+        if self.interlocks.hopper_weight_failed:  # the signal hasn't been restored
+            return "hopper weight signal failed"
+        return None
 
     def _clear_all_device_faults(self) -> None:
         self.feeder_ctrl.clear_fault()
@@ -436,8 +446,19 @@ class LineController:
             self.start_inhibit = StartInhibit.ESTOP_ACTIVE
         if self.interlocks.estop_healthy and self._reset_requested:
             self._clear_all_device_faults()
-            self.state = LineState.IDLE
-            self.fault_reason = None
+            # A reset out of ESTOPPED clears the E-stop, not whatever else is
+            # still wrong: with a standing cause the line goes to FAULTED on
+            # it, and needs its own reset once that's cleared. (It went
+            # straight to IDLE, so an E-stop cycle got around "reset refused
+            # while the chute is plugged" and a start was accepted onto a
+            # known fault -- found in the 2026-09-23 logic review.)
+            standing = self._standing_cause()
+            if standing is not None:
+                self.state = LineState.FAULTED
+                self.fault_reason = standing
+            else:
+                self.state = LineState.IDLE
+                self.fault_reason = None
         # else: stays ESTOPPED -- either e-stop is still tripped, or no
         # reset yet. Both conditions are required
         # (docs/CONTROL-LAB.md §6.2's diagram).

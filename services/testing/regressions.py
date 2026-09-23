@@ -46,16 +46,19 @@ class JamTripRemoved(LineController):
 
 class ResetIgnoresJam(LineController):
     """Reset allowed while the chute is still plugged: "operators need to
-    reset faster". Production's _fault_cause_cleared, minus one condition."""
+    reset faster". Production's _standing_cause, minus one branch."""
 
-    def _fault_cause_cleared(self) -> bool:
-        return not (
-            self.interlocks.hopper_high_high
-            or self.conveyor_ctrl.faulted
-            or self.feeder_ctrl.faulted
-            # REGRESSION: `or self.interlocks.feeder_plugged` removed.
-            or self.interlocks.hopper_weight_failed
-        )
+    def _standing_cause(self) -> str | None:
+        if self.interlocks.hopper_high_high:
+            return "hopper high-high"
+        if self.conveyor_ctrl.faulted:
+            return "conveyor trip"
+        if self.feeder_ctrl.faulted:
+            return "feeder trip"
+        # REGRESSION: the plug-switch (feeder jam) check was removed here.
+        if self.interlocks.hopper_weight_failed:
+            return "hopper weight signal failed"
+        return None
 
 
 class _SwitchOnlyInterlocks(Interlocks):

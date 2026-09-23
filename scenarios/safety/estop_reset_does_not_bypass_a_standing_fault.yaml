@@ -1,0 +1,72 @@
+name: E-stop Reset Does Not Bypass A Standing Fault -- A Jam Still In The Chute Returns The Line To FAULTED
+description: "A feeder jam trips the line, then someone presses and releases the E-stop. Resetting the E-stop must not clear the jam's fault: the line goes back to FAULTED, start is refused, and only clearing the jam allows a return to idle."
+title: "The jam trips the line"
+
+# Found in the logic review (2026-09-23): resetting out of ESTOPPED went
+# straight to IDLE whatever else was still wrong, so an E-stop cycle got
+# around "reset refused while the chute is plugged" and Start was accepted
+# onto a known fault. The same reset rule now applies on both paths.
+
+given:
+  line_state: running
+
+when:
+  feeder_jam: true
+
+expect:
+  line_state: faulted
+  fault_reason: "feeder jam"
+
+within:
+  seconds: 1.0
+
+then:
+  - title: "E-stop pressed: the line goes to ESTOPPED"
+    when:
+      estop: tripped
+    expect:
+      line_state: estopped
+    within:
+      seconds: 0.5
+  - title: "E-stop released: still ESTOPPED until someone resets"
+    when:
+      estop: healthy
+    expect:
+      estop_healthy: true
+      line_state: estopped
+    within:
+      seconds: 0.5
+  - title: "Acknowledge and reset: the jam is still in the chute, so the line returns to FAULTED, not idle"
+    when:
+      acknowledge: true
+      reset: true
+    expect:
+      line_state: faulted
+      fault_reason: "feeder jam"
+    within:
+      seconds: 1.0
+  - title: "Start is refused while it is faulted"
+    when:
+      start: true
+    expect:
+      line_state: faulted
+      start_inhibit: ["LINE_FAULTED"]
+      conveyor_run_commanded: false
+    within:
+      seconds: 1.0
+  - title: "Clearing the jam at the feeder clears the alarm"
+    when:
+      feeder_jam: false
+    expect:
+      latched_alarm_ids: []
+    within:
+      seconds: 1.0
+  - title: "Reset is accepted once the cause is gone"
+    when:
+      reset: true
+    expect:
+      line_state: idle
+    within:
+      seconds: 1.0
+
+interlock: "Feeder jam"
