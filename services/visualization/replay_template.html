@@ -334,7 +334,7 @@ function renderTest(i) {
       const shown = status === "passed" || status === "failed" || status === "not_observable" ? c.status : null;
       tr.className = shown || "";
       tr.querySelector(".mk").textContent = shown ? CHECK[shown] : "expect";
-      tr.querySelector(".v").textContent = shown === "mismatch" ? `${val(c.expected)}, but got ${val(c.actual)}` : val(c.expected);
+      tr.querySelector(".v").textContent = shown === "mismatch" ? `${val(c.expected)}, but got ${c.actual == null ? "none" : val(c.actual)}` : val(c.expected);
     });
   });
   const fin = $("final");
@@ -363,7 +363,7 @@ function renderNow(i) {
     text = S.passed
       ? `PASS: every stage met its expectations within its time limit, and the invariants held on every scan.`
       : `FAIL at stage ${d && d.stage ? d.stage : "setup"}: ` + (d && d.unmet.length
-          ? d.unmet.map((u) => `${u.label.toLowerCase()} should be ${val(u.expected)} but is ${u.actual == null ? "empty" : val(u.actual)}`).join("; ") + "."
+          ? d.unmet.map((u) => `${u.label.toLowerCase()} should be ${val(u.expected)} but is ${u.actual == null ? "none" : val(u.actual)}`).join("; ") + "."
           : (d ? d.kind : "")) + (S.regression ? " The test caught the bad change." : "");
   } else if (m && m.kind === "stage") {
     const st = S.stages[m.n - 1], status = stageStatus(m.n - 1, t);

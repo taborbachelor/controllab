@@ -1,25 +1,54 @@
 # ControlLab
 
-**Virtual commissioning and controls validation for industrial automation.**
+**Automated commissioning tests for industrial control logic, run against a
+simulated plant before the logic ever reaches real equipment.**
 
-ControlLab runs deterministic virtual process equipment against real control
-logic, lets you inject equipment and instrument faults on purpose, and
-automatically verifies that the controller responds safely and recovers
-correctly. The same scenarios run against the Python controller, the same
-controller over Modbus I/O, and a real PLC runtime (OpenPLC).
+### ▶ [Watch a test run in your browser](https://taborbachelor.github.io/controllab/): recorded runs, nothing to install
 
-The question it answers: **can we change industrial control software without
-breaking the machine?**
+[![A feeder-jam commissioning test mid-run: the simulated line on the left is tripped with the feeder jammed; the test on the right shows stage 1 (trip within 1 s) and stage 2 (reset refused while the chute is plugged) passed](docs/images/demo-feeder-jam.jpg)](https://taborbachelor.github.io/controllab/)
 
-![ControlLab verifying the normal-operation scenario live: the status card narrates the run, the line is purging its belt during the stop sequence, and the scenarios panel leads on the right](docs/images/dashboard-overview.jpg)
+**What you're looking at.** On the left is a small bulk-material handling
+line: bin → slide gate → screw feeder → inclined conveyor → weighed hopper.
+It is simulated, with the motors, limit switches, level switches and weigh
+scale a real line has. Its control program sees only I/O, the same way a PLC
+does. On the right is a commissioning test for a feeder jam. The test jams
+the feeder, then checks the controller's response one stage at a time, each
+against a time limit: the line must trip within 1 s, a reset must be refused
+while the chute is still plugged, and the line may recover only in the right
+order. In the frame above, stage 2 has just passed: the line is faulted, the
+chute plug switch has caught the jam, and the operator's reset was refused.
+
+**Why it exists.** The question it answers: *can we change control software
+without breaking the machine?* Control logic gets changed all the time: a
+new permissive, a retuned timer, a quick fix for a nuisance trip. ControlLab
+turns the machine's required behavior into executable scenarios, so every
+change is checked against all of them before it goes near equipment. The
+demo's [second tab](https://taborbachelor.github.io/controllab/bad-change.html)
+shows a plausible bad change being caught: reset accepted with the chute
+still plugged.
+
+**What's verified:**
+
+- 27 scenarios covering all 11 interlocks in the spec: trips, recoveries,
+  E-stop, and instrument faults (stuck and failed sensors, a 1oo2 overfill
+  trip with a switch/transmitter disagreement alarm).
+- The same scenario files run unchanged against **OpenPLC** executing an
+  IEC 61131-3 Structured Text port of the controller over Modbus TCP, in
+  real time: **27/27 scenarios, 81/81 runs**
+  ([commissioning report](examples/openplc/COMMISSIONING-REPORT.md)).
+- Mass is conserved to the milligram and checked on every scan, and every
+  run is deterministic, so the same scenario gives the same result every
+  time.
+- 662 automated tests. The demo site is rebuilt from the current code on
+  every push, so it can't drift from the repository.
 
 ## Quick start
 
-Requires Python 3.12+.
+To run it yourself (Python 3.12+):
 
 ```bash
 pip install -e ".[dev]"
-python scripts/dashboard.py        # the dashboard: open http://127.0.0.1:8000
+python scripts/dashboard.py        # the live dashboard: open http://127.0.0.1:8000
 controllab test                    # every scenario against the Python controller
 controllab test feeder_jam_recovery --regression reset-ignores-jam   # watch a regression get caught
 pytest                             # the full test suite, every scenario included
@@ -216,7 +245,7 @@ REGRESSION DETECTED: 1 scenario(s) caught 'reset-ignores-jam' (expected behavior
 The test suite proves each regression is caught where it should be, and that
 each copied method differs from production only by its marked change.
 
-![A deliberate regression caught: stage 2 fails because reset was accepted with the chute still plugged](docs/images/dashboard-regression.jpg)
+[![A deliberate regression caught: stage 2 fails because reset was accepted with the chute still plugged; the line shows IDLE while the feeder is still jammed](docs/images/demo-regression-caught.jpg)](https://taborbachelor.github.io/controllab/bad-change.html)
 
 ## 8. Where does AI assistance fit?
 
@@ -249,6 +278,8 @@ real model. Details: [`docs/AI.md`](docs/AI.md).
   - guided walkthroughs to operate it by hand;
   - engineer tools to break it;
   - a replay of every run.
+
+  ![The live dashboard verifying the normal-operation scenario: the status card narrates the run and the scenarios panel leads on the right](docs/images/dashboard-overview.jpg)
 - **Telemetry and reports:** tag history (CSV), event log (JSONL), a
   deterministic Markdown commissioning report with the interlock coverage
   matrix, and a self-contained HTML replay of any run
@@ -287,7 +318,7 @@ Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md).
 
 ## Status
 
-All roadmap phases are complete, and 658 tests pass.
+All roadmap phases are complete, and 662 tests pass.
 
 | Phase | Focus | Status |
 |---|---|---|
