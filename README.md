@@ -29,7 +29,7 @@ self-contained HTML replay viewer for any scenario run (line mimic,
 alarm board, event log, and I/O tags, scrubbable tick by tick) and a
 live localhost dashboard: the line running in real time, operator
 commands, a separate fault-injection panel, and one-click download of
-the session as a replay. Phase 7 (Protocols) in progress: a
+the session as a replay. Phase 7 (Protocols) complete: a
 stdlib Modbus TCP server, tested against the Modbus spec's own examples
 and against `pymodbus`'s client, serving the line's I/O over a documented
 register map ([`docs/MODBUS-MAP.md`](docs/MODBUS-MAP.md)), and an
@@ -39,7 +39,9 @@ process over Modbus, with a comm-loss watchdog that stops the plant if
 the controller dies. The full scenario suite passes against that external
 controller (`python scripts/scenario_report.py --external`), observing it
 only through status registers it publishes, with event logs identical to
-the built-in run.
+the built-in run. And a real PLC runtime drives it too: OpenPLC in Docker,
+running a Structured Text port of the controller, passes a real-time
+commissioning check over Modbus ([`examples/openplc/`](examples/openplc/README.md)).
 
 ## Documentation
 
@@ -114,7 +116,7 @@ watchdog stops the plant within a second.
 | 4 | Fault injection, alarms | done (feeder jam / sensor failure hooks deferred) |
 | 5 | Telemetry | done |
 | 6 | Visualization | done |
-| 7 | Protocols (Modbus + external controller mode) | in progress (steps 1-3 and 4a done; OpenPLC demo next) |
+| 7 | Protocols (Modbus + external controller mode) | done |
 | 8 | AI engineering assistance | not started |
 | 9 | Virtual commissioning | not started |
 

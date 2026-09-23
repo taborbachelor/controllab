@@ -1,0 +1,41 @@
+[  0.00s] waiting for the PLC to publish status ...
+[  0.11s]   ok  PLC is scanning  (0.11s)
+[  0.11s] -- power-up: PLC started before its first I/O poll, so fail-safe ES-001 read 0 -> ESTOPPED
+[  0.11s]   ok  ES-001.TRIP latched as first-out  (0.00s)
+[  0.11s] operator: acknowledge
+[  0.13s] operator: reset
+[  0.43s]   ok  PLC reports IDLE, no latched alarms  (0.30s)
+[  0.43s] -- normal start (downstream first: conveyor, prove, gate, feeder)
+[  0.43s] operator: start
+[  2.40s]   ok  line RUNNING, conveyor + gate + feeder energized  (1.96s)
+[  4.13s]   ok  material reaching the hopper  (1.73s)
+[  4.13s] -- feeder trip while running
+[  4.13s] stimulus: feeder_trip = True
+[  4.35s]   ok  FAULTED, reason 'feeder trip', M-103.FAULT first-out and unacknowledged  (0.21s)
+[  4.41s]   ok  every output de-energized  (0.05s)
+[  4.41s] -- reset refused while the drive itself is still faulted
+[  4.41s] operator: reset
+[  5.42s]   ok  reset refused: the drive is still faulted  (0.01s)
+[  5.42s] -- recovery: clear the cause, reset the drive at the field, acknowledge, reset, start
+[  5.42s] stimulus: feeder_trip = False
+[  5.44s] stimulus: feeder_drive_reset = True
+[  5.45s] operator: acknowledge
+[  5.75s]   ok  alarm acknowledged and cleared  (0.28s)
+[  5.75s] operator: reset
+[  6.06s]   ok  back to IDLE, no fault reason  (0.32s)
+[  6.06s] operator: start
+[  8.05s]   ok  RUNNING again  (1.98s)
+[  8.05s] -- E-stop
+[  8.05s] stimulus: estop = tripped
+[  8.36s]   ok  ESTOPPED, reason 'e-stop', motors off  (0.29s)
+[  8.36s] stimulus: estop = healthy
+[  8.88s] operator: acknowledge
+[  8.90s] operator: reset
+[  9.18s]   ok  IDLE after release, acknowledge, reset  (0.27s)
+[  9.18s] -- normal stop (upstream first, then purge)
+[  9.18s] operator: start
+[ 11.16s]   ok  RUNNING  (1.97s)
+[ 11.16s] operator: stop
+[ 11.45s]   ok  STOPPING: feeder off and gate closing, conveyor still purging  (0.27s)
+[ 13.46s]   ok  IDLE after the purge, conveyor off  (2.02s)
+[ 13.46s] ALL CHECKS PASSED

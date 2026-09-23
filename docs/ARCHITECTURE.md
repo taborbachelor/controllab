@@ -116,6 +116,11 @@ ControlLab/
 │       ├── page.py                   assemble(): inlines the shared pieces below
 │       ├── hmi.css, hmi.js           shared styles + mimic/alarm/tag renderers
 │       └── mimic.svg.html            the shared line mimic (inline SVG)
+├── examples/
+│   └── openplc/                      a real PLC runtime (OpenPLC, Docker) running a
+│                                      Structured Text port of the controller against
+│                                      the plant: controllab_line.st, setup_openplc.py,
+│                                      run_demo.py, README.md, TRANSCRIPT.txt
 ├── scenarios/
 │   ├── startup/normal_start.yaml
 │   ├── shutdown/normal_stop.yaml
@@ -156,10 +161,9 @@ ControlLab/
 
 This is deliberately smaller than the target layout in `CLAUDE.md` §17 and
 the initial layout sketched in the original project brief. `examples/`
-isn't created yet because it would be empty — CLAUDE.md §17 itself says
-not to pre-create directories just to make the repository look larger
-than it is. It gets added in the phase that gives it real content (see
-the roadmap below). Alarms (Phase 4) no longer belongs on this list —
+was only created once it had real content (Phase 7 step 4, the OpenPLC
+demo) — CLAUDE.md §17 itself says not to pre-create directories just to
+make the repository look larger than it is. Alarms (Phase 4) no longer belongs on this list —
 `services/control/alarms.py` landed in step 1; see below.
 
 ## Module responsibilities (Phase 1)
@@ -819,7 +823,7 @@ issue and propose the change"):
 | 4 | Fault injection, alarms | done (steps 1-3: alarm core; wired into `LineController`; surfaced through Testing, 8/8 interlocks covered). Step 4 (feeder jam + sensor failure hooks) deliberately deferred — see `CONTROL-LAB.md` §10 |
 | 5 | Telemetry | done — generic sampled tag history; state/alarm diffing observer; optional command sink; generated Markdown commissioning report |
 | 6 | Visualization | done — tag history in every scenario run; HTML replay viewer; live localhost dashboard with operator commands, fault injection, and replay download |
-| 7 | Protocols | in progress — steps 1-3, 4a done (Modbus server + client; register map, revised to five PLC-master ranges; external-controller mode, full scenario suite passing across Modbus); 4b (OpenPLC demo) next |
+| 7 | Protocols | done — Modbus server + client; register map (five PLC-master ranges); external-controller mode with the full scenario suite passing across Modbus; OpenPLC running a Structured Text port of the controller against the plant |
 | 8 | AI engineering assistance | not started |
 | 9 | Virtual commissioning | not started |
 
