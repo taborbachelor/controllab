@@ -48,8 +48,8 @@ What's in it:
 - **Virtual commissioning against a real PLC** — the unchanged scenario
   suite runs against a free-running controller in real time, limits in
   plant time with a stated I/O latency tolerance. OpenPLC in Docker,
-  running a Structured Text port of the controller, passes 22/22
-  scenarios over 3 passes (66/66 runs):
+  running a Structured Text port of the controller, passes 25/25
+  scenarios over 3 passes (75/75 runs):
   [`examples/openplc/COMMISSIONING-REPORT.md`](examples/openplc/COMMISSIONING-REPORT.md).
   A controller that doesn't publish ControlLab's status block is judged on
   field evidence and gets *not observable* rather than a guess; an I/O map

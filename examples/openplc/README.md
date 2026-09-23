@@ -63,7 +63,7 @@ inside the container** (see findings), port 5020, and the five ranges from the m
 
 | Field | Start | Size | PLC addresses |
 |---|---:|---:|---|
-| Discrete Inputs (%IX100.0) | 0 | 11 | `%IX100.0`–`%IX101.2` |
+| Discrete Inputs (%IX100.0) | 0 | 13 | `%IX100.0`–`%IX101.4` |
 | Coils (%QX100.0) | 0 | 3 | `%QX100.0`–`%QX100.2` |
 | Input Registers (%IW100) | 0 | 2 | `%IW100`–`%IW101` |
 | Holding Registers - Read (%IW100) | 100 | 1 | `%IW102` (after the input registers) |
