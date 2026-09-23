@@ -1050,6 +1050,17 @@ issue and propose the change"):
   `snapshot()["injected"]["instruments"]` lists every unhealthy one.
   The page offers WT-105, LSH-105 and LSHH-105.
 
+## Module responsibilities (dashboard: plain-English narration)
+
+- **`services/visualization/narrate.py`** — `narrate(snapshot)`: what the
+  line is doing, why, and what to do next, in plain words, with a recovery
+  checklist that ticks itself off. A pure function of the snapshot (plus
+  the pacer's `running`); it explains, never decides. Every controller
+  fault reason must have an explanation (tested).
+- **`LiveSession.snapshot()`** — adds `start_step` and `pending` (inputs
+  queued for the next tick, so a paused line never swallows a press
+  silently); the server attaches `story`.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |

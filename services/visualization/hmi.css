@@ -69,3 +69,17 @@
   .banner.show { display: block; }
   .inst-row { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 6px; margin-bottom: 6px; }
   .inst-label { font-size: 12px; }
+  .story { margin: 12px 20px 0; padding: 12px 16px; border-radius: 8px; border-left: 6px solid var(--line); background: var(--panel, #fff); }
+  .story.ok { border-left-color: var(--run); }
+  .story.info { border-left-color: var(--accent, #2563eb); }
+  .story.warn { border-left-color: var(--warn); }
+  .story.trip { border-left-color: var(--trip); }
+  .story-kicker { margin: 0; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .story-headline { margin: 2px 0 4px; font-size: 20px; font-weight: 650; }
+  .story.trip .story-headline { color: var(--trip); }
+  .story-detail { margin: 0; font-size: 14px; line-height: 1.45; max-width: 75ch; }
+  .story-steps { margin: 8px 0 0; padding-left: 22px; font-size: 14px; }
+  .story-steps:empty { display: none; }
+  .story-steps li { margin: 2px 0; }
+  .story-steps li.done { color: var(--muted); text-decoration: line-through; }
+  button.attention { background: var(--accent, #2563eb); color: #fff; border-color: transparent; font-weight: 600; }

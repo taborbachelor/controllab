@@ -21,6 +21,12 @@
   <h1>ControlLab — Live</h1>
   <span class="meta">Simulated line, real-time. Operator commands on the left, test stimuli on the right.</span>
 </header>
+<section id="story" class="story info" aria-live="polite" aria-label="What's happening">
+  <p class="story-kicker">What's happening</p>
+  <p class="story-headline" id="story-headline">Connecting…</p>
+  <p class="story-detail" id="story-detail"></p>
+  <ol class="story-steps" id="story-steps"></ol>
+</section>
 <main>
   <div class="col">
     <section aria-label="Line mimic">
@@ -126,7 +132,18 @@ document.querySelectorAll("[data-level]").forEach((b) => b.addEventListener("cli
 let running = true;
 $("run").addEventListener("click", () => post("/api/run", { running: !running }));
 $("speed").addEventListener("change", (e) => post("/api/run", { speed: +e.target.value }));
-$("restart").addEventListener("click", () => { post("/api/restart"); since = 0; eventRows = []; prev = null; });
+$("restart").addEventListener("click", () => {
+  post("/api/restart"); since = 0; eventRows = []; prev = null;
+  $("events").innerHTML = '<p class="empty">No events yet.</p>';  // the old session's rows must go too
+});
+
+function renderStory(story) {
+  $("story").className = "story " + story.tone;
+  $("story-headline").textContent = story.headline;
+  $("story-detail").textContent = story.detail;
+  $("story-steps").innerHTML = story.steps.map((st) =>
+    `<li class="${st.done ? "done" : ""}">${st.done ? "✓ " : ""}${esc(st.text)}</li>`).join("");
+}
 
 let since = 0, eventRows = [], prev = null;
 function renderEvents(newEvents) {
@@ -144,6 +161,8 @@ async function poll() {
     running = s.running;
     injected = s.injected;
     $("run").textContent = running ? "⏸ Pause" : "▶ Run";
+    $("run").classList.toggle("attention", !running);
+    renderStory(s.story);
     $("speed").value = String(s.speed);
     $("clock").textContent = `t = ${s.t.toFixed(1)} s`;
     renderState(s.state);

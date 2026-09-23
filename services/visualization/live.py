@@ -56,6 +56,7 @@ from services.simulation.equipment.instruments import InstrumentFault
 from services.testing.invariants import InvariantViolation, Invariants
 from services.testing.rig import DEFAULT_PLANT_CONFIG, DT, build_rig, tick
 from services.testing.vocabulary import apply_field
+from services.visualization.narrate import narrate
 from services.visualization.page import assemble
 from services.visualization.replay import build_replay, render_html
 
@@ -263,7 +264,7 @@ class LiveSession:
             if self.external:
                 controller = {
                     "mode": "external", "state": "external", "fault_reason": None,
-                    "last_start_refusal": [], "alarms": [],
+                    "last_start_refusal": [], "alarms": [], "start_step": None,
                 }
             else:
                 controller = {
@@ -271,6 +272,7 @@ class LiveSession:
                     "state": line.state.name.lower(),
                     "fault_reason": line.fault_reason,
                     "last_start_refusal": list(line.last_start_refusal),
+                    "start_step": line.start_step.name.lower() if line.start_step else None,
                     "alarms": [
                         {
                             "id": a.id,
@@ -291,6 +293,9 @@ class LiveSession:
                 "events": [{"t": e.t, "type": e.type, **e.data} for e in events[since:]],
                 "event_count": len(events),
                 "pending_hmi": self.handshake.outstanding() if self.external else [],
+                # inputs queued for the next tick -- visible so a paused line
+                # doesn't swallow button presses without a word
+                "pending": [key for key, _ in self._pending],
                 "injected": {
                     "estop": "tripped" if plant.estop.tripped else "healthy",
                     "conveyor_trip": plant.conveyor.motor.trip_now,
@@ -407,6 +412,7 @@ def make_handler(session: LiveSession, pacer: Pacer) -> type[BaseHTTPRequestHand
                     return self._json(400, {"error": "since must be an integer"})
                 state = session.snapshot(max(0, since))
                 state.update(running=pacer.running, speed=pacer.speed)
+                state["story"] = narrate(state)
                 return self._json(200, state)
             if url.path == "/api/replay":
                 return self._send(

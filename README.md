@@ -7,7 +7,7 @@ feeder → conveyor → hopper — so deterministic control logic can be run
 against it and tested: startup, shutdown, interlocks, fault injection, and
 recovery, before any physical equipment exists.
 
-**Status:** all ten roadmap phases (0-9) complete; 601 tests passing.
+**Status:** all ten roadmap phases (0-9) complete; 610 tests passing.
 
 What's in it:
 
