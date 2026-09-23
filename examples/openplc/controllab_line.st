@@ -289,6 +289,7 @@ PROGRAM controllab_line
       IF hopper_high_high THEN trip := 2;
       ELSIF M103_FAULT THEN trip := 3;
       ELSIF LSH_103 THEN trip := 10;                         (* the drive still reports running *)
+      ELSIF feed_proof_fault THEN trip := 5;                (* a level-control restart that never ran *)
       ELSIF WT105_FLT THEN trip := 11;                      (* the feed decision reads WT_105 *)
       ELSIF M104_OL THEN trip := 4;
       ELSIF NOT conveyor_confirmed THEN trip := 8;

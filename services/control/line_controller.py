@@ -309,6 +309,11 @@ class LineController:
             # The drive still reports RUNNING through a jam (current limit),
             # so feeder_ctrl.faulted never sees it -- only the plug switch does.
             return "feeder jam"
+        if self.feeder_ctrl.start_proof_fault:
+            # Level control restarts the feeder mid-run; if the drive never
+            # runs, that's a fail-to-start (§6.3), not just an alarm -- the
+            # line must not sit in RUNNING while the hopper empties.
+            return "feeder failed to prove running"
         if self.interlocks.hopper_weight_failed:
             # The feed/no-feed decision below reads WT-105; with its signal
             # gone that decision can't be made. Unknown means stopped (§8).

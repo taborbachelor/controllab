@@ -33,6 +33,8 @@ class JamTripRemoved(LineController):
         if self.feeder_ctrl.faulted:
             return "feeder trip"
         # REGRESSION: the plug-switch (feeder jam) trip was removed here.
+        if self.feeder_ctrl.start_proof_fault:
+            return "feeder failed to prove running"
         if self.interlocks.hopper_weight_failed:
             return "hopper weight signal failed"
         if self.conveyor_ctrl.faulted:

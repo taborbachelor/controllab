@@ -1,0 +1,50 @@
+name: Feeder Fails To Restart Mid-Run -- Level Control Asks, The Drive Never Runs, The Line Trips
+description: "The feeder is paused at the hopper's high switch. When the hopper draws down and level control restarts it, the drive never runs: the line must trip on the feeder's fail-to-start rather than sit in RUNNING while the hopper empties."
+title: "The feeder is asked to restart but never runs: the line trips"
+
+# Found in the logic review (2026-09-23): in RUNNING the feeder's
+# start-proof timer raised its alarm (M-103.START_PROOF) but never tripped
+# the line, so a feeder that failed on a level-control restart left the line
+# in RUNNING with the hopper draining to empty. §6.3: any motor
+# fail-to-start is a trip. (The rig has no downstream draw, so the draw-down
+# is a level set directly.)
+
+given:
+  line_state: running
+  hopper_level_pct: 85
+
+when:
+  feeder_fail_to_start: true
+  hopper_level_pct: 50
+
+trigger: feeder_fail_to_start
+
+expect:
+  line_state: faulted
+  fault_reason: "feeder failed to prove running"
+  feeder_run_commanded: false
+  gate_open_commanded: false
+
+within:
+  seconds: 2.0
+
+then:
+  - title: "The drive is repaired; acknowledge and reset return the line to idle"
+    when:
+      feeder_fail_to_start: false
+      acknowledge: true
+      reset: true
+    expect:
+      line_state: idle
+    within:
+      seconds: 1.0
+  - title: "The line restarts and material flows"
+    when:
+      start: true
+    expect:
+      line_state: running
+      feeder_flowing: true
+    within:
+      seconds: 3.0
+
+interlock: "Any motor fail-to-start / trip"
