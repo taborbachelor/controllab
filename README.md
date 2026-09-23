@@ -7,50 +7,52 @@ feeder → conveyor → hopper — so deterministic control logic can be run
 against it and tested: startup, shutdown, interlocks, fault injection, and
 recovery, before any physical equipment exists.
 
-**Status:** early development. Phases 0-4 complete: simulation core;
-Control (the I/O image, device control modules, and the full
-`IDLE/STARTING/RUNNING/STOPPING/FAULTED/ESTOPPED` line state machine, all
-in Auto mode); Testing — a declarative `given`/`when`/`expect` scenario
-format (multi-stage with `then:`, so a whole recovery procedure is one
-scenario), 22 scenarios covering all 10 interlocks, and an interlock
-coverage matrix (`python scripts/scenario_report.py`) reporting 10/10, 0
-gaps; and fault injection with alarm management: motor fail-to-start and
-trips, belt slip, stuck gates, E-stop, a feeder jam (the drive keeps
-running; a discharge-chute plug switch catches it) and sensor failure
-(a stuck instrument, or a failed one whose input-channel diagnostic tells
-"0 kg" from "unknown"), with latching, first-out, acknowledge, and resets
-refused while a cause remains. Phase 5 (Telemetry)
-complete: a generic, IOImage-only sampled tag-value recorder
-(`TagHistory` + `write_csv()`), a state/alarm diffing event log
-(`EventLog` + `write_jsonl()`), operator-command capture through an
-optional sink on `LineController`, and a generated Markdown
-commissioning report — pass/fail, response time vs. each scenario's
-limit, the interlock coverage matrix, and every scenario's recorded
-event/alarm sequence. Phase 6 (Visualization) complete: a
-self-contained HTML replay viewer for any scenario run (line mimic,
-alarm board, event log, and I/O tags, scrubbable tick by tick) and a
-live localhost dashboard: the line running in real time, operator
-commands, a separate fault-injection panel, and one-click download of
-the session as a replay. Phase 7 (Protocols) complete: a
-stdlib Modbus TCP server, tested against the Modbus spec's own examples
-and against `pymodbus`'s client, serving the line's I/O over a documented
-register map ([`docs/MODBUS-MAP.md`](docs/MODBUS-MAP.md)), and an
-external-controller mode where the plant runs with no built-in controller
-and ControlLab's own controller, unmodified, drives it from a separate
-process over Modbus, with a comm-loss watchdog that stops the plant if
-the controller dies. The full scenario suite passes against that external
-controller (`python scripts/scenario_report.py --external`), observing it
-only through status registers it publishes, with event logs identical to
-the built-in run. And a real PLC runtime drives it too: OpenPLC in Docker,
-running a Structured Text port of the controller, passes a real-time
-commissioning check over Modbus ([`examples/openplc/`](examples/openplc/README.md)). Phase 9
-(Virtual commissioning) complete: the same scenario suite runs against a
-free-running external controller in real time, limits in plant time with
-a stated I/O latency tolerance, and repeat passes reporting the spread;
-against OpenPLC it passes 45/45 runs over 3 passes. A controller that
-doesn't publish ControlLab's status block gets *not observable* instead
-of a guess, and an I/O map file lets the plant be served at the addresses
-an existing PLC program already uses.
+**Status:** all ten roadmap phases (0-9) complete; 578 tests passing.
+
+What's in it:
+
+- **Simulation core** — a deterministic plant (bin, gate, feeder, conveyor,
+  hopper, E-stop) with material transport, conservation, and spillage
+  accounting. The same scenario run twice gives identical results.
+- **Control** — an I/O image (tag table), device control modules, and the
+  full `IDLE/STARTING/RUNNING/STOPPING/FAULTED/ESTOPPED` line state
+  machine with start permissives, trips, and a machine-readable reason
+  for every refused start. Control only ever touches I/O tags, never the
+  simulated equipment (enforced by a test).
+- **Commissioning scenarios** — a declarative `given`/`when`/`expect`
+  YAML format (multi-stage with `then:`, so a whole recovery procedure is
+  one scenario). 22 scenarios cover all 10 interlocks; the coverage
+  matrix (`python scripts/scenario_report.py`) reports 10/10, 0 gaps.
+- **Fault injection and alarms** — motor fail-to-start and trips, belt
+  slip, stuck gates, E-stop, a feeder jam (the drive keeps running; a
+  discharge-chute plug switch catches it), and instrument failure (stuck,
+  or failed with an input-channel diagnostic that tells "0 kg" from
+  "unknown"). Alarms latch, report first-out, need acknowledging, and a
+  reset is refused while its cause remains.
+- **Telemetry and reports** — sampled tag history (CSV), a state/alarm
+  event log (JSONL), operator-command capture, and a generated Markdown
+  commissioning report: pass/fail, response time against each limit, and
+  the interlock coverage matrix. Byte-identical run to run.
+- **Visualization** — a self-contained HTML replay of any scenario run
+  (line mimic, alarm board, event log, I/O tags, scrubbable tick by tick)
+  and a live localhost dashboard with operator controls and a separate
+  fault-injection panel.
+- **Protocols** — a stdlib Modbus TCP server (tested against the spec's
+  own examples and `pymodbus`) serving a documented register map
+  ([`docs/MODBUS-MAP.md`](docs/MODBUS-MAP.md)), and an external-controller
+  mode with a comm-loss watchdog.
+- **Virtual commissioning against a real PLC** — the unchanged scenario
+  suite runs against a free-running controller in real time, limits in
+  plant time with a stated I/O latency tolerance. OpenPLC in Docker,
+  running a Structured Text port of the controller, passes 22/22
+  scenarios over 3 passes (66/66 runs):
+  [`examples/openplc/COMMISSIONING-REPORT.md`](examples/openplc/COMMISSIONING-REPORT.md).
+  A controller that doesn't publish ControlLab's status block is judged on
+  field evidence and gets *not observable* rather than a guess; an I/O map
+  file serves the plant at the addresses an existing PLC program already
+  uses.
+- **Optional AI assistance** — scenario generation and failed-run analysis
+  behind a deterministic review gate (below).
 
 ### Optional AI assistance (Phase 8)
 
@@ -75,6 +77,12 @@ The whole loop (request, proposals, gate, approval, deterministic
 execution, analysis of a failed run) runs without a key using a labelled
 scripted stand-in: `python examples/ai_assist/run_flow.py --approve
 feeder_jam_during_start` (add `--live` for Claude). Details: [`docs/AI.md`](docs/AI.md).
+
+The live-model path is built and tested against a faked SDK, but has
+deliberately not been run against a real model (a choice not to spend on
+API calls for this project). The scripted stand-in exercises every
+verdict of the gate and the analysis; how good Claude's own proposals
+are is untested.
 
 ## Documentation
 
@@ -160,9 +168,9 @@ map, `relocated.yaml` the same line at remote-I/O offsets). `--map FILE`
 on `scenario_report.py --realtime`, `scripts/register_map.py` (the map
 document and PLC master configuration), and
 `examples/openplc/setup_openplc.py`. A map without a status block
-declares a controller without one. Against OpenPLC running a
-Structured Text port of the controller, all 15 scenarios pass in all 3
-passes: [`examples/openplc/COMMISSIONING-REPORT.md`](examples/openplc/COMMISSIONING-REPORT.md).
+declares a controller without one. The unchanged OpenPLC program passed
+the suite (15 scenarios at the time) against the relocated map with only
+its slave-device ranges changed.
 
 ## Roadmap
 
@@ -176,11 +184,11 @@ passes: [`examples/openplc/COMMISSIONING-REPORT.md`](examples/openplc/COMMISSION
 | 5 | Telemetry | done |
 | 6 | Visualization | done |
 | 7 | Protocols (Modbus + external controller mode) | done |
-| 8 | AI engineering assistance | done — first live model call pending an API key |
+| 8 | AI engineering assistance | done — live-model path built, not exercised (see below) |
 | 9 | Virtual commissioning | done |
 
 Full detail: `docs/CONTROL-LAB.md` §10.
 
 ## License
 
-MIT (planned — not yet added).
+MIT — see [`LICENSE`](LICENSE).

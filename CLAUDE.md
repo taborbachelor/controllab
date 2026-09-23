@@ -251,19 +251,13 @@ If you discover a better architecture than the one described here: **do not sile
 
 ## 23. Current Immediate Objective
 
-The immediate goal is **not** to finish ControlLab — it's to establish the foundation correctly:
+All roadmap phases (0-9) are complete. The work now is hardening and finishing, not new phases:
 
-1. Create/review `docs/CONTROL-LAB.md`.
-2. Create/review `docs/ARCHITECTURE.md`.
-3. Inspect the repository.
-4. Establish the Python project structure.
-5. Establish pytest.
-6. Implement the minimum simulation domain.
-7. Write tests.
-8. Demonstrate deterministic simulation.
-9. Only then proceed to control logic.
+1. Close real engineering findings as they surface (they are recorded in `docs/CONTROL-LAB.md` §10 and the change log), one small tested step at a time.
+2. Keep the repository presentable as a public portfolio project: README, docs, and reports current with what actually exists.
+3. New scope comes from the *Later* list in `docs/CONTROL-LAB.md` §10, and only on a deliberate decision.
 
-**Not yet:** the dashboard, AI functionality, external protocol integrations, a database, deployment infrastructure.
+**Standing decision:** no paid model calls. The AI live-model path (`--live`) is built but is not to be run or proposed unless the developer raises it.
 
 ## 24. Definition of Success
 

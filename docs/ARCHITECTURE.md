@@ -1035,7 +1035,7 @@ issue and propose the change"):
 | 5 | Telemetry | done — generic sampled tag history; state/alarm diffing observer; optional command sink; generated Markdown commissioning report |
 | 6 | Visualization | done — tag history in every scenario run; HTML replay viewer; live localhost dashboard with operator commands, fault injection, and replay download |
 | 7 | Protocols | done — Modbus server + client; register map (five PLC-master ranges); external-controller mode with the full scenario suite passing across Modbus; OpenPLC running a Structured Text port of the controller against the plant |
-| 8 | AI engineering assistance | done — review gate (incl. declared-trigger causality); optional AI behind a provider abstraction; validated, gated scenario generation; bounded, validated failed-run analysis; end-to-end example (`docs/AI.md`). First live model call pending an API key |
+| 8 | AI engineering assistance | done — review gate (incl. declared-trigger causality); optional AI behind a provider abstraction; validated, gated scenario generation; bounded, validated failed-run analysis; end-to-end example (`docs/AI.md`). Live-model path built, deliberately not exercised (no API spend on this project) |
 | 9 | Virtual commissioning | done — real-time runner (unchanged scenarios against a free-running external controller, latency tolerance, known starting state); the commissioning report against OpenPLC (45/45 runs, 3 passes); *not observable* for controllers without a status block; I/O map files, with the unchanged OpenPLC program passing against a relocated plant |
 
 Full detail and "done when" criteria per phase: `CONTROL-LAB.md` §10.
