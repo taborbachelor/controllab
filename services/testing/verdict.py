@@ -53,6 +53,7 @@ LABELS: dict[str, str] = {
     "estop_healthy": "E-stop healthy",
     "spilled_kg": "Material spilled (kg)",
     "spilled": "Any material spilled",
+    "belt_empty": "Conveyor belt empty",
     "hopper_level_kg": "Hopper level (kg)",
     "hopper_weight_agrees": "Hopper weight reading true",
     "any_unacknowledged_trip": "Unacknowledged trip alarm",

@@ -127,7 +127,8 @@ ControlLab/
 │   │       ├── gate.py              Gate + GateState (travel time, timeout fault)
 │   │       ├── vessel.py            MaterialBin, Hopper (passive mass accumulators)
 │   │       ├── feeder.py            Feeder (Motor + rate output)
-│   │       ├── conveyor.py          Conveyor (Motor + transport-delay belt queue)
+│   │       ├── conveyor.py          Conveyor (Motor + transport-delay belt queue,
+│   │       │                          advancing only while the belt moves)
 │   │       ├── estop.py             EStop (plant-wide safety trip)
 │   │       └── plant.py             Plant — wires the line together
 │   ├── testing/

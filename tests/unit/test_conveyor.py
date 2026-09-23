@@ -44,3 +44,22 @@ def test_belt_slip_fault_spills_even_while_motor_runs():
     assert not c.motion_confirmed
     spilled = c.load(15.0)
     assert spilled == 15.0
+
+
+def test_a_stopped_or_slipping_belt_holds_its_load_and_resumes_where_it_left_off():
+    """The belt's clock is its own travel, not plant time. (It was plant time,
+    so a stopped belt kept delivering and no scenario could tell whether a
+    stop sequence purged the belt at all.)"""
+    c = Conveyor("CV-1", length_m=10.0, speed_m_s=2.0, start_delay_s=0.0)  # 5.0 s transit
+    c.command(True)
+    run(c, 0.1)
+    c.load(20.0)
+    assert run(c, 2.0) == 0.0  # 2.0 s of travel so far
+    c.command(False)
+    assert run(c, 10.0) == 0.0 and c.mass_on_belt_kg == 20.0  # stopped: held in place
+    c.command(True)
+    c.motion_switch_stuck_false = True
+    assert run(c, 10.0) == 0.0 and c.mass_on_belt_kg == 20.0  # slipping: still held
+    c.motion_switch_stuck_false = False
+    assert run(c, 2.9) == 0.0  # 4.9 s of travel
+    assert run(c, 0.2) == 20.0  # arrives after 5.0 s of travel, however long it sat

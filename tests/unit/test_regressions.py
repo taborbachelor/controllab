@@ -18,7 +18,7 @@ from services.testing.scenario import Scenario
 SCENARIOS = Path(__file__).resolve().parents[2] / "scenarios"
 ALL = Scenario.discover(SCENARIOS)
 FIRST_FAILING_STAGE = {"jam-trip-removed": 1, "reset-ignores-jam": 2, "high-high-switch-only": 1,
-                       "feeder-starts-with-conveyor": 1}
+                       "feeder-starts-with-conveyor": 1, "purge-too-short": 4}
 
 
 def test_production_passes_every_scenario():

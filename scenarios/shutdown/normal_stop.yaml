@@ -12,6 +12,7 @@ expect:
   feeder_running: false
   gate_open: false
   spilled: false
+  belt_empty: true
 
 within:
   seconds: 3.0

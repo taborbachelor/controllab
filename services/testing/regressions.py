@@ -88,6 +88,16 @@ class FeederStartsWithConveyor(LineController):
         self.feeder_ctrl.command_speed(self.feed_speed_pct)
 
 
+class PurgeTooShort(LineController):
+    """The belt purge cut to a quarter "to make stops quicker": shorter than
+    the belt's transit time, so a normal stop leaves material on the belt."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        # REGRESSION: purge time cut to a quarter of the commissioned value.
+        self.purge_time_s = self.purge_time_s / 4
+
+
 @dataclass(frozen=True)
 class Regression:
     name: str
@@ -123,6 +133,12 @@ REGRESSIONS: dict[str, Regression] = {
             "The start sequence commands the feeder together with the conveyor.",
             "startup/normal_operation.yaml",
             "Start -> conveyor first, feeder only after the belt proves running",
+        ),
+        Regression(
+            "purge-too-short", PurgeTooShort,
+            "The stop sequence's belt purge was cut to a quarter, shorter than the belt's transit time.",
+            "startup/normal_operation.yaml",
+            "Stop -> the conveyor runs on until the belt is empty",
         ),
     )
 }

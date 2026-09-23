@@ -226,6 +226,9 @@ READ_FIELDS: dict[str, Callable[[Rig], object]] = {
     "estop_healthy": lambda rig: rig.plant.estop.healthy,
     "spilled_kg": lambda rig: rig.plant.spilled_kg,
     "spilled": lambda rig: rig.plant.spilled_kg > 1e-9,
+    # Nothing left on the conveyor (field truth): what a stop sequence's
+    # belt purge is for (docs/CONTROL-LAB.md §6.2).
+    "belt_empty": lambda rig: rig.plant.conveyor.mass_on_belt_kg <= 1e-9,
     "hopper_level_kg": lambda rig: rig.plant.hopper.level_kg,
     # What WT-105 is reporting on the wire -- which a stuck or failed
     # transmitter makes differ from hopper_level_kg, the truth. Agreement is

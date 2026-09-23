@@ -228,6 +228,7 @@ Production code is never modified to show a failure.
 | `reset-ignores-jam` | reset accepted while the chute is still plugged | feeder jam recovery, stage 2 |
 | `high-high-switch-only` | the 1oo2 overfill trip reverted to the switch alone | stuck high-high switch, stage 1 |
 | `feeder-starts-with-conveyor` | the feeder started together with the conveyor | normal operation, stage 1 |
+| `purge-too-short` | the stop sequence's belt purge cut shorter than the belt's transit time | normal operation, stage 4 (belt not empty) |
 
 ```
 $ controllab test feeder_jam_recovery --regression reset-ignores-jam

@@ -69,6 +69,7 @@ VALUE_SHAPES: dict[str, str] = {
     "estop_healthy": "true/false",
     "spilled_kg": "number",
     "spilled": "true/false",
+    "belt_empty": "true/false (nothing left on the conveyor belt)",
     "hopper_level_kg": "number",
     "any_unacknowledged_trip": "true/false",
     "latched_alarm_ids": "sorted list of alarm ids (see alarms)",

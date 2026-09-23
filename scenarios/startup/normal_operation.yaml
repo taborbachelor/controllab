@@ -40,12 +40,13 @@ then:
       conveyor_run_commanded: true
     within:
       seconds: 0.3
-  - title: "The purge ends and the line is idle, nothing spilled"
+  - title: "The purge ends: belt empty, line idle, nothing spilled"
     expect:
       line_state: idle
       conveyor_running: false
       feeder_running: false
       gate_open: false
       spilled: false
+      belt_empty: true
     within:
       seconds: 3.0
