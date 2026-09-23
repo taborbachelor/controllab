@@ -125,3 +125,62 @@ function describe(e) {
     default: return esc(e.type);
   }
 }
+
+// ---- The test panel: a scenario's setup and stages, each with its actions,
+// what it expects and its time limit, marked as a run reaches it. Shared by
+// the replay (driven by the recorded summary, frame by frame) and the live
+// dashboard (driven by the runner's progress, then the summary). Pure view:
+// every status and time it shows is handed to it.
+const TP_MARK = { pending: "○", running: "▶", passed: "✓", failed: "✗", not_run: "–", not_observable: "?", done: "✓" };
+const TP_CHECK = { match: "MATCH", mismatch: "MISMATCH", not_reached: "not reached", not_run: "not run", not_observed: "not observed" };
+function tpVal(v) {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "boolean") return v ? "yes" : "no";
+  if (Array.isArray(v)) return v.length ? v.join(", ") : "none";
+  return String(v);
+}
+
+// `plan`: {setup_text, stages: [{n, title, within_s, actions: [{kind, text}], checks: [{label, expected}]}]}
+// (verdict.plan(), or a run summary, which has the same shape plus outcomes).
+function buildTestPanel(el, plan) {
+  el.innerHTML = `<li data-st="0"><p class="tst-h"><span class="tst-mk"></span><span>Setup: bring the line to the starting condition</span></p>` +
+    `<p class="tst-do">${plan.setup_text.map((x) => `<span>${esc(x)}</span>`).join("")}</p></li>` +
+    plan.stages.map((st) =>
+      `<li data-st="${st.n}"><p class="tst-h"><span class="tst-mk"></span><span>Stage ${st.n}: ${esc(st.title || "")}</span></p>` +
+      `<p class="tst-time"></p>` +
+      `<p class="tst-do">${st.actions.length ? st.actions.map((a) => `<span class="${a.kind}">${esc(a.text)}</span>`).join("")
+                                              : "<span>No action: keep watching</span>"}</p>` +
+      `<table class="tst-x"><tbody>${st.checks.map((c, j) =>
+        `<tr data-j="${j}"><td class="mk">expect</td><td>${esc(c.label)}</td><td class="v">${esc(tpVal(c.expected))}</td></tr>`).join("")}` +
+      "</tbody></table></li>").join("");
+}
+
+// status: running | done | failed | pending
+function setTestSetup(el, status) {
+  const li = el.querySelector('[data-st="0"]');
+  li.className = status === "done" ? "passed" : status;
+  li.querySelector(".tst-mk").textContent = TP_MARK[status];
+}
+
+// status: pending | running | passed | failed | not_run | not_observable.
+// o.elapsed (running), o.response (passed), o.deadline (failed: at its time
+// limit, not an invariant stop), o.checks (the summary's checks, once known).
+function setTestStage(el, st, status, o = {}) {
+  const li = el.querySelector(`[data-st="${st.n}"]`);
+  li.className = status;
+  li.querySelector(".tst-mk").textContent = TP_MARK[status];
+  li.querySelector(".tst-time").textContent =
+    status === "running" ? `${(o.elapsed || 0).toFixed(1)} s elapsed · limit ${st.within_s} s` :
+    status === "passed" ? (o.response != null ? `passed in ${o.response.toFixed(2)} s · limit ${st.within_s} s` : "passed") :
+    status === "failed" ? (o.deadline ? `FAILED at its ${st.within_s} s deadline` : "FAILED: run stopped") :
+    status === "not_run" ? "not run (the test stops at the first failure)" :
+    status === "not_observable" ? "not observable without the controller's status block" : `limit ${st.within_s} s`;
+  li.querySelectorAll("tr").forEach((tr) => {
+    const c = o.checks ? o.checks[+tr.dataset.j] : null, spec = st.checks[+tr.dataset.j];
+    const shown = c && status !== "running" && status !== "pending" ? c.status : status === "passed" ? "match" : null;
+    tr.className = shown || "";
+    tr.querySelector(".mk").textContent = shown ? TP_CHECK[shown] : "expect";
+    tr.querySelector(".v").textContent = shown === "mismatch"
+      ? `${tpVal(spec.expected)}, but got ${c.actual == null ? "none" : tpVal(c.actual)}` : tpVal(spec.expected);
+  });
+}

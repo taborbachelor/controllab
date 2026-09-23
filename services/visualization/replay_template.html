@@ -61,29 +61,8 @@
   .now-t { margin: 2px 0 0; font-size: 17px; font-weight: 600; line-height: 1.35; }
   .now.trip .now-t { color: var(--trip); }
 
-  .tst { list-style: none; margin: 0; padding: 0; }
-  .tst > li { border-left: 4px solid var(--grid); padding: 6px 0 8px 12px; margin: 0 0 6px; transition: background .3s; }
-  .tst > li.running { border-left-color: var(--accent); background: #e9f0f7; }
-  .tst > li.passed { border-left-color: var(--run); }
-  .tst > li.failed { border-left-color: var(--trip); background: #fff5f5; }
-  .tst > li.pending, .tst > li.not_run { opacity: .6; }
-  .tst-h { margin: 0; display: flex; gap: 8px; align-items: baseline; font-weight: 600; font-size: 14px; }
-  .tst-mk { width: 1.1em; flex: none; text-align: center; font-weight: 800; }
-  .passed .tst-mk { color: var(--run); } .failed .tst-mk, .failed .tst-h { color: var(--trip); } .running .tst-mk { color: var(--accent); }
-  .tst-time { margin: 1px 0 0 1.7em; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .failed .tst-time { color: var(--trip); font-weight: 600; }
-  .tst-do { margin: 4px 0 0 1.7em; font-size: 13px; }
-  .tst-do span { display: inline-block; padding: 1px 7px; margin: 1px 4px 1px 0; border-radius: 10px; border: 1px solid var(--grid); background: var(--hollow); font-size: 12px; }
-  .tst-do span.fault { border-color: var(--trip); color: var(--trip); } .tst-do span.operator { border-color: var(--accent); color: var(--accent); }
-  .tst-do span.repair { border-color: var(--run); }
-  .tst-x { margin: 4px 0 0 1.7em; border-collapse: collapse; width: auto; font-size: 12px; }
-  .tst-x td { border: none; padding: 1px 12px 1px 0; }
-  .tst-x .mk { font-weight: 700; white-space: nowrap; color: var(--muted); }
-  .tst-x tr.match .mk { color: var(--run); } .tst-x tr.mismatch td { color: var(--trip); font-weight: 600; }
-  .tst-file { margin: -4px 0 10px; font-size: 12px; color: var(--muted); }
   body.explained main { grid-template-columns: minmax(0, 1fr) 440px; }
   @media (max-width: 1000px) { body.explained main { grid-template-columns: minmax(0, 1fr); } }
-  .tst-foot { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
 
   .final { margin-top: 12px; padding: 10px 14px; border-radius: 6px; border: 2px solid var(--run); background: var(--hollow); }
   .final.fail { border-color: var(--trip); background: #fff5f5; }
@@ -269,14 +248,7 @@ function renderEvents(i) {
 // stage ends at applied_t + response_s; the failed stage at its deadline
 // (first divergence t), or at the end of the recording for an invariant stop.
 const frameAt = (t) => { const i = F.findIndex((f) => f.t >= t - EPS); return i < 0 ? LAST : i; };
-const MARK = { pending: "○", running: "▶", passed: "✓", failed: "✗", not_run: "–", not_observable: "?", done: "✓" };
-const CHECK = { match: "MATCH", mismatch: "MISMATCH", not_reached: "not reached", not_run: "not run", not_observed: "not observed" };
-function val(v) {
-  if (v === null || v === undefined) return "—";
-  if (typeof v === "boolean") return v ? "yes" : "no";
-  if (Array.isArray(v)) return v.length ? v.join(", ") : "none";
-  return String(v);
-}
+const val = tpVal;
 let TIMES = [], firstApplied = null, moments = new Map();
 if (S) {
   firstApplied = S.stages.length && S.stages[0].applied_t != null ? S.stages[0].applied_t : null;
@@ -293,15 +265,7 @@ if (S) {
   if (firstApplied != null) moments.set(frameAt(firstApplied), { kind: "setup" });
   TIMES.forEach((tm, k) => { if (tm) moments.set(frameAt(tm.end), { kind: "stage", n: k + 1 }); });
 
-  const setupLi = `<li id="st-0"><p class="tst-h"><span class="tst-mk"></span><span>Setup: bring the line to the starting condition</span></p>` +
-    `<p class="tst-do">${S.setup_text.map((x) => `<span>${esc(x)}</span>`).join("")}</p></li>`;
-  $("test").innerHTML = setupLi + S.stages.map((st) =>
-    `<li id="st-${st.n}"><p class="tst-h"><span class="tst-mk"></span><span>Stage ${st.n}: ${esc(st.title || "")}</span></p>` +
-    `<p class="tst-time"></p>` +
-    `<p class="tst-do">${st.actions.length ? st.actions.map((a) => `<span class="${a.kind}">${esc(a.text)}</span>`).join("")
-                                            : "<span>No action: keep watching</span>"}</p>` +
-    `<table class="tst-x"><tbody>${st.checks.map((c, j) =>
-      `<tr data-j="${j}"><td class="mk">expect</td><td>${esc(c.label)}</td><td class="v">${esc(val(c.expected))}</td></tr>`).join("")}</tbody></table></li>`).join("");
+  buildTestPanel($("test"), S);
   $("test-foot").textContent = `Runtime: ${S.runtime}. Checks and physical invariants (mass conserved, no feeder onto an ` +
     "unproven belt, nothing energized in E-stop) are evaluated on every 0.1 s scan.";
 }
@@ -316,25 +280,12 @@ function stageStatus(k, t) {
 
 function renderTest(i) {
   const t = F[i].t;
-  const setupState = firstApplied == null ? (t >= END_T - EPS ? "failed" : "running") : t < firstApplied - EPS ? "running" : "done";
-  const s0 = $("st-0");
-  s0.className = setupState === "done" ? "passed" : setupState;
-  s0.querySelector(".tst-mk").textContent = MARK[setupState];
+  setTestSetup($("test"), firstApplied == null ? (t >= END_T - EPS ? "failed" : "running") : t < firstApplied - EPS ? "running" : "done");
   S.stages.forEach((st, k) => {
-    const status = stageStatus(k, t), li = $(`st-${st.n}`), tm = TIMES[k];
-    li.className = status;
-    li.querySelector(".tst-mk").textContent = MARK[status];
-    li.querySelector(".tst-time").textContent =
-      status === "running" ? `${(t - tm.start).toFixed(1)} s elapsed · limit ${st.within_s} s` :
-      status === "passed" ? `passed in ${st.response_s.toFixed(2)} s · limit ${st.within_s} s` :
-      status === "failed" ? (S.first_divergence && S.first_divergence.t != null ? `FAILED at its ${st.within_s} s deadline` : "FAILED: run stopped") :
-      status === "not_run" ? "not run (the test stops at the first failure)" : `limit ${st.within_s} s`;
-    li.querySelectorAll("tr").forEach((tr) => {
-      const c = st.checks[+tr.dataset.j];
-      const shown = status === "passed" || status === "failed" || status === "not_observable" ? c.status : null;
-      tr.className = shown || "";
-      tr.querySelector(".mk").textContent = shown ? CHECK[shown] : "expect";
-      tr.querySelector(".v").textContent = shown === "mismatch" ? `${val(c.expected)}, but got ${c.actual == null ? "none" : val(c.actual)}` : val(c.expected);
+    const tm = TIMES[k];
+    setTestStage($("test"), st, stageStatus(k, t), {
+      elapsed: tm ? t - tm.start : 0, response: st.response_s, checks: st.checks,
+      deadline: S.first_divergence && S.first_divergence.t != null,
     });
   });
   const fin = $("final");

@@ -146,3 +146,26 @@
   .res-cmp { border-collapse: collapse; font-size: 12px; width: 100%; } .res-cmp th, .res-cmp td { text-align: left; padding: 3px 8px 3px 0; border-bottom: 1px solid var(--grid); vertical-align: top; }
   .res-checks { width: auto; } .res-checks td { padding: 1px 18px 1px 0; border: none; }
   .res-checks td:nth-child(2) { min-width: 15rem; }
+
+  /* The test panel (hmi.js buildTestPanel/setTestStage): replay and live dashboard */
+  .tst { list-style: none; margin: 0; padding: 0; }
+  .tst > li { border-left: 4px solid var(--grid); padding: 6px 0 8px 12px; margin: 0 0 6px; transition: background .3s; }
+  .tst > li.running { border-left-color: var(--accent); background: #e9f0f7; }
+  .tst > li.passed { border-left-color: var(--run); }
+  .tst > li.failed { border-left-color: var(--trip); background: #fff5f5; }
+  .tst > li.pending, .tst > li.not_run { opacity: .6; }
+  .tst-h { margin: 0; display: flex; gap: 8px; align-items: baseline; font-weight: 600; font-size: 14px; }
+  .tst-mk { width: 1.1em; flex: none; text-align: center; font-weight: 800; }
+  .passed .tst-mk { color: var(--run); } .failed .tst-mk, .failed .tst-h { color: var(--trip); } .running .tst-mk { color: var(--accent); }
+  .tst-time { margin: 1px 0 0 1.7em; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .failed .tst-time { color: var(--trip); font-weight: 600; }
+  .tst-do { margin: 4px 0 0 1.7em; font-size: 13px; }
+  .tst-do span { display: inline-block; padding: 1px 7px; margin: 1px 4px 1px 0; border-radius: 10px; border: 1px solid var(--grid); background: var(--hollow); font-size: 12px; }
+  .tst-do span.fault { border-color: var(--trip); color: var(--trip); } .tst-do span.operator { border-color: var(--accent); color: var(--accent); }
+  .tst-do span.repair { border-color: var(--run); }
+  .tst-x { margin: 4px 0 0 1.7em; border-collapse: collapse; width: auto; font-size: 12px; }
+  .tst-x td { border: none; padding: 1px 12px 1px 0; }
+  .tst-x .mk { font-weight: 700; white-space: nowrap; color: var(--muted); }
+  .tst-x tr.match .mk { color: var(--run); } .tst-x tr.mismatch td { color: var(--trip); font-weight: 600; }
+  .tst-file { margin: -4px 0 10px; font-size: 12px; color: var(--muted); }
+  .tst-foot { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
