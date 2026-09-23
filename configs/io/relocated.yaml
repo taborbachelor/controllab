@@ -1,0 +1,52 @@
+# The same line at the addresses a remote-I/O layout with per-table offsets
+# would put it (Phase 9 step 4): discrete inputs from 1000, input registers
+# from 2000, coils from 3000, holding registers from 4000, the HMI request
+# word at 4100, SCADA pushbuttons from 3100. Every range keeps its internal
+# ORDER, which is what lets examples/openplc/controllab_line.st run against
+# it unchanged: OpenPLC packs each polled range into %IX100.0 / %QX100.0 /
+# %IW100 / %QW100 in order, so only the PLC's I/O configuration (its slave
+# device start addresses) changes, never the program. Reordering points
+# inside a range would need the program's located variables changed too.
+name: Relocated remote-I/O layout
+
+discrete_inputs:
+  1000: LSL-101
+  1001: ZSO-102
+  1002: ZSC-102
+  1003: M-103.RUNNING
+  1004: M-103.FAULT
+  1005: M-104.RUNNING
+  1006: M-104.OL
+  1007: ZSS-104
+  1008: LSH-105
+  1009: LSHH-105
+  1010: ES-001
+
+input_registers:
+  2000: {tag: LT-101, scale: 100, full_scale: 100}
+  2001: {tag: WT-105, scale: 10, full_scale: 2000}
+
+coils:
+  3000: XV-102.CMD_OPEN
+  3001: M-103.RUN
+  3002: M-104.RUN
+
+holding_registers:
+  4000: {tag: SC-103, scale: 100, full_scale: 100}
+
+hmi:
+  request: 4100
+  ack: 4006
+  commands:
+    start: 3100
+    stop: 3101
+    reset: 3102
+    acknowledge: 3103
+
+status:
+  line_state: 4001
+  fault_reason: 4002
+  alarms_active: 4003
+  alarms_unacked: 4004
+  first_out: 4005
+  start_inhibit: 4007

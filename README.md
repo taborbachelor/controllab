@@ -41,7 +41,14 @@ controller (`python scripts/scenario_report.py --external`), observing it
 only through status registers it publishes, with event logs identical to
 the built-in run. And a real PLC runtime drives it too: OpenPLC in Docker,
 running a Structured Text port of the controller, passes a real-time
-commissioning check over Modbus ([`examples/openplc/`](examples/openplc/README.md)).
+commissioning check over Modbus ([`examples/openplc/`](examples/openplc/README.md)). Phase 9
+(Virtual commissioning) complete: the same scenario suite runs against a
+free-running external controller in real time, limits in plant time with
+a stated I/O latency tolerance, and repeat passes reporting the spread;
+against OpenPLC it passes 45/45 runs over 3 passes. A controller that
+doesn't publish ControlLab's status block gets *not observable* instead
+of a guess, and an I/O map file lets the plant be served at the addresses
+an existing PLC program already uses.
 
 ### Optional AI assistance (Phase 8)
 
@@ -136,7 +143,16 @@ tolerance; a result met only inside it is reported as such, and repeat
 passes report the response-time spread. For a controller that doesn't
 publish ControlLab's status block, `--no-status` reports expectations on
 its internal state as *not observable* rather than reading registers
-nobody wrote. Against OpenPLC running a
+nobody wrote.
+
+To commission a PLC program whose I/O configuration already exists,
+describe its addresses in an I/O map file instead of changing the
+program: see [`configs/io/`](configs/io/) (`line.yaml` is the built-in
+map, `relocated.yaml` the same line at remote-I/O offsets). `--map FILE`
+on `scenario_report.py --realtime`, `scripts/register_map.py` (the map
+document and PLC master configuration), and
+`examples/openplc/setup_openplc.py`. A map without a status block
+declares a controller without one. Against OpenPLC running a
 Structured Text port of the controller, all 15 scenarios pass in all 3
 passes: [`examples/openplc/COMMISSIONING-REPORT.md`](examples/openplc/COMMISSIONING-REPORT.md).
 
@@ -153,7 +169,7 @@ passes: [`examples/openplc/COMMISSIONING-REPORT.md`](examples/openplc/COMMISSION
 | 6 | Visualization | done |
 | 7 | Protocols (Modbus + external controller mode) | done |
 | 8 | AI engineering assistance | done (optional) |
-| 9 | Virtual commissioning | in progress (real-time runner; suite + report against OpenPLC) |
+| 9 | Virtual commissioning | done |
 
 Full detail: `docs/CONTROL-LAB.md` §10.
 

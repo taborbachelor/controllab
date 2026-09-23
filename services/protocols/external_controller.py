@@ -34,7 +34,7 @@ from services.control.line_controller import LineController
 from services.protocols import controller_status
 from services.protocols.line_map import LINE_REGISTER_MAP
 from services.protocols.modbus import ModbusClient
-from services.protocols.register_map import ModbusIOSync
+from services.protocols.register_map import ModbusIOSync, RegisterMap
 from services.simulation.engine.plant_io import build_line_io_image
 from services.testing.rig import DEFAULT_PLANT_CONFIG, DT, build_line_controller
 
@@ -47,10 +47,12 @@ COMMANDS = {
 
 
 class ExternalController:
-    def __init__(self, client, line_overrides: dict | None = None) -> None:
+    def __init__(self, client, line_overrides: dict | None = None, register_map: RegisterMap = LINE_REGISTER_MAP) -> None:
+        # `register_map` (Phase 9 step 4): the same logic against another I/O
+        # layout -- the controller's own I/O configuration, as a PLC's would be.
         self.io = build_line_io_image()
         self.line = build_line_controller(self.io, DEFAULT_PLANT_CONFIG["hopper_capacity_kg"], line_overrides)
-        self.sync = ModbusIOSync(client, LINE_REGISTER_MAP, self.io)
+        self.sync = ModbusIOSync(client, register_map, self.io)
         # The first scan must see the plant's real state, not the mirror's
         # defaults -- the same rule plant_io.scan() documents for a local rig.
         self.sync.pull_inputs()
@@ -66,7 +68,8 @@ class ExternalController:
 
 
 def run(
-    host: str, port: int, speed: float = 1.0, stop: threading.Event | None = None, scan_s: float = DT
+    host: str, port: int, speed: float = 1.0, stop: threading.Event | None = None, scan_s: float = DT,
+    register_map: RegisterMap = LINE_REGISTER_MAP,
 ) -> None:
     """Scan every scan_s/speed wall-clock seconds until `stop` is set or the
     connection drops. `speed` must match the plant's, the same way a real
@@ -75,7 +78,7 @@ def run(
     task, and with it real I/O latency (Phase 9's real-time tests)."""
     stop = stop or threading.Event()
     with ModbusClient(host, port) as client:
-        controller = ExternalController(client)
+        controller = ExternalController(client, register_map=register_map)
         next_at = time.monotonic()
         while not stop.is_set():
             controller.scan_once(scan_s)

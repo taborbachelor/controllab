@@ -44,7 +44,8 @@ plant (our reference controller counts DT per scan). A real PLC's timers
 run on wall time, so a real PLC runs at 1.
 
 `status=False` (Phase 9 step 3) is for a controller that doesn't publish
-ControlLab's status block: expectations on its state are reported not
+ControlLab's status block (by default it follows the map: a map with no
+status registers declares exactly that, Phase 9 step 4): expectations on its state are reported not
 observed (runner.py), the event log records commands only, and the
 power-up procedure runs blind -- acknowledge, reset, then wait until
 every discrete output has been off for POWER_UP_QUIET_S, the field's
@@ -116,8 +117,12 @@ class ReferenceController:
 
     name = "reference controller (services/protocols/external_controller.py), free-running"
 
-    def __init__(self, port: int, host: str = "127.0.0.1", speed: float = 1.0, scan_s: float = DT) -> None:
+    def __init__(
+        self, port: int, host: str = "127.0.0.1", speed: float = 1.0, scan_s: float = DT,
+        register_map: RegisterMap = LINE_REGISTER_MAP,
+    ) -> None:
         self.host, self.port, self.speed, self.scan_s = host, port, speed, scan_s
+        self.register_map = register_map
         self._stop: threading.Event | None = None
         self._thread: threading.Thread | None = None
 
@@ -125,7 +130,8 @@ class ReferenceController:
         self.close()
         self._stop = threading.Event()
         self._thread = threading.Thread(
-            target=external_controller.run, args=(self.host, self.port, self.speed, self._stop, self.scan_s),
+            target=external_controller.run,
+            args=(self.host, self.port, self.speed, self._stop, self.scan_s, self.register_map),
             daemon=True, name="controllab-reference-controller",
         )
         self._thread.start()
@@ -234,8 +240,10 @@ def run_realtime(
     speed: float = 1.0,
     latency_s: float = LATENCY_S,
     ready_timeout_s: float = READY_TIMEOUT_S,
-    status: bool = True,
+    status: bool | None = None,
 ) -> ScenarioResult:
+    if status is None:
+        status = bool(plant.map.status_registers)
     rig = plant.fresh()
     controller.restart()
     observer = ModbusIOSync(ModbusClient(plant.host, plant.port), plant.map, rig.io)
@@ -392,7 +400,7 @@ def run_suite_realtime(
     speed: float = 1.0,
     latency_s: float = LATENCY_S,
     on_result: Callable[[int, Scenario, ScenarioResult], None] | None = None,
-    status: bool = True,
+    status: bool | None = None,
 ) -> list[RepeatedRuns]:
     """The whole suite, `repeat` times over (each pass complete before the
     next starts, so the passes are independent), every scenario from its

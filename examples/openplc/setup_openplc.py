@@ -68,7 +68,15 @@ def main() -> int:
     ap.add_argument("--controllab-host", default="host.docker.internal", help="ControlLab's address as seen from the PLC")
     ap.add_argument("--controllab-port", default="5020")
     ap.add_argument("--container", default=None, help="the OpenPLC container, to resolve --controllab-host inside it")
+    ap.add_argument("--map", type=Path, default=None,
+                    help="configure the slave device from this I/O map file (configs/io/) instead of the built-in map")
     args = ap.parse_args()
+    register_map = LINE_REGISTER_MAP
+    if args.map is not None:
+        from services.protocols.map_file import load_map
+        from services.simulation.engine.plant_io import build_line_io_image
+
+        register_map, _ = load_map(args.map, build_line_io_image())
     controllab_ip = resolve_in_container(args.container, args.controllab_host)
 
     plc = OpenPLCWeb(args.plc)
@@ -109,7 +117,7 @@ def main() -> int:
             return 1
         time.sleep(2)
 
-    r = LINE_REGISTER_MAP.controller_ranges()
+    r = register_map.controller_ranges()
     plc.post("/add-modbus-device", {
         "device_name": "ControlLab", "device_protocol": "TCP", "device_id": "1",
         "device_ip": controllab_ip, "device_port": str(args.controllab_port),

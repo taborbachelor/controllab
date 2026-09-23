@@ -135,6 +135,11 @@ def main() -> int:
     rt = parser.add_argument_group("real-time run against a free-running controller (Phase 9)")
     rt.add_argument("--realtime", choices=("reference", "openplc"), default=None)
     rt.add_argument("--modbus-port", type=int, default=5020, help="port the plant is served on (the one the PLC polls)")
+    rt.add_argument(
+        "--map", type=Path, default=None,
+        help="serve the plant at the addresses in this I/O map file (configs/io/) instead of the built-in map; "
+        "a map without a status block implies --no-status",
+    )
     rt.add_argument("--repeat", type=int, default=1, help="run the whole suite this many times")
     rt.add_argument("--latency", type=float, default=None, help="I/O latency tolerance, plant seconds (default 0.5)")
     rt.add_argument("--speed", type=float, default=1.0, help="plant speed; reference controller only (a real PLC runs at 1)")
@@ -149,8 +154,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.realtime and args.external:
         parser.error("--realtime and --external are different modes; pick one")
-    if args.no_status and not args.realtime:
-        parser.error("--no-status applies to --realtime runs")
+    if (args.no_status or args.map) and not args.realtime:
+        parser.error("--no-status and --map apply to --realtime runs")
     if args.realtime == "openplc" and args.speed != 1.0:
         parser.error("a real PLC's timers run on wall time: --realtime openplc runs at --speed 1")
 
@@ -194,29 +199,41 @@ def _run_realtime(args, scenarios):
     from services.testing.realtime import LATENCY_S, RealtimePlant, ReferenceController, run_suite_realtime
 
     latency = LATENCY_S if args.latency is None else args.latency
-    plant = RealtimePlant(port=args.modbus_port)
+    if args.map is not None:
+        from services.protocols.map_file import load_map
+        from services.simulation.engine.plant_io import build_line_io_image
+
+        register_map, _ = load_map(args.map, build_line_io_image())
+    else:
+        from services.protocols.line_map import LINE_REGISTER_MAP as register_map
+    plant = RealtimePlant(port=args.modbus_port, register_map=register_map)
     if args.realtime == "openplc":
         from services.protocols.openplc import OpenPLCController
 
         controller = OpenPLCController(args.plc, args.plc_user, args.plc_password)
     else:
-        controller = ReferenceController(plant.port, speed=args.speed)
+        # Our controller configured with the same map, as a PLC's I/O
+        # configuration would be.
+        controller = ReferenceController(plant.port, speed=args.speed, register_map=register_map)
+    status = not args.no_status and bool(register_map.status_registers)
 
     def progress(n, scenario, result):
         print(f"  pass {n}/{args.repeat}  {console_mark(result):5} {result.elapsed_s:5.2f}s  {scenario.name}", flush=True)
 
-    status = "no status block" if args.no_status else "status block"
-    print(f"Real-time run: {controller.name}; plant on 127.0.0.1:{plant.port}, {args.speed:g}x, "
-          f"latency tolerance {latency:g}s, {args.repeat} pass(es), {status}", flush=True)
+    where = f", map {args.map.as_posix()}" if args.map else ""
+    print(f"Real-time run: {controller.name}; plant on 127.0.0.1:{plant.port}{where}, {args.speed:g}x, "
+          f"latency tolerance {latency:g}s, {args.repeat} pass(es), "
+          f"{'status block' if status else 'no status block'}", flush=True)
     try:
         runs = run_suite_realtime(scenarios, plant, controller, repeat=args.repeat, speed=args.speed,
-                                  latency_s=latency, on_result=progress, status=not args.no_status)
+                                  latency_s=latency, on_result=progress, status=status)
     finally:
         controller.close()
         plant.close()
     print()
     conditions = RealtimeConditions(latency, args.speed, args.repeat, {r.scenario.path: r.responses for r in runs})
-    name = controller.name + (" (declared: publishes no status block)" if args.no_status else "")
+    name = controller.name + (f", I/O map `{args.map.as_posix()}`" if args.map else "") + (
+        "" if status else " (publishes no status block)")
     return [(r.scenario, r.combined()) for r in runs], conditions, name
 
 

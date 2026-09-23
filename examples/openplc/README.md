@@ -80,7 +80,10 @@ python scripts/scenario_report.py --realtime openplc --repeat 3 --markdown examp
 ```
 
 Every scenario in `scenarios/` runs unchanged against the PLC, with limits in plant time plus a
-stated I/O latency tolerance (0.5 s by default). [`COMMISSIONING-REPORT.md`](COMMISSIONING-REPORT.md)
+stated I/O latency tolerance (0.5 s by default). To serve the plant at other addresses, give both
+`setup_openplc.py` and `scenario_report.py` the same `--map configs/io/relocated.yaml`: the
+program stays unchanged, only the slave device's ranges move (OpenPLC packs each polled range into
+`%IX100.0`… in order, so a map may relocate ranges but not reorder points within one). [`COMMISSIONING-REPORT.md`](COMMISSIONING-REPORT.md)
 is a recorded run: **15/15 scenarios, 45/45 runs over 3 passes, none needing the tolerance**,
 response times within one tick of each other across passes.
 

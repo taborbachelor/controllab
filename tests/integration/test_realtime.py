@@ -142,3 +142,44 @@ def test_a_controller_without_a_status_block_is_judged_on_the_field_alone(rt):
     assert partial.passed and partial.not_observed == ("line_state",), partial.detail
     blind = run_realtime(scenario("faults/bin_low_blocks_start.yaml"), plant, ctl, speed=SPEED, status=False)
     assert blind.not_observable and not blind.passed
+
+
+def test_the_same_logic_passes_at_relocated_addresses(rt_relocated):
+    """Phase 9 step 4: plant and controller both configured from
+    configs/io/relocated.yaml -- every point at a different address, the
+    controller's logic untouched -- and the unchanged scenarios pass."""
+    plant, controller = rt_relocated
+    for rel in ("faults/feeder_trip_while_running.yaml", "faults/bin_low_blocks_start.yaml"):
+        result = run_realtime(scenario(rel), plant, controller, speed=SPEED)
+        assert result.passed, (rel, result.detail)
+
+
+def test_a_map_without_a_status_block_makes_the_run_status_less(tmp_path):
+    from services.protocols.map_file import load_map
+    from services.simulation.engine.plant_io import build_line_io_image
+
+    text = (REPO / "configs" / "io" / "relocated.yaml").read_text(encoding="utf-8").split("\nstatus:")[0] + "\n"
+    path = tmp_path / "no-status.yaml"
+    path.write_text(text.replace("ack: 4006", "ack: 4001"), encoding="utf-8")
+    register_map, _ = load_map(path, build_line_io_image())
+    plant = RealtimePlant(port=0, register_map=register_map)
+    ctl = ReferenceController(plant.port, speed=SPEED, register_map=register_map)
+    try:
+        result = run_realtime(scenario("safety/estop_from_running.yaml"), plant, ctl, speed=SPEED)  # status: from the map
+        assert result.passed and result.not_observed == ("line_state",), result.detail
+    finally:
+        ctl.close()
+        plant.close()
+
+
+@pytest.fixture
+def rt_relocated():
+    from services.protocols.map_file import load_map
+    from services.simulation.engine.plant_io import build_line_io_image
+
+    register_map, _ = load_map(REPO / "configs" / "io" / "relocated.yaml", build_line_io_image())
+    plant = RealtimePlant(port=0, register_map=register_map)
+    ctl = ReferenceController(plant.port, speed=SPEED, register_map=register_map)
+    yield plant, ctl
+    ctl.close()
+    plant.close()

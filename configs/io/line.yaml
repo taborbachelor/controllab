@@ -1,0 +1,48 @@
+# The bulk-material line's default I/O map, as a map file (Phase 9 step 4).
+# Identical to services/protocols/line_map.py, which stays the default;
+# tests/unit/test_map_file.py fails if the two ever differ. Copy this file
+# as the starting point for a map that fits an existing PLC program.
+# Format: services/protocols/map_file.py. Rendered: docs/MODBUS-MAP.md.
+name: ControlLab line map (default)
+
+discrete_inputs:
+  0: LSL-101
+  1: ZSO-102
+  2: ZSC-102
+  3: M-103.RUNNING
+  4: M-103.FAULT
+  5: M-104.RUNNING
+  6: M-104.OL
+  7: ZSS-104
+  8: LSH-105
+  9: LSHH-105
+  10: ES-001
+
+input_registers:
+  0: {tag: LT-101, scale: 100, full_scale: 100}
+  1: {tag: WT-105, scale: 10, full_scale: 2000}
+
+coils:
+  0: XV-102.CMD_OPEN
+  1: M-103.RUN
+  2: M-104.RUN
+
+holding_registers:
+  0: {tag: SC-103, scale: 100, full_scale: 100}
+
+hmi:
+  request: 100
+  ack: 6
+  commands:
+    start: 100
+    stop: 101
+    reset: 102
+    acknowledge: 103
+
+status:
+  line_state: 1
+  fault_reason: 2
+  alarms_active: 3
+  alarms_unacked: 4
+  first_out: 5
+  start_inhibit: 7

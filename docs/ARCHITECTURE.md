@@ -118,8 +118,10 @@ ControlLab/
 │   │   ├── external_controller.py    the reference external controller: our LineController
 │   │   │                              over ModbusIOSync (step 3a)
 │   │   ├── controller_status.py      status block codec + code tables (step 3b)
-│   │   └── openplc.py                OpenPLC web client + OpenPLCController (cold
-│   │                                  restart between scenarios, Phase 9 step 2)
+│   │   ├── openplc.py                OpenPLC web client + OpenPLCController (cold
+│   │   │                              restart between scenarios, Phase 9 step 2)
+│   │   └── map_file.py               load_map(): a YAML I/O map file -> a validated
+│   │                                  RegisterMap (Phase 9 step 4)
 │   └── visualization/
 │       ├── replay.py                 build_frames()/build_replay()/render_html() --
 │       │                             replay reconstructed from telemetry (Phase 6 step 2)
@@ -137,6 +139,10 @@ ControlLab/
 │                                      run_demo.py, README.md, TRANSCRIPT.txt, and
 │                                      COMMISSIONING-REPORT.md (the suite against it,
 │                                      Phase 9 step 2)
+├── configs/
+│   └── io/                           I/O map files (Phase 9 step 4): line.yaml (the
+│                                      built-in map, tested identical to line_map.py)
+│                                      and relocated.yaml (the line at remote-I/O offsets)
 ├── scenarios/
 │   ├── startup/normal_start.yaml
 │   ├── shutdown/normal_stop.yaml
@@ -941,6 +947,23 @@ issue and propose the change"):
 - **`run_realtime(status=False)`** — blind power-up
   (`_blind_power_up`: acknowledge, reset, outputs quiet 0.5 s).
 
+## Module responsibilities (Phase 9 step 4)
+
+- **`map_file.load_map(path, io)`** — YAML → `RegisterMap` →
+  `validate(io)`, returning (map, name) or raising `MapFileError`
+  with every problem listed. Status block all-or-nothing; command and
+  status descriptions borrowed from the line map. Strict about unknown
+  keys and shapes.
+- **Status follows the map** — `run_realtime(status=None)` means
+  "publishes a status block iff the map has one".
+- **`register_map.render_markdown(..., source=...)`** — names the map
+  file it was generated from; says "no status block" when there is
+  none.
+- **`ExternalController` / `run()` / `ReferenceController`** take a
+  `register_map` (default `LINE_REGISTER_MAP`).
+- **CLIs** — `--map` on `scenario_report.py --realtime`,
+  `register_map.py`, and `examples/openplc/setup_openplc.py`.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |
@@ -954,7 +977,7 @@ issue and propose the change"):
 | 6 | Visualization | done — tag history in every scenario run; HTML replay viewer; live localhost dashboard with operator commands, fault injection, and replay download |
 | 7 | Protocols | done — Modbus server + client; register map (five PLC-master ranges); external-controller mode with the full scenario suite passing across Modbus; OpenPLC running a Structured Text port of the controller against the plant |
 | 8 | AI engineering assistance | done — deterministic candidate review gate; start inhibit; optional AI (provider abstraction, Anthropic first): gated scenario generation, bounded failed-run analysis |
-| 9 | Virtual commissioning | in progress — steps 1-3 done: real-time runner (unchanged scenarios against a free-running external controller, latency tolerance, known starting state); the commissioning report against OpenPLC (45/45 runs, 3 passes); *not observable* as an outcome for controllers without a status block |
+| 9 | Virtual commissioning | done — real-time runner (unchanged scenarios against a free-running external controller, latency tolerance, known starting state); the commissioning report against OpenPLC (45/45 runs, 3 passes); *not observable* for controllers without a status block; I/O map files, with the unchanged OpenPLC program passing against a relocated plant |
 
 Full detail and "done when" criteria per phase: `CONTROL-LAB.md` §10.
 
