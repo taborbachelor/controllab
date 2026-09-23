@@ -7,7 +7,7 @@ feeder → conveyor → hopper — so deterministic control logic can be run
 against it and tested: startup, shutdown, interlocks, fault injection, and
 recovery, before any physical equipment exists.
 
-**Status:** all ten roadmap phases (0-9) complete; 578 tests passing.
+**Status:** all ten roadmap phases (0-9) complete; 583 tests passing.
 
 What's in it:
 
@@ -21,7 +21,7 @@ What's in it:
   simulated equipment (enforced by a test).
 - **Commissioning scenarios** — a declarative `given`/`when`/`expect`
   YAML format (multi-stage with `then:`, so a whole recovery procedure is
-  one scenario). 22 scenarios cover all 10 interlocks; the coverage
+  one scenario). 23 scenarios cover all 10 interlocks; the coverage
   matrix (`python scripts/scenario_report.py`) reports 10/10, 0 gaps.
 - **Fault injection and alarms** — motor fail-to-start and trips, belt
   slip, stuck gates, E-stop, a feeder jam (the drive keeps running; a

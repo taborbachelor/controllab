@@ -22,6 +22,11 @@ def make_alarms():
     conveyor_ctrl = MotorControl(io, "M-104.RUN", "M-104.RUNNING", "M-104.OL")
     gate_ctrl = GateControl(io, "XV-102.CMD_OPEN", "ZSO-102", "ZSC-102")
     il = Interlocks(io, feeder_ctrl, conveyor_ctrl, gate_ctrl, HOPPER_CAPACITY_KG)
+    # DI tags default False, and the hopper level switches are fail-safe
+    # (1 = below the switch point): an unpublished image reads high-high,
+    # exactly like ES-001 reads tripped. Start from healthy switches.
+    io.write_input("LSH-105", True)
+    io.write_input("LSHH-105", True)
     return io, AlarmManager(il)
 
 
@@ -81,7 +86,7 @@ def test_alarm_fully_resets_once_acknowledged_and_inactive():
 def test_acknowledge_all_acks_every_latched_alarm():
     io, am = make_alarms()
     io.write_input("ES-001", False)
-    io.write_input("LSHH-105", True)
+    io.write_input("LSHH-105", False)  # open: high-high
     am.scan()
     assert len(am.latched_alarms) == 2
     am.acknowledge()
@@ -101,7 +106,7 @@ def test_first_out_claimed_by_earlier_alarm_when_two_trip_same_scan():
     # E-stop is earlier than hopper high-high in the registration/priority
     # order -- both go active on the same scan() call.
     io.write_input("ES-001", False)
-    io.write_input("LSHH-105", True)
+    io.write_input("LSHH-105", False)  # open: high-high
     am.scan()
     assert am.first_out.id == "ES-001.TRIP"
     assert am.get("WT-105.HIGH_HIGH").first_out is False
@@ -113,7 +118,7 @@ def test_first_out_stays_with_originating_alarm_after_a_later_one_latches():
     am.scan()
     assert am.first_out.id == "ES-001.TRIP"
 
-    io.write_input("LSHH-105", True)  # a second, later condition trips
+    io.write_input("LSHH-105", False)  # open: high-high  # a second, later condition trips
     am.scan()
     assert am.first_out.id == "ES-001.TRIP"  # unchanged
     assert am.get("WT-105.HIGH_HIGH").first_out is False
@@ -129,7 +134,7 @@ def test_first_out_releases_once_the_board_fully_clears_and_can_be_reclaimed():
     am.scan()
     assert am.first_out is None
 
-    io.write_input("LSHH-105", True)  # a fresh episode
+    io.write_input("LSHH-105", False)  # open: high-high  # a fresh episode
     am.scan()
     assert am.first_out.id == "WT-105.HIGH_HIGH"
 

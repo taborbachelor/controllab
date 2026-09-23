@@ -1023,6 +1023,15 @@ issue and propose the change"):
 - **The review gate's `field` check** — field-observable share, and a
   warning if the candidate would pass vacuously without a status block.
 
+## Module responsibilities (level switches: fail-safe polarity)
+
+- **`LSH-105` / `LSHH-105`** — fail-safe: 1 = below the switch point.
+  `plant_io` publishes the inverted contact; `Interlocks.hopper_high` /
+  `hopper_high_high` are the only places the polarity is undone in Control
+  (and `hopper_high` / `hopper_high_high` in the ST port).
+- **`Instruments.fail()`** — also takes a switch (reads 0, no diagnostic);
+  `channel_fault()` only on a channel that has a diagnostic.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |

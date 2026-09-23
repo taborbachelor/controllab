@@ -1,0 +1,28 @@
+name: Broken High-High Switch Wire Trips The Line -- Fail-Safe Polarity
+
+# LSHH-105 is wired fail-safe, like the E-stop: its contact is closed (1)
+# while the level is below the switch point, so a broken wire reads the same
+# as a real high-high. The hopper level here is normal; only the signal is
+# lost. Before the polarity was changed, this broken wire read "not
+# high-high" and silently removed the overfill trip.
+
+given:
+  line_state: running
+
+when:
+  sensor_failed: "LSHH-105"
+
+trigger: sensor_failed
+
+expect:
+  hopper_weight_agrees: true
+  line_state: faulted
+  fault_reason: "hopper high-high"
+  feeder_run_commanded: false
+  conveyor_run_commanded: false
+  gate_open_commanded: false
+
+within:
+  seconds: 0.5
+
+interlock: "Hopper high-high"

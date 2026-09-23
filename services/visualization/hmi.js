@@ -78,8 +78,9 @@ function renderMimic(v, animate) {
   // A failed transmitter reads 0 kg, the same as an empty hopper; only its
   // channel fault (WT-105.FLT) says the number is meaningless.
   $("wt105").textContent = v["WT-105.FLT"] ? "WT-105  FAILED (channel fault)" : `WT-105  ${kg.toFixed(0)} kg  (${hopPct.toFixed(1)} %)`;
-  lamp("lsh105", v["LSH-105"], WARN);
-  lamp("lshh105", v["LSHH-105"], TRIP);
+  // Fail-safe switches: 1 = below the switch point, so the lamp lights on 0.
+  lamp("lsh105", !v["LSH-105"], WARN);
+  lamp("lshh105", !v["LSHH-105"], TRIP);
 
   const healthy = v["ES-001"];
   $("es001").setAttribute("fill", healthy ? OFF : TRIP);

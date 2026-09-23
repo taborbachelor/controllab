@@ -36,8 +36,8 @@ _TAGS: list[tuple[str, TagType, str, str]] = [
     ("ZSS-104", TagType.DI, "", "Conveyor motion (zero-speed) switch"),
     ("WT-105", TagType.AI, "kg", "Hopper weight"),
     ("WT-105.FLT", TagType.DI, "", "Hopper weight input channel fault (wire break / transmitter failed)"),
-    ("LSH-105", TagType.DI, "", "Hopper high level switch (80%)"),
-    ("LSHH-105", TagType.DI, "", "Hopper high-high level switch (95%)"),
+    ("LSH-105", TagType.DI, "", "Hopper high level switch (80%; 1 = below, fail-safe polarity)"),
+    ("LSHH-105", TagType.DI, "", "Hopper high-high level switch (95%; 1 = below, fail-safe polarity)"),
     ("ES-001", TagType.DI, "", "E-stop healthy (1 = healthy; fail-safe polarity)"),
 ]
 
@@ -75,8 +75,12 @@ def publish_plant_inputs(plant: Plant, io: IOImage) -> None:
     publish("WT-105", plant.hopper.level_kg)
     # The input card's own diagnostic for WT-105, not an instrument reading.
     io.write_input("WT-105.FLT", plant.instruments.channel_fault("WT-105"))
-    publish("LSH-105", plant.hopper.high)
-    publish("LSHH-105", plant.hopper.high_high)
+    # Fail-safe polarity, like ES-001: the contact is closed (1) while the
+    # level is BELOW the switch point and opens at it, so a broken wire, a
+    # dead switch or a lost input reads 0 -- "high" -- and stops the feed /
+    # trips the line, instead of silently reading "not high".
+    publish("LSH-105", not plant.hopper.high)
+    publish("LSHH-105", not plant.hopper.high_high)
 
     publish("ES-001", plant.estop.healthy)
 

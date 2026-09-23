@@ -18,9 +18,14 @@ distinct ways, and a controller can tell them apart only in one:
   diagnostic. That diagnostic is published as its own discrete input
   (`<tag>.FLT`), because it's the ONLY thing separating "the hopper is
   empty" (WT-105 = 0, diagnostic clear) from "the hopper weight is
-  unknown" (WT-105 = 0, diagnostic set). Only instruments with such a
-  channel can fail this way; a plain switch has no diagnostic, so its
-  broken wire is simply "stuck at 0", and `fail()` refuses it and says so.
+  unknown" (WT-105 = 0, diagnostic set). A plain switch can fail too
+  (a broken wire, a dead switch): it reads 0 and, having no diagnostic,
+  says nothing else. What 0 *means* is then the switch's wiring polarity:
+  on a fail-safe switch (ES-001, LSH-105, LSHH-105: 1 = healthy) a failure
+  reads as the tripped state, which is the point of wiring it that way;
+  on any other switch it reads as "all clear". An analog input without a
+  diagnostic can't fail in a way this model distinguishes from stuck, so
+  `fail()` refuses it.
 
 `restore(tag)` returns the instrument to health (a field repair). The
 state is held by the Plant, like every other injected fault (§5.4:
@@ -57,10 +62,14 @@ class Instruments:
         self._frozen[tag] = self._last[tag]  # the last value it reported
 
     def fail(self, tag: str) -> None:
-        if tag not in self.diagnosed:
+        """Signal lost: an analog input with a channel diagnostic reads
+        bottom of range with the diagnostic set; a switch reads 0 (open
+        circuit), with nothing to say it's a failure."""
+        self._require_known(tag)
+        if tag not in self.diagnosed and not isinstance(self._last[tag], bool):
             raise ValueError(
-                f"{tag} has no channel diagnostic, so it can't report a failure -- a broken switch just reads "
-                "stuck (use stick)"
+                f"{tag} is an analog input with no channel diagnostic, so a failure can't be told from a "
+                "stuck reading (use stick)"
             )
         self._faults[tag] = InstrumentFault.FAILED
 
@@ -75,15 +84,18 @@ class Instruments:
         if fault is InstrumentFault.STUCK:
             value = self._frozen[tag]
         elif fault is InstrumentFault.FAILED:
-            value = 0.0  # under-range, clamped to the bottom of the card's range
+            # A switch's open circuit reads 0; an analog signal under range is
+            # clamped to the bottom of the card's range.
+            value = False if isinstance(true_value, bool) else 0.0
         else:
             value = true_value
         self._last[tag] = value
         return value
 
     def channel_fault(self, tag: str) -> bool:
-        """The input card's diagnostic for `tag`: set only while FAILED."""
-        return self.fault(tag) is InstrumentFault.FAILED
+        """The input card's diagnostic for `tag`: set only while FAILED, and
+        only on a channel that has one (a switch's open circuit raises none)."""
+        return tag in self.diagnosed and self.fault(tag) is InstrumentFault.FAILED
 
     def _require_known(self, tag: str) -> None:
         if tag not in self._last:

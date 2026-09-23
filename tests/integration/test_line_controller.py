@@ -159,7 +159,7 @@ def test_hysteresis_pauses_and_resumes_the_feeder_while_running():
     plant.hopper.level_kg = 1_700.0  # 85% -- above LSH-105's 80%
     tick(plant, io, line)  # this tick: scan() still sees the OLD reading;
     #                        plant_scan() publishes the new one at the end
-    assert io.read("LSH-105") is True
+    assert io.read("LSH-105") is False  # fail-safe: the switch opens at its point
     tick(plant, io, line)  # NOW scan() reacts to it
     assert plant.feeder.motor.run_command is False
     assert plant.conveyor.motor.running is True  # conveyor keeps running
@@ -168,7 +168,7 @@ def test_hysteresis_pauses_and_resumes_the_feeder_while_running():
     plant.hopper.level_kg = 1_000.0  # 50% -- below the 60% restart point
     tick(plant, io, line)
     tick(plant, io, line)
-    assert io.read("LSH-105") is False
+    assert io.read("LSH-105") is True  # closed again: below the switch point
     assert plant.feeder.motor.run_command is True
     assert line.state == LineState.RUNNING  # never left RUNNING for any of this
 

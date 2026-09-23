@@ -36,8 +36,8 @@ PROGRAM controllab_line
     M104_RUNNING AT %IX100.5 : BOOL;  (* conveyor running (contactor aux) *)
     M104_OL AT %IX100.6 : BOOL;       (* conveyor overload *)
     ZSS_104 AT %IX100.7 : BOOL;       (* conveyor motion switch *)
-    LSH_105 AT %IX101.0 : BOOL;       (* hopper high *)
-    LSHH_105 AT %IX101.1 : BOOL;      (* hopper high-high *)
+    LSH_105 AT %IX101.0 : BOOL;       (* hopper high switch: 1 = below 80 %, fail-safe *)
+    LSHH_105 AT %IX101.1 : BOOL;      (* hopper high-high switch: 1 = below 95 %, fail-safe *)
     ES_001 AT %IX101.2 : BOOL;        (* e-stop healthy, fail-safe *)
     LSH_103 AT %IX101.3 : BOOL;       (* feeder discharge chute plugged: a jam *)
     WT105_FLT AT %IX101.4 : BOOL;    (* hopper weight input channel fault: WT_105 is meaningless *)
@@ -102,6 +102,8 @@ PROGRAM controllab_line
     was_active : BOOL;
     unacked_trip : BOOL;
     conveyor_confirmed : BOOL;
+    hopper_high : BOOL;               (* LSH-105 open *)
+    hopper_high_high : BOOL;          (* LSHH-105 open *)
     trip : INT;
     i : INT;
     bit : WORD;
@@ -157,6 +159,9 @@ PROGRAM controllab_line
   END_IF;
 
   conveyor_confirmed := M104_RUNNING AND ZSS_104;
+  (* the level switches are fail-safe (1 = below the switch point): a broken wire reads high *)
+  hopper_high := NOT LSH_105;
+  hopper_high_high := NOT LSHH_105;
 
   (* ================= alarms (AlarmManager.scan / acknowledge) ================= *)
   alarm_cond[0] := NOT ES_001;                  (* ES-001.TRIP *)
@@ -167,7 +172,7 @@ PROGRAM controllab_line
   alarm_cond[5] := M104_OL;                     (* M-104.OL *)
   alarm_cond[6] := M104_RUNNING AND NOT ZSS_104;  (* ZSS-104.LOST *)
   alarm_cond[7] := conv_proof_fault;            (* M-104.START_PROOF *)
-  alarm_cond[8] := LSHH_105;                    (* WT-105.HIGH_HIGH *)
+  alarm_cond[8] := hopper_high_high;            (* WT-105.HIGH_HIGH *)
   alarm_cond[9] := LSH_103;                     (* LSH-103.JAM *)
   alarm_cond[10] := WT105_FLT;                 (* WT-105.FAIL *)
 
@@ -205,7 +210,7 @@ PROGRAM controllab_line
       M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE;
       IF start_req THEN
         start_inhibit := 16#0000;
-        IF LSHH_105 THEN start_inhibit := start_inhibit OR 16#0002; END_IF;
+        IF hopper_high_high THEN start_inhibit := start_inhibit OR 16#0002; END_IF;
         IF LSL_101 THEN start_inhibit := start_inhibit OR 16#0001; END_IF;
         IF unacked_trip THEN start_inhibit := start_inhibit OR 16#0004; END_IF;
         IF WT105_FLT THEN start_inhibit := start_inhibit OR 16#0020; END_IF;   (* unknown means stopped *)
@@ -217,7 +222,7 @@ PROGRAM controllab_line
 
     1: (* STARTING *)
       trip := 0;
-      IF LSHH_105 THEN trip := 2;
+      IF hopper_high_high THEN trip := 2;
       ELSIF M104_OL THEN trip := 4;
       ELSIF M103_FAULT THEN trip := 3;
       ELSIF LSH_103 THEN trip := 10;
@@ -249,7 +254,7 @@ PROGRAM controllab_line
 
     2: (* RUNNING *)
       trip := 0;
-      IF LSHH_105 THEN trip := 2;
+      IF hopper_high_high THEN trip := 2;
       ELSIF M103_FAULT THEN trip := 3;
       ELSIF LSH_103 THEN trip := 10;                         (* the drive still reports running *)
       ELSIF WT105_FLT THEN trip := 11;                      (* the feed decision reads WT_105 *)
@@ -264,7 +269,7 @@ PROGRAM controllab_line
         state := 3; M103_RUN := FALSE; XV102_CMD_OPEN := FALSE; purge_scans := 0;
       ELSE
         (* hopper hysteresis: stop feeding at LSH, resume below 60 % *)
-        IF LSH_105 THEN feed_demand := FALSE;
+        IF hopper_high THEN feed_demand := FALSE;
         ELSIF WT_105 < LIM_RESTART_RAW THEN feed_demand := TRUE;
         END_IF;
         M103_RUN := feed_demand;
@@ -273,7 +278,7 @@ PROGRAM controllab_line
 
     3: (* STOPPING -- upstream first, conveyor purges the belt *)
       trip := 0;
-      IF LSHH_105 THEN trip := 2;
+      IF hopper_high_high THEN trip := 2;
       ELSIF M104_OL THEN trip := 4;
       ELSIF M103_FAULT THEN trip := 3;
       ELSIF LSH_103 THEN trip := 10;
@@ -292,7 +297,7 @@ PROGRAM controllab_line
     4: (* FAULTED -- off; reset only once the pass-through causes have cleared *)
       M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE;
       IF start_req THEN start_inhibit := 16#0010; END_IF;          (* refused, as always; now reported *)
-      IF reset_req AND NOT LSHH_105 AND NOT M104_OL AND NOT M103_FAULT AND NOT LSH_103 AND NOT WT105_FLT THEN
+      IF reset_req AND NOT hopper_high_high AND NOT M104_OL AND NOT M103_FAULT AND NOT LSH_103 AND NOT WT105_FLT THEN
         conv_proof_fault := FALSE; conv_proof_scans := 0;
         feed_proof_fault := FALSE; feed_proof_scans := 0;
         gate_travel_fault := FALSE; gate_scans := 0;

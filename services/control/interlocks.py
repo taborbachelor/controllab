@@ -65,11 +65,18 @@ class Interlocks:
 
     @property
     def hopper_high(self) -> bool:
-        return self.io.read("LSH-105")
+        """LSH-105 open. Fail-safe polarity (1 = below the switch point), so
+        a broken wire reads high and stops the feed rather than letting it
+        run on unwatched."""
+        return not self.io.read("LSH-105")
 
     @property
     def hopper_high_high(self) -> bool:
-        return self.io.read("LSHH-105")
+        """LSHH-105 open. Fail-safe polarity (1 = below the switch point), so
+        a broken wire trips the line rather than silently removing the
+        overfill trip (docs/CONTROL-LAB.md §8: loss of signal is the unsafe
+        condition)."""
+        return not self.io.read("LSHH-105")
 
     @property
     def hopper_level_pct(self) -> float:

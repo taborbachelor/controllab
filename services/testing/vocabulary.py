@@ -158,8 +158,9 @@ def _apply_feeder_jam(rig: Rig, value: bool) -> None:
 
 # Sensor faults (Phase 4 completion; services/simulation/equipment/
 # instruments.py). The value is the instrument's tag. stuck: it keeps its
-# last reading; failed: signal lost (only WT-105 has a channel diagnostic);
-# restored: repaired at the field.
+# last reading; failed: signal lost (WT-105 reads 0 with its channel
+# diagnostic set; a switch reads 0, which a fail-safe switch reports as
+# tripped); restored: repaired at the field.
 
 
 def _instrument_action(method: str):

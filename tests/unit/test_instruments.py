@@ -36,10 +36,20 @@ def test_a_failed_instrument_reads_bottom_of_range_and_raises_its_diagnostic():
     assert inst.channel_fault("WT-105") and inst.fault("WT-105") is InstrumentFault.FAILED
 
 
-def test_an_instrument_without_a_diagnostic_cannot_fail_only_stick():
-    inst = reporting(**{"LSHH-105": False})
+def test_a_failed_switch_reads_open_with_no_diagnostic():
+    """A broken wire on a switch reads 0 whatever the level. It has no
+    channel diagnostic, so nothing else says it failed; on a fail-safe
+    switch (LSHH-105: 1 = below) that 0 is the tripped state."""
+    inst = reporting(**{"LSHH-105": True})
+    inst.fail("LSHH-105")
+    assert inst.report("LSHH-105", True) is False
+    assert not inst.channel_fault("LSHH-105")
+
+
+def test_an_analog_input_without_a_diagnostic_cannot_fail_only_stick():
+    inst = reporting(**{"LT-101": 50.0})
     with pytest.raises(ValueError, match="no channel diagnostic"):
-        inst.fail("LSHH-105")
+        inst.fail("LT-101")
 
 
 def test_restore_returns_to_the_truth():

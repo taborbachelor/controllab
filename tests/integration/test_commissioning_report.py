@@ -73,7 +73,7 @@ def test_run_scenario_records_tag_history_on_the_same_ticks_as_events():
 
     faulted_at = next(e.t for e in result.events if e.type == "state_changed" and e.data["to"] == "faulted")
     sample = next(s for s in result.tags.samples if s.t == faulted_at)
-    assert sample.values["LSHH-105"] is True
+    assert sample.values["LSHH-105"] is False  # fail-safe: open at high-high
 
 
 def test_replay_of_a_real_run_matches_the_line_it_recorded():

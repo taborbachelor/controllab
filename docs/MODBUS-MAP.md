@@ -28,8 +28,8 @@ Everything a controller needs is five contiguous ranges, one per table — exact
 | 5 | 10006 | `M-104.RUNNING` | Conveyor motor running feedback (contactor aux) |
 | 6 | 10007 | `M-104.OL` | Conveyor motor overload tripped |
 | 7 | 10008 | `ZSS-104` | Conveyor motion (zero-speed) switch |
-| 8 | 10009 | `LSH-105` | Hopper high level switch (80%) |
-| 9 | 10010 | `LSHH-105` | Hopper high-high level switch (95%) |
+| 8 | 10009 | `LSH-105` | Hopper high level switch (80%; 1 = below, fail-safe polarity) |
+| 9 | 10010 | `LSHH-105` | Hopper high-high level switch (95%; 1 = below, fail-safe polarity) |
 | 10 | 10011 | `ES-001` | E-stop healthy (1 = healthy; fail-safe polarity) |
 | 11 | 10012 | `LSH-103` | Feeder discharge chute plug switch (jam) |
 | 12 | 10013 | `WT-105.FLT` | Hopper weight input channel fault (wire break / transmitter failed) |
