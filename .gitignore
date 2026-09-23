@@ -8,6 +8,8 @@ dist/
 venv/
 .env
 *.replay.html
+# the demo site: built by scripts/build_site.py (CI deploys it to GitHub Pages)
+_site/
 
 # AI-generated scenario proposals: reviewed, then moved into scenarios/ by an engineer
 candidates/

@@ -42,13 +42,17 @@
   .rp-nav a[aria-current="page"] { border-color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); font-weight: 600; }
   .rp-nav .n { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 3px; color: #fff; background: var(--run); }
   .rp-nav .n.fail { background: var(--trip); }
-  .rp-intro { margin: 12px 20px 0; padding: 14px 18px; background: var(--panel); border: 1px solid var(--grid); border-radius: 8px; }
+  .rp-intro { margin: 12px 20px 0; padding: 14px 18px; background: var(--panel); border: 1px solid var(--grid); border-radius: 8px;
+              display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 32px; }
+  @media (max-width: 1000px) { .rp-intro { grid-template-columns: minmax(0, 1fr); } }
+  body.explained #mimic { max-height: 56vh; min-height: 240px; }
   .rp-kicker { margin: 0; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
   .rp-kicker.fail { color: var(--trip); }
   .rp-intro h1 { margin: 2px 0 2px; font-size: 24px; line-height: 1.2; }
   .rp-sub { margin: 0 0 6px; font-size: 16px; color: var(--muted); }
   .rp-lede { margin: 0 0 8px; font-size: 15px; max-width: 80ch; }
-  .rp-what { margin: 0; font-size: 13px; color: var(--muted); max-width: 100ch; }
+  .rp-what { margin: 0; font-size: 13px; color: var(--muted); max-width: 100ch; align-self: start; }
+  .rp-note { margin: 6px 0 0; font-size: 13px; max-width: 100ch; }
   .rp-bug { margin: 8px 0 0; padding: 8px 12px; border-left: 4px solid var(--trip); background: #fff5f5; font-size: 14px; max-width: 100ch; }
 
   .now { margin: 0 0 10px; padding: 10px 14px; border-radius: 6px; border-left: 6px solid var(--accent); background: var(--hollow); min-height: 68px; }
@@ -103,16 +107,21 @@
 </header>
 <nav class="rp-nav" id="rp-nav" aria-label="Recorded runs" hidden></nav>
 <section class="rp-intro" id="rp-intro" hidden>
+  <div>
   <p class="rp-kicker" id="rp-kicker"></p>
   <h1 id="rp-title"></h1>
   <p class="rp-sub" id="rp-sub"></p>
   <p class="rp-lede" id="rp-lede"></p>
+  <p class="rp-bug" id="rp-bug" hidden></p>
+  </div>
+  <div>
   <p class="rp-what"><strong>What you're looking at:</strong> a recording of one automated commissioning test.
     On the left, a simulated bulk-material line (bin → gate → feeder → conveyor → hopper) run by its control
     program, which sees only I/O, exactly as a PLC would. On the right, the test: it operates the line, injects the
     fault, and checks the controller's response stage by stage, each against a time limit. The playback is the
     run's own recorded telemetry, not an animation.</p>
-  <p class="rp-bug" id="rp-bug" hidden></p>
+  <p class="rp-note" id="rp-note" hidden></p>
+  </div>
 </section>
 <header id="plain-head">
   <h1 id="title"></h1>
@@ -207,6 +216,10 @@ if (S) {
     $("rp-bug").hidden = false;
     $("rp-bug").innerHTML = "<strong>The controller under test has a deliberate bug:</strong> " + esc(M.regression_change || S.regression) +
       " Watch the test catch it. (A named testing fixture, <code>" + esc(S.regression) + "</code>; the production controller is never modified.)";
+  }
+  if (M.note) {
+    $("rp-note").hidden = false;
+    $("rp-note").innerHTML = esc(M.note.text) + (M.note.href ? ` <a href="${esc(M.note.href)}">${esc(M.note.link)}</a>` : "");
   }
   $("now").hidden = false;
   $("line-h").textContent = "The line (simulated) · its control program sees only I/O";

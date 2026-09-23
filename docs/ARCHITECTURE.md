@@ -217,7 +217,9 @@ ControlLab/
 │   │                                  report.py's coverage matrix, --out FILE,
 │   │                                  --markdown FILE.md (commissioning report)
 │   ├── replay.py                     runs one scenario, writes a self-contained
-│   │                                  HTML replay of it
+│   │                                  HTML replay of it (--regression NAME)
+│   ├── build_site.py                 the public demo: real runs as linked replays
+│   │                                  (.github/workflows/pages.yml deploys it)
 │   ├── dashboard.py                  starts the live dashboard on 127.0.0.1
 │   │                                  (--modbus-port also serves the I/O image)
 │   ├── register_map.py               writes docs/MODBUS-MAP.md from line_map.py
@@ -1172,6 +1174,16 @@ sentence (drift-tested against the vocabulary). `scripts/replay.py` and the
 dashboard's *Watch this run* both produce this page; `scripts/replay.py
 --regression NAME` records a run against a deliberate-regression build. A
 live-session recording has no summary and gets the plain replay.
+
+**The public demo** (`scripts/build_site.py`,
+https://taborbachelor.github.io/controllab/) is four of these pages linked
+as tabs: feeder jam recovery, the same test against the `reset-ignores-jam`
+regression (it fails at stage 2), overfill protection with a stuck
+high-high switch, and a normal start/stop. Each page is a real run made at
+build time; the tab badges are those runs' verdicts. The build is
+deterministic (tested byte-identical across rebuilds), and
+`.github/workflows/pages.yml` rebuilds and deploys it from the current code
+on every push to `main`, so it cannot drift from the repository.
 
 ## Roadmap (current phase status)
 
