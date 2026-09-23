@@ -23,3 +23,24 @@ def test_control_modules_never_reference_simulation_equipment_directly():
             "must only touch Simulation through the I/O image "
             "(docs/CONTROL-LAB.md §3.2)"
         )
+
+
+def test_control_modules_never_import_telemetry():
+    """Phase 5's architecture (docs/CONTROL-LAB.md §10): Telemetry observes
+    Control from outside. The one Control-side hook -- LineController's
+    command_sink -- is a plain callable precisely so Control never needs
+    to know telemetry exists. An import here would invert that.
+
+    Checks import lines only, unlike the simulation guard above: Control's
+    docstrings legitimately explain the telemetry relationship in prose,
+    and a bare substring match would flag that documentation."""
+    for path in sorted(CONTROL_DIR.glob("*.py")):
+        imports = [
+            line.strip()
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip().startswith(("import ", "from "))
+        ]
+        assert not any("services.telemetry" in line for line in imports), (
+            f"{path} references services.telemetry -- Control must not "
+            "depend on the layer that observes it (docs/CONTROL-LAB.md §10, Phase 5)"
+        )

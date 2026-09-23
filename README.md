@@ -17,13 +17,14 @@ gaps; and alarm management — latching, first-out, and acknowledge, wired
 into `LineController` so a start is refused while any trip-class alarm
 is latched and unacknowledged, independent of `reset()`. Two additional
 fault hooks from the original spec (feeder jam, sensor failure) are
-deliberately deferred — see the roadmap below. Phase 5 (Telemetry) in
-progress: a generic, IOImage-only sampled tag-value recorder
-(`TagHistory` + `write_csv()`) and a state/alarm diffing event log
-(`EventLog` + `write_jsonl()`) — both an additional observation layer,
-not a replacement for the existing direct-state test assertions, and
-neither changes a line of Phase 2-4's Control code. No command
-recording, generated commissioning report, UI, or protocol support yet.
+deliberately deferred — see the roadmap below. Phase 5 (Telemetry)
+complete: a generic, IOImage-only sampled tag-value recorder
+(`TagHistory` + `write_csv()`), a state/alarm diffing event log
+(`EventLog` + `write_jsonl()`), operator-command capture through an
+optional sink on `LineController`, and a generated Markdown
+commissioning report — pass/fail, response time vs. each scenario's
+limit, the interlock coverage matrix, and every scenario's recorded
+event/alarm sequence. No UI or protocol support yet.
 
 ## Documentation
 
@@ -45,12 +46,16 @@ pytest
 ```
 
 `pytest` runs everything, including every scenario under `scenarios/`.
-For the interlock coverage matrix specifically:
+For the interlock coverage matrix and the commissioning report:
 
 ```bash
 python scripts/scenario_report.py            # print
-python scripts/scenario_report.py --out coverage_report.md
+python scripts/scenario_report.py --out coverage_report.txt
+python scripts/scenario_report.py --markdown commissioning_report.md
 ```
+
+The Markdown commissioning report is deterministic: the same code
+produces a byte-identical file every run.
 
 ## Roadmap
 
@@ -61,7 +66,7 @@ python scripts/scenario_report.py --out coverage_report.md
 | 2 | Control (states, sequences, interlocks) | done |
 | 3 | Testing / commissioning scenarios | done |
 | 4 | Fault injection, alarms | done (feeder jam / sensor failure hooks deferred) |
-| 5 | Telemetry | in progress (steps 1-2 of 4 done: generic sampled tag history; state/alarm event log) |
+| 5 | Telemetry | done |
 | 6 | Visualization | not started |
 | 7 | Protocols (Modbus, OPC UA, MQTT) | not started |
 | 8 | AI engineering assistance | not started |

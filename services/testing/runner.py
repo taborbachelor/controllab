@@ -24,11 +24,24 @@ preset a vessel level as a Testing stimulus (docs/CONTROL-LAB.md §3.3) —
 that's a legitimate setup action, not a physical event, and checking it
 against the pristine starting mass would flag every such scenario as
 "material appeared from nowhere." See `Invariants.rebaseline()`.
+
+Every run also records telemetry (Phase 5 step 4): an EventLog with the
+line's command sink attached, sampled after every tick this runner
+drives -- given's run-up, the settle tick, and the polling loop alike.
+Always on, not opt-in: it's in-memory, cheap, and changes nothing about
+the run (tests/integration/test_event_log.py proves the sink leaves
+Control's behavior identical). The commissioning report reads exactly
+what the run produced this way, instead of re-running scenarios through
+a second, separately-maintained collection path that could drift.
+`when_applied_t` marks the boundary between setup and the response
+under test: events at or before it came from reaching `given`; events
+after it are the system's reaction to `when`.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from services.telemetry.events import Event, EventLog
 from services.testing.invariants import InvariantViolation, Invariants
 from services.testing.rig import DT, Rig, build_rig, tick
 from services.testing.scenario import Scenario, ScenarioLoadError
@@ -46,21 +59,39 @@ class ScenarioResult:
     passed: bool
     elapsed_s: float
     detail: str
+    events: list[Event] = field(default_factory=list)
+    when_applied_t: float | None = None  # None: never got past given
 
 
 def run_scenario(scenario: Scenario) -> ScenarioResult:
     rig = build_rig()
     invariants = Invariants(rig)
+    event_log = EventLog(rig.line)
+    rig.line.command_sink = event_log.record_command
+    event_log.sample(rig.plant.time_s)
 
-    setup_failure = _apply_given(rig, scenario, invariants)
+    setup_failure = _apply_given(rig, scenario, invariants, event_log)
     if setup_failure is not None:
+        setup_failure.events = event_log.events
         return setup_failure
+
+    result = _run_from_given(rig, scenario, invariants, event_log)
+    result.events = event_log.events
+    return result
+
+
+def _tick(rig: Rig, event_log: EventLog) -> None:
+    tick(rig, DT)
+    event_log.sample(rig.plant.time_s)
+
+
+def _run_from_given(rig: Rig, scenario: Scenario, invariants: Invariants, event_log: EventLog) -> ScenarioResult:
 
     # Settle: one tick so given's effects (e.g. a direct level write)
     # are fully published through the I/O image before `when` is
     # applied and before anything polls for it -- same reasoning as the
     # tick-before-check rule below, one level up.
-    tick(rig, DT)
+    _tick(rig, event_log)
     try:
         invariants.check()
     except InvariantViolation as e:
@@ -72,6 +103,7 @@ def run_scenario(scenario: Scenario) -> ScenarioResult:
         raise ScenarioLoadError(f"{scenario.path}: {e}") from e
 
     invariants.rebaseline()  # when's own fields are ALSO deliberate setup, not a violation
+    when_applied_t = rig.plant.time_s
 
     # Tick BEFORE checking, every iteration -- not the reverse. Per
     # docs/CONTROL-LAB.md §3.3's scan cycle, Testing applies a stimulus
@@ -83,26 +115,32 @@ def run_scenario(scenario: Scenario) -> ScenarioResult:
     max_ticks = round(scenario.within_s / DT)
     unmet: dict = {}
     for i in range(1, max_ticks + 1):
-        tick(rig, DT)
+        _tick(rig, event_log)
 
         try:
             invariants.check()
         except InvariantViolation as e:
-            return ScenarioResult(scenario, False, i * DT, f"invariant violated at t={i * DT:.2f}s: {e}")
+            return ScenarioResult(
+                scenario, False, i * DT, f"invariant violated at t={i * DT:.2f}s: {e}", when_applied_t=when_applied_t
+            )
 
         try:
             unmet = _unmet_expectations(rig, scenario)
         except ScenarioError as e:
             raise ScenarioLoadError(f"{scenario.path}: {e}") from e
         if not unmet:
-            return ScenarioResult(scenario, True, i * DT, "all expectations met")
+            return ScenarioResult(scenario, True, i * DT, "all expectations met", when_applied_t=when_applied_t)
 
     return ScenarioResult(
-        scenario, False, scenario.within_s, f"timed out after {scenario.within_s}s -- unmet: {unmet}"
+        scenario,
+        False,
+        scenario.within_s,
+        f"timed out after {scenario.within_s}s -- unmet: {unmet}",
+        when_applied_t=when_applied_t,
     )
 
 
-def _apply_given(rig: Rig, scenario: Scenario, invariants: Invariants) -> ScenarioResult | None:
+def _apply_given(rig: Rig, scenario: Scenario, invariants: Invariants, event_log: EventLog) -> ScenarioResult | None:
     """Returns a failed ScenarioResult if an invariant trips while
     reaching `given` (a real finding -- even the baseline setup is
     broken), or None once `given` is successfully established."""
@@ -124,7 +162,7 @@ def _apply_given(rig: Rig, scenario: Scenario, invariants: Invariants) -> Scenar
 
     rig.line.start()
     for i in range(1, round(MAX_GIVEN_RUNUP_S / DT) + 1):
-        tick(rig, DT)
+        _tick(rig, event_log)
         try:
             invariants.check()
         except InvariantViolation as e:

@@ -128,3 +128,105 @@ def test_write_jsonl_produces_one_parseable_object_per_line(tmp_path):
     assert parsed[0]["type"] == "state_changed"
     assert parsed[0]["from"] == "idle"
     assert parsed[0]["to"] == "starting"
+
+
+# ---- Phase 5 step 3: the command sink ---------------------------------
+
+
+def attach(rig) -> EventLog:
+    event_log = EventLog(rig.line)
+    rig.line.command_sink = event_log.record_command
+    event_log.sample(rig.plant.time_s)
+    return event_log
+
+
+def test_command_sink_is_none_by_default():
+    assert build_rig().line.command_sink is None
+
+
+def test_command_sink_receives_every_command_in_issue_order():
+    rig = build_rig()
+    received: list[str] = []
+    rig.line.command_sink = received.append
+
+    rig.line.start()
+    rig.line.stop()
+    rig.line.reset()
+    rig.line.acknowledge()
+    assert received == ["start", "stop", "reset", "acknowledge"]
+
+
+def test_a_command_with_no_state_change_is_still_recorded():
+    """The whole reason the sink exists: stop() while already IDLE
+    changes nothing a diff could see, but an audit trail must still show
+    the button was pressed."""
+    rig = build_rig()
+    event_log = attach(rig)
+
+    rig.line.stop()
+    run_and_sample(rig, event_log, 0.5)
+
+    assert rig.line.state.name == "IDLE"
+    assert [(e.type, e.data) for e in event_log.events] == [("command_issued", {"command": "stop"})]
+
+
+def test_command_is_stamped_at_the_consuming_tick_and_precedes_its_effect():
+    rig = build_rig()
+    event_log = attach(rig)
+    t_before = rig.plant.time_s
+
+    rig.line.start()
+    run_and_sample(rig, event_log, DT)
+
+    first_two = event_log.events[:2]
+    assert [e.type for e in first_two] == ["command_issued", "state_changed"]
+    assert first_two[0].data == {"command": "start"}
+    assert first_two[1].data["to"] == "starting"
+    assert first_two[0].t == first_two[1].t == rig.plant.time_s
+    assert first_two[0].t > t_before
+
+
+def test_commands_issued_before_the_first_sample_are_not_swallowed_by_the_baseline():
+    rig = build_rig()
+    event_log = EventLog(rig.line)
+    rig.line.command_sink = event_log.record_command
+
+    rig.line.acknowledge()
+    event_log.sample(rig.plant.time_s)
+    assert [e.type for e in event_log.events] == ["command_issued"]
+
+
+def test_attaching_a_sink_changes_no_control_behavior():
+    """Same stimulus, with and without a sink: the line's state trace must
+    be identical tick for tick (docs/CONTROL-LAB.md §7: deterministic)."""
+
+    def trace(with_sink: bool) -> list[tuple[str, str | None]]:
+        rig = build_rig()
+        rig.plant.gate.stuck = True
+        if with_sink:
+            rig.line.command_sink = lambda _cmd: None
+        out = []
+        rig.line.start()
+        for _ in range(40):
+            tick(rig)
+            out.append((rig.line.state.name, rig.line.fault_reason))
+        rig.line.acknowledge()
+        rig.line.reset()
+        for _ in range(10):
+            tick(rig)
+            out.append((rig.line.state.name, rig.line.fault_reason))
+        return out
+
+    assert trace(with_sink=False) == trace(with_sink=True)
+
+
+def test_write_jsonl_includes_command_events(tmp_path):
+    rig = build_rig()
+    event_log = attach(rig)
+    rig.line.start()
+    run_and_sample(rig, event_log, 0.1)
+
+    out = tmp_path / "events.jsonl"
+    write_jsonl(event_log, out)
+    first = json.loads(out.read_text(encoding="utf-8").splitlines()[0])
+    assert first == {"t": first["t"], "type": "command_issued", "command": "start"}

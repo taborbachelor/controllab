@@ -1,0 +1,180 @@
+"""The generated commissioning report (docs/CONTROL-LAB.md §10, Phase 5
+step 4; CLAUDE.md §14): one Markdown document covering what the
+commissioning scenarios proved -- pass/fail, response time against each
+scenario's own `within` limit, the interlock coverage matrix, and the
+event/alarm sequence each scenario actually produced.
+
+Built entirely from things that already exist, not a new data path: the
+CoverageReport from services/testing/report.py (the same object the
+console report prints), and the telemetry events each ScenarioResult
+already carries (services/testing/runner.py records them on every run).
+The report can't disagree with the run, because it IS the run's record.
+
+Pure logic, no I/O -- returns a string. scripts/scenario_report.py's
+--markdown flag is the only thing that writes it to disk, the same
+logic/file-writer split report.py and services/telemetry/ already use.
+
+Deliberately deterministic, byte for byte: no wall-clock generation
+timestamp, no absolute paths, and every number comes from simulated
+time. Two runs against the same code produce an identical file, so a
+committed report diffs cleanly in git and a changed line means changed
+behavior (docs/CONTROL-LAB.md §7, item 3). The git commit a report was
+generated from is the right provenance record, not a date inside it.
+
+Markdown only, for now (CLAUDE.md §14: "don't implement every export
+format immediately") -- GitHub renders it, and it diffs as text.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from services.telemetry.events import Event
+from services.testing.report import CoverageReport
+
+STATUS_LABEL = {
+    "covered": "✅ covered",
+    "covered_but_failing": "❌ covered but failing",
+    "not_covered": "⚠️ not covered",
+    "not_applicable": "➖ not applicable yet",
+}
+
+
+def render_markdown(report: CoverageReport, scenarios_root: Path) -> str:
+    """`scenarios_root` only relativizes scenario file paths for display,
+    so the output never contains a machine-specific absolute path."""
+    lines: list[str] = []
+    total = len(report.results)
+    failed = total - report.passed_count
+    verdict = "PASS" if failed == 0 and report.gap_count == 0 else "FAIL"
+
+    lines += [
+        "# ControlLab — Commissioning Report",
+        "",
+        f"**Overall: {verdict}** — {report.passed_count}/{total} scenarios passed; "
+        f"{report.covered_count}/{len(report.rows)} interlocks covered "
+        f"({report.not_applicable_count} not yet applicable, {report.gap_count} gap(s)).",
+        "",
+        "All times are simulated seconds. Response time is measured from the moment the "
+        "scenario's `when` stimulus is applied until every `expect` condition holds.",
+        "",
+    ]
+
+    lines += _results_table(report, scenarios_root)
+    lines += _coverage_table(report)
+    if report.unknown_tags:
+        lines += ["## Unrecognized interlock tags", ""]
+        lines += [f"- `{tag}` — matches no §6.3 row (likely a typo)" for tag in report.unknown_tags]
+        lines.append("")
+    lines += _sequences(report, scenarios_root)
+
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
+def _results_table(report: CoverageReport, scenarios_root: Path) -> list[str]:
+    lines = [
+        "## Scenario results",
+        "",
+        "| Result | Scenario | Response | Limit | Margin | File |",
+        "|---|---|---:|---:|---:|---|",
+    ]
+    for scenario, result in report.results:
+        mark = "✅ PASS" if result.passed else "❌ FAIL"
+        if result.passed:
+            response = f"{result.elapsed_s:.2f} s"
+            margin = f"{scenario.within_s - result.elapsed_s:.2f} s"
+        else:
+            response, margin = "—", "—"
+        lines.append(
+            f"| {mark} | {_cell(scenario.name)} | {response} | {scenario.within_s:.2f} s | {margin} "
+            f"| `{_rel(scenario.path, scenarios_root)}` |"
+        )
+    lines.append("")
+
+    failures = [(s, r) for s, r in report.results if not r.passed]
+    if failures:
+        lines += ["**Failures:**", ""]
+        lines += [f"- **{_cell(s.name)}** — {_cell(r.detail)}" for s, r in failures]
+        lines.append("")
+    return lines
+
+
+def _coverage_table(report: CoverageReport) -> list[str]:
+    lines = [
+        "## Interlock coverage (docs/CONTROL-LAB.md §6.3)",
+        "",
+        "| Status | Interlock | Kind | Scenarios | Note |",
+        "|---|---|---|---|---|",
+    ]
+    for row_cov in report.rows:
+        names = "<br>".join(_cell(n) + ("" if passed else " (failing)") for n, passed in row_cov.scenarios) or "—"
+        lines.append(
+            f"| {STATUS_LABEL[row_cov.status]} | {row_cov.row.name} | {row_cov.row.kind} | {names} "
+            f"| {_cell(row_cov.row.note) or '—'} |"
+        )
+    lines.append("")
+    return lines
+
+
+def _sequences(report: CoverageReport, scenarios_root: Path) -> list[str]:
+    lines = [
+        "## Event sequences",
+        "",
+        "What each scenario actually did, from its telemetry record. **setup** events come "
+        "from reaching the scenario's `given` preconditions; **response** events are the "
+        "system reacting to `when`.",
+        "",
+    ]
+    for scenario, result in report.results:
+        mark = "PASS" if result.passed else "FAIL"
+        lines += [f"### {scenario.name} — {mark}", "", f"`{_rel(scenario.path, scenarios_root)}`", ""]
+        if not result.events:
+            lines += ["*No events recorded.*", ""]
+            continue
+        lines += ["| t (s) | Phase | Event |", "|---:|---|---|"]
+        for event in result.events:
+            lines.append(f"| {event.t:.2f} | {_phase(event, result.when_applied_t)} | {describe(event)} |")
+        lines.append("")
+    return lines
+
+
+def _phase(event: Event, when_applied_t: float | None) -> str:
+    if when_applied_t is None or event.t <= when_applied_t:
+        return "setup"
+    return "response"
+
+
+def describe(event: Event) -> str:
+    """One human-readable line per event. Unknown event types fall back to
+    their raw fields instead of raising, so a future event type
+    shows up in the report instead of breaking it."""
+    d = event.data
+    if event.type == "command_issued":
+        return f"Operator command: **{d['command']}**"
+    if event.type == "state_changed":
+        text = f"Line state {d['from']} → **{d['to']}**"
+        if d.get("fault_reason") and d["to"] in ("faulted", "estopped"):
+            text += f" ({_cell(str(d['fault_reason']))})"
+        return text
+    if event.type == "alarm_activated":
+        kind = "Warning" if d.get("is_warning") else "Alarm"
+        text = f"{kind} **{d['alarm_id']}** active — {_cell(str(d['description']))}"
+        if d.get("first_out"):
+            text += " · **first-out**"
+        return text
+    if event.type == "alarm_cleared":
+        return f"Alarm {d['alarm_id']} cleared"
+    if event.type == "alarm_acknowledged":
+        return f"Alarm {d['alarm_id']} acknowledged"
+    return f"{event.type}: {_cell(str(d))}"
+
+
+def _rel(path: Path, root: Path) -> str:
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.name
+
+
+def _cell(text: str) -> str:
+    """Keeps free text from breaking a Markdown table row."""
+    return text.replace("|", "\\|").replace("\n", " ")

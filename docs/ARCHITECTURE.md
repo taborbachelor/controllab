@@ -14,7 +14,7 @@ Full reasoning in `CONTROL-LAB.md` §3. In short:
   sequences, and interlocks — Auto mode only so far.
 - **Testing** (`tests/` for hand-written pytest; `services/testing/` +
   `scenarios/` for declarative commissioning scenarios) verifies behavior.
-- **Telemetry** (`services/telemetry/`, Phase 5, in progress) observes
+- **Telemetry** (`services/telemetry/`, Phase 5, done) observes
   Simulation and Control from outside, pull/diff, the same non-invasive
   relationship Testing already has. **Visualization** comes later (Phase 6).
 
@@ -82,13 +82,17 @@ ControlLab/
 │   │   ├── invariants.py             Invariants -- §7 item 6, checked every scan
 │   │   ├── vocabulary.py             the closed given/when/expect field set
 │   │   ├── scenario.py               Scenario -- YAML loader
-│   │   ├── runner.py                 run_scenario() -- executes one Scenario
-│   │   └── report.py                 the interlock coverage matrix (pure logic)
+│   │   ├── runner.py                 run_scenario() -- executes one Scenario,
+│   │   │                             always recording its telemetry events
+│   │   ├── report.py                 the interlock coverage matrix (pure logic)
+│   │   └── commissioning_report.py   render_markdown() -- the Markdown
+│   │                                 commissioning report (pure logic, Phase 5 step 4)
 │   └── telemetry/
 │       ├── tag_history.py            TagHistory -- generic IOImage tag-value sampler
 │       │                             (Phase 5 step 1); write_csv() exports it
 │       └── events.py                 EventLog -- state/alarm diffing observer
-│                                      (Phase 5 step 2); write_jsonl() exports it
+│                                      (Phase 5 step 2) + command capture (step 3);
+│                                      write_jsonl() exports it
 ├── scenarios/
 │   ├── startup/normal_start.yaml
 │   ├── shutdown/normal_stop.yaml
@@ -104,7 +108,8 @@ ControlLab/
 │                                      unacknowledged_alarm_blocks_start.yaml)
 ├── scripts/
 │   └── scenario_report.py            thin CLI: runs every scenario, prints
-│                                      report.py's coverage matrix, --out FILE.md
+│                                      report.py's coverage matrix, --out FILE,
+│                                      --markdown FILE.md (commissioning report)
 ├── tests/
 │   ├── unit/                        one test module per equipment/engine/control/
 │   │                                 testing/telemetry class, plus test_control_boundary.py
@@ -112,7 +117,8 @@ ControlLab/
 │                                     test_plant_io.py, test_device_control.py,
 │                                     test_line_controller.py, test_scenarios.py
 │                                     -- discovers and runs everything under
-│                                     scenarios/ -- and test_event_log.py)
+│                                     scenarios/ -- test_event_log.py, and
+                                     test_commissioning_report.py)
 ├── pyproject.toml
 └── README.md
 ```
@@ -549,6 +555,57 @@ issue and propose the change"):
   a method, for the same reason `write_csv()` is — mirrors
   `services/testing/report.py`/`scripts/scenario_report.py`'s split.
 
+## Module responsibilities (Phase 5 step 3)
+
+- **`LineController.command_sink`** (`services/control/line_controller.py`)
+  — the one Phase 5 touch to Control, as scoped: an optional
+  `Callable[[str], None]`, `None` by default. `start()`/`stop()`/
+  `reset()`/`acknowledge()` each call it with their own name. It's a
+  plain callable, not a telemetry type, so Control imports nothing from
+  `services/telemetry/`. `test_control_boundary.py` now enforces that
+  with a second guard, which checks import lines only because Control's
+  docstrings legitimately describe the relationship in prose.
+- **`EventLog.record_command`** (`services/telemetry/events.py`) — the
+  intended sink target, wired explicitly by the caller
+  (`line.command_sink = event_log.record_command`). It only queues. The
+  next `sample(t)` emits each queued command as a `command_issued` event
+  stamped with that tick's `t` and ordered *before* the tick's
+  state/alarm diffs. Why that stamp: the sink fires between ticks, where
+  there's no time to read unless Control is handed a clock. The command
+  is a one-shot request consumed by the next `scan()`, so that tick is
+  when it actually took effect. The ordering keeps cause before effect
+  within a tick. Queued commands are emitted even on the baseline-only
+  first `sample()`, because a command is a recorded fact, not a diff.
+
+## Module responsibilities (Phase 5 step 4)
+
+- **`run_scenario()`** (`services/testing/runner.py`) now always records
+  telemetry. It attaches an `EventLog` plus the command sink before
+  `given`, samples after every tick it drives, and returns `events` and
+  `when_applied_t` on `ScenarioResult`. Always on, not opt-in: it's
+  in-memory, cheap, and proven to leave Control's behavior unchanged.
+  That means the report reads the run's own record, not a second
+  collection path. Testing → Telemetry is a permitted dependency
+  direction (`CONTROL-LAB.md` §3.1: Testing "observes through I/O and
+  telemetry"). Control → Telemetry is not, and is still guarded.
+- **`render_markdown()`** (`services/testing/commissioning_report.py`)
+  is pure and returns a string. `scripts/scenario_report.py --markdown
+  FILE` is the only writer, and one suite run feeds both the console
+  output and the document. Output is **byte-identical across runs**:
+  no generation timestamp, scenario paths relative to `scenarios/`,
+  simulated time only. A committed report therefore diffs as a record
+  of behavior change, and the git commit is its provenance.
+  Events are labeled *setup* (at or before `when_applied_t`) or
+  *response* (after it).
+- **Known quirk the report makes visible:** a `given` precondition is
+  published to the I/O image by the settle tick, but Control only scans
+  it on the next tick, which is the tick that consumes `when`. So
+  precondition alarms appear as *response* events. Every scenario still
+  proves what it claims (alarms are scanned before the state machine
+  within one scan). Changing it means changing tested runner timing,
+  so it's recorded in `CONTROL-LAB.md` §10 as an open decision, not
+  changed.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |
@@ -558,7 +615,7 @@ issue and propose the change"):
 | 2 | Control | done |
 | 3 | Testing / commissioning scenarios | done |
 | 4 | Fault injection, alarms | done (steps 1-3: alarm core; wired into `LineController`; surfaced through Testing, 8/8 interlocks covered). Step 4 (feeder jam + sensor failure hooks) deliberately deferred — see `CONTROL-LAB.md` §10 |
-| 5 | Telemetry | in progress — steps 1-2 done (generic sampled tag history; state/alarm diffing observer) |
+| 5 | Telemetry | done — generic sampled tag history; state/alarm diffing observer; optional command sink; generated Markdown commissioning report |
 | 6 | Visualization | not started |
 | 7 | Protocols | not started |
 | 8 | AI engineering assistance | not started |

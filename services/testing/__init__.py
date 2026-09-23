@@ -1,3 +1,4 @@
+from services.testing.commissioning_report import render_markdown
 from services.testing.invariants import InvariantViolation, Invariants
 from services.testing.report import INTERLOCKS, CoverageReport, InterlockRow, RowCoverage, build_report
 from services.testing.rig import DT, Rig, build_rig, run, tick
@@ -23,4 +24,5 @@ __all__ = [
     "InterlockRow",
     "RowCoverage",
     "build_report",
+    "render_markdown",
 ]

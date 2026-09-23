@@ -34,11 +34,25 @@ alarm_cleared/alarm_acknowledged closes it out) -- so it rides along as
 a field on alarm_activated rather than needing its own event type.
 
 `start()`/`stop()`/`reset()`/`acknowledge()` themselves -- "was a
-command issued" -- are deliberately NOT observed here. A command can
-occur with zero state change (stop() while already stopped), which a
-diff can't see by construction; that's Phase 5 step 3's minimal command
-sink, a different mechanism for a different kind of fact, kept separate
-on purpose.
+command issued" -- can't be seen by diffing: a command can occur with
+zero state change (stop() while already stopped). They arrive instead
+through LineController's optional command sink (Phase 5 step 3, the one
+push-style exception to this module's pull/diff design), wired
+explicitly by the caller:
+
+    event_log = EventLog(line)
+    line.command_sink = event_log.record_command
+
+record_command() only queues the name; the next sample(t) emits it as a
+`command_issued` event stamped with that tick's t, BEFORE that tick's
+state/alarm diffs. Two reasons. It keeps this class ignorant of
+simulated time -- the sink fires between ticks, where no timestamp is
+available without reaching for a clock. And the stamp is the honest
+one: a command is a one-shot request that LineController.scan()
+consumes on the next tick, so that tick is when it took effect, and
+ordering it before the same tick's diffs keeps cause ahead of effect in
+the log (command_issued "start" precedes state_changed idle->starting,
+same t).
 
 File output is a separate, standalone function (write_jsonl()), not a
 method -- EventLog itself never imports json or pathlib. Mirrors
@@ -68,6 +82,12 @@ class EventLog:
         self.events: list[Event] = []
         self._last_state = None
         self._last_alarm: dict[str, tuple[bool, bool]] = {}
+        self._pending_commands: list[str] = []
+
+    def record_command(self, command: str) -> None:
+        """The LineController.command_sink target. Queues only -- see the
+        module docstring for why the timestamp waits for sample(t)."""
+        self._pending_commands.append(command)
 
     def sample(self, t: float) -> None:
         """Call once per tick -- after line.scan(dt) has run, so this
@@ -75,9 +95,18 @@ class EventLog:
         call on a fresh EventLog only ever establishes a baseline; it
         can't know whether the line's current state/alarms are "new"
         this tick or already true before observation started, so it
-        emits nothing rather than guess."""
+        emits nothing rather than guess. Queued commands are the
+        exception: a command is a recorded fact, not a diff, so there's
+        no baseline to establish for it and it's emitted even on the
+        first call."""
+        self._flush_commands(t)
         self._sample_state(t)
         self._sample_alarms(t)
+
+    def _flush_commands(self, t: float) -> None:
+        for command in self._pending_commands:
+            self.events.append(Event(t=t, type="command_issued", data={"command": command}))
+        self._pending_commands.clear()
 
     def _sample_state(self, t: float) -> None:
         current = self.line.state

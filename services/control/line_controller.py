@@ -14,8 +14,21 @@ pushbuttons: call the method to raise the request, scan() consumes it (at
 most once) on however many scans it takes to become relevant, and it's a
 no-op if the current state doesn't act on it (e.g. start() while already
 RUNNING).
+
+The four commands are also the one place Control reports anything
+outward (Phase 5 step 3): an optional `command_sink` callable, None by
+default, receives the command name at the moment it's issued. It exists
+because a command can produce zero observable state change (stop() while
+already IDLE) and a commissioning audit trail should still show it was
+pressed -- the one fact the pull/diff telemetry in services/telemetry/
+can't see by construction. Unconfigured, it's a no-op: no behavior
+change, no I/O, no import of anything telemetry-related (the sink is a
+plain callable; tests/unit/test_control_boundary.py enforces that
+services/control/ never imports services.telemetry).
 """
 from __future__ import annotations
+
+from collections.abc import Callable
 
 from services.control.alarms import AlarmManager
 from services.control.gate_control import GateControl
@@ -66,15 +79,24 @@ class LineController:
         self._reset_requested = False
         self._acknowledge_requested = False
 
+        # Phase 5 step 3 -- see the module docstring. Set by whoever
+        # wants an audit trail of operator commands (in practice,
+        # services/telemetry/events.py's EventLog.record_command); never
+        # read by anything in Control itself.
+        self.command_sink: Callable[[str], None] | None = None
+
     # ---- operator/HMI-style commands ----------------------------------
 
     def start(self) -> None:
+        self._emit_command("start")
         self._start_requested = True
 
     def stop(self) -> None:
+        self._emit_command("stop")
         self._stop_requested = True
 
     def reset(self) -> None:
+        self._emit_command("reset")
         self._reset_requested = True
 
     def acknowledge(self) -> None:
@@ -84,7 +106,12 @@ class LineController:
         not that whatever tripped it is fixed. See
         docs/CONTROL-LAB.md §10's Phase 4 entry for why these stay two
         separate operator actions."""
+        self._emit_command("acknowledge")
         self._acknowledge_requested = True
+
+    def _emit_command(self, command: str) -> None:
+        if self.command_sink is not None:
+            self.command_sink(command)
 
     # ---- the scan cycle -------------------------------------------------
 

@@ -4,11 +4,18 @@ report: pass/fail per scenario, then the interlock coverage matrix
 (docs/CONTROL-LAB.md §6.3) built from it.
 
     python scripts/scenario_report.py
-    python scripts/scenario_report.py --out coverage_report.md
+    python scripts/scenario_report.py --out coverage_report.txt
+    python scripts/scenario_report.py --markdown commissioning_report.md
 
-All the actual logic lives in services/testing/report.py (tested in
-tests/unit/test_report.py) -- this file is only formatting and a CLI
-entry point.
+--out saves the console text below. --markdown writes the full
+commissioning report (services/testing/commissioning_report.py): the same
+results and coverage matrix, plus each scenario's timing margin and its
+recorded event/alarm sequence. Both come from the same single scenario
+run -- the suite never runs twice.
+
+All the actual logic lives in services/testing/report.py and
+commissioning_report.py (tested in tests/unit/) -- this file is only
+console formatting and a CLI entry point.
 """
 from __future__ import annotations
 
@@ -16,6 +23,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from services.testing.commissioning_report import render_markdown
 from services.testing.report import CoverageReport, build_report
 from services.testing.runner import run_scenario
 from services.testing.scenario import Scenario, ScenarioLoadError
@@ -84,7 +92,10 @@ def render(report: CoverageReport) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", type=Path, default=None, help="also write the report to this file")
+    parser.add_argument("--out", type=Path, default=None, help="also write the console report to this file")
+    parser.add_argument(
+        "--markdown", type=Path, default=None, help="also write the full Markdown commissioning report to this file"
+    )
     args = parser.parse_args()
 
     scenarios = Scenario.discover(SCENARIOS_DIR)
@@ -104,6 +115,10 @@ def main() -> int:
     if args.out is not None:
         args.out.write_text(text + "\n", encoding="utf-8")
         print(f"\nWrote {args.out}")
+
+    if args.markdown is not None:
+        args.markdown.write_text(render_markdown(report, SCENARIOS_DIR), encoding="utf-8")
+        print(f"\nWrote {args.markdown}")
 
     return 0 if report.gap_count == 0 and report.passed_count == len(results) else 1
 
