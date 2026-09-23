@@ -30,6 +30,14 @@ from dataclasses import asdict, dataclass, field
 from services.testing.runner import ScenarioResult
 from services.testing.scenario import Scenario
 
+# The control runtimes a scenario can run against (the CLI and the dashboard
+# name them the same way). The scenario files never change between them.
+RUNTIMES: dict[str, str] = {
+    "python": "Python controller (in-process, lockstep)",
+    "modbus": "Python controller in a separate process, over Modbus TCP (lockstep)",
+    "openplc": "OpenPLC Runtime running examples/openplc/controllab_line.st, over Modbus TCP (real time)",
+}
+
 # Plain names for the scenario vocabulary's read fields (vocabulary.READ_FIELDS);
 # a drift test keeps this complete.
 LABELS: dict[str, str] = {

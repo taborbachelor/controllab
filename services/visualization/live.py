@@ -54,9 +54,10 @@ from services.telemetry.events import Event, EventLog
 from services.telemetry.tag_history import TagHistory
 from services.simulation.equipment.instruments import InstrumentFault
 from services.testing.invariants import InvariantViolation, Invariants
+from services.testing.runner import _Telemetry, execute
 from services.testing.rig import DEFAULT_PLANT_CONFIG, DT, build_rig, tick
 from services.testing.vocabulary import apply_field
-from services.visualization import walkthroughs
+from services.visualization import verify, walkthroughs
 from services.visualization.narrate import narrate
 from services.visualization.page import assemble
 from services.visualization.replay import build_replay, render_html
@@ -123,6 +124,9 @@ class LiveSession:
         # Created once, not per session: the Modbus data store holds this
         # object, so restart() resets it instead of replacing it.
         self.handshake = HmiHandshake(list(COMMANDS))
+        # A scenario verification owns the line while it runs (run_live):
+        # the pacer's ticks and every manual input are refused meanwhile.
+        self.verifying: str | None = None
         self._fresh()
 
     @property
@@ -137,8 +141,9 @@ class LiveSession:
         should ask for it each time rather than keep a reference."""
         return self.rig.io
 
-    def _fresh(self) -> None:
-        self.rig = build_rig(with_controller=not self.external)
+    def _fresh(self, line_cls=None) -> None:
+        self.rig = (build_rig(with_controller=not self.external) if line_cls is None
+                    else build_rig(line_cls=line_cls))
         self.invariants = Invariants(self.rig)
         self.tags = TagHistory(self.rig.io)
         self.tags.record(self.rig.plant.time_s)
@@ -172,7 +177,12 @@ class LiveSession:
 
     # ---- inputs (validated immediately, applied at the next tick) ------
 
+    def _refuse_while_verifying(self) -> None:
+        if self.verifying:
+            raise ValueError(f"a scenario verification is running ({self.verifying}); wait for its result")
+
     def command(self, name: str) -> None:
+        self._refuse_while_verifying()
         if name not in COMMANDS:
             raise ValueError(f"unknown command {name!r} (known: {', '.join(COMMANDS)})")
         with self._lock:
@@ -182,6 +192,7 @@ class LiveSession:
                 self._pending.append((name, getattr(self.rig.line, name)))
 
     def stimulus(self, key: str, value: object) -> None:
+        self._refuse_while_verifying()
         kind = STIMULI.get(key)
         if kind is None:
             raise ValueError(f"unknown stimulus {key!r} (known: {', '.join(STIMULI)})")
@@ -206,14 +217,50 @@ class LiveSession:
             self._pending.append((key, lambda: apply_field(self.rig, key, value)))
 
     def restart(self) -> None:
+        self._refuse_while_verifying()
         with self._lock:
             self._fresh()
+
+    # ---- scenario verification on the live line -----------------------
+
+    def run_live(self, scenario, pace: Callable[[], None] = lambda: None, line_cls=None):
+        """Run `scenario` through the real scenario runner (runner.execute) on
+        this session's own line, so the picture shows the verification as it
+        happens. The rig is built exactly as run_scenario() builds it, so the
+        result is the run the test suite would record (tests assert the event
+        logs are identical). `pace()` is called before every tick: the server
+        passes one that follows Run/Pause and the speed selector; tests pass
+        nothing and run at full speed."""
+        if self.external:
+            raise ValueError("live verification needs the built-in controller")
+        with self._lock:
+            self._refuse_while_verifying()
+            self._fresh(line_cls)
+            self.verifying = scenario.name
+            # Unsampled recorders: execute() takes the first sample itself.
+            self.events = EventLog(self.rig.line)
+            self.tags = TagHistory(self.rig.io)
+        telemetry = _Telemetry(self.events, self.tags)
+
+        def step() -> None:
+            pace()
+            with self._lock:
+                tick(self.rig, DT)
+                telemetry.sample(self.rig.plant.time_s)
+
+        try:
+            return execute(self.rig, scenario, step, Invariants(self.rig), telemetry)
+        finally:
+            with self._lock:
+                self.invariants = Invariants(self.rig)
+                self.verifying = None
 
     # ---- guided walkthroughs --------------------------------------------
 
     def start_tour(self, tour_id: str) -> None:
         """Start a walkthrough on a fresh line, so every one begins from the
         same known state."""
+        self._refuse_while_verifying()
         if self.external:
             raise ValueError("walkthroughs need the built-in controller")
         if tour_id not in walkthroughs.BY_ID:
@@ -282,6 +329,8 @@ class LiveSession:
         engineer may want to see what happens next), but it's no longer a
         clean run and the banner says so until a restart."""
         with self._lock:
+            if self.verifying:
+                return  # the verification run is advancing the line itself
             pending, self._pending = self._pending, []
             for _, apply in pending:
                 apply()
@@ -385,6 +434,7 @@ class LiveSession:
                 },
                 "violation": self.violation,
                 "tour": self._tour_view(),
+                "verifying": self.verifying,
             }
 
     def config(self) -> dict:
@@ -446,8 +496,11 @@ ALLOWED_HOSTS = ("127.0.0.1", "localhost")
 
 
 def make_handler(session: LiveSession, pacer: Pacer) -> type[BaseHTTPRequestHandler]:
+    verifier = verify.Verifier(session, pacer)
+    config = session.config() | {"showcase": verify.showcase(), "regressions": verify.regressions(),
+                                 "scenario_count": len(list(verify.SCENARIOS_DIR.rglob("*.yaml")))}
     page = assemble("live_template.html").replace(
-        "/*__LIVE_CONFIG__*/null", json.dumps(session.config()).replace("</", "<\\/")
+        "/*__LIVE_CONFIG__*/null", json.dumps(config).replace("</", "<\\/")
     )
 
     class Handler(BaseHTTPRequestHandler):
@@ -483,9 +536,17 @@ def make_handler(session: LiveSession, pacer: Pacer) -> type[BaseHTTPRequestHand
                 except ValueError:
                     return self._json(400, {"error": "since must be an integer"})
                 state = session.snapshot(max(0, since))
-                state.update(running=pacer.running, speed=pacer.speed)
+                state.update(running=pacer.running, speed=pacer.speed, verification=verifier.view())
                 state["story"] = narrate(state)
                 return self._json(200, state)
+            if url.path == "/api/replay/latest":
+                if verifier.latest_result is None:
+                    return self._json(404, {"error": "no verification has run yet"})
+                scenario, result = verifier.latest_result
+                replay = build_replay(scenario.name, result.events, result.tags, PLANT, meta={
+                    "passed": result.passed, "file": scenario.path.name, "detail": result.detail,
+                    "when_applied_t": result.when_applied_t})
+                return self._send(200, render_html(replay).encode("utf-8"), "text/html; charset=utf-8")
             if url.path == "/api/replay":
                 return self._send(
                     200, session.replay_html().encode("utf-8"), "text/html; charset=utf-8",
@@ -517,6 +578,9 @@ def make_handler(session: LiveSession, pacer: Pacer) -> type[BaseHTTPRequestHand
                         pacer.speed = float(body["speed"])
                 elif path == "/api/restart":
                     session.restart()
+                elif path == "/api/verify":
+                    verifier.start(body.get("file"), body.get("runtime") or "python", body.get("regression") or None,
+                                   bool(body.get("compare")))
                 elif path == "/api/tour":
                     action = body.get("action")
                     if action == "start":

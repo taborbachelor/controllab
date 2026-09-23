@@ -18,21 +18,30 @@
 <body>
 <div id="violation" class="banner" role="alert"></div>
 <header class="page-intro">
-  <div class="titlebar"><h1>ControlLab — Live</h1>
-  <span class="meta">A simulated line, running in real time</span></div>
-  <p class="intro">This is a small simulated factory line that moves bulk material (think grain or gravel) from a storage
-    <strong>bin</strong>, through a <strong>gate</strong> and a <strong>feeder</strong>, up a <strong>conveyor</strong>
-    and into a <strong>hopper</strong>. A control program runs it, the way a PLC runs a real plant: you operate it,
-    break it on purpose, and watch it protect itself and recover.</p>
+  <div class="titlebar"><h1>ControlLab</h1>
+  <span class="meta">Virtual Commissioning &amp; Controls Validation</span></div>
+  <p class="intro">Validate industrial control logic against a deterministic virtual plant. Run repeatable
+    scenarios, inject faults, and verify safe recovery. The same scenario files run against the Python controller,
+    the same controller over Modbus, and a real PLC runtime (OpenPLC). The question it answers:
+    <strong>can we change this control software without breaking the machine?</strong></p>
   <details class="intro-more">
     <summary>What am I looking at?</summary>
     <ul>
-      <li><strong>What's happening</strong> (the card below) says what the line is doing right now, why, and what to do next.</li>
-      <li><strong>The picture</strong> is the line. Dark shapes are running or open, hollow ones are stopped or closed, dashed amber means "told to move but not confirmed yet", red means tripped. Material shows as brown. Hover anything for what it is.</li>
-      <li><strong>Operator</strong> buttons are what a plant operator has: Start, Stop, Acknowledge (confirm you've seen an alarm), and Reset (clear a trip once its cause is fixed).</li>
-      <li><strong>Guided walkthroughs</strong> run short stories step by step: a normal start, an emergency stop, a failure and its recovery.</li>
-      <li><strong>Engineer tools</strong> break things on purpose (motor faults, a jammed feeder, a failed sensor) and set levels, to test how the control program reacts. That's the point of ControlLab: proving control logic works, faults included, before any real equipment exists.</li>
-      <li><strong>Alarms</strong> and the <strong>event log</strong> record what the controller noticed and did, the way a real control room does.</li>
+      <li><strong>The plant</strong> (the picture) is a simulated bulk-material line: a storage bin, a gate, a feeder, a
+        conveyor and a hopper, with the motors, limit switches, level switches and weigh-scale a real one has. A control
+        program runs it through the same I/O a PLC would.</li>
+      <li><strong>Scenarios</strong> are the tests: a setup, operator actions, a deliberate fault, the controller
+        behavior expected at each stage with a time limit, the recovery procedure, and a PASS/FAIL verdict with every
+        check shown expected against actual. <em>Run &amp; verify</em> runs one; on the Python runtime you watch it
+        happen on the picture.</li>
+      <li><strong>Control runtime</strong> picks what runs the plant: the Python controller, the same controller as
+        a separate program reached only over Modbus, or OpenPLC running a Structured Text port. The scenario never
+        changes. <em>Compare runtimes</em> runs one scenario on each and says how they compared.</li>
+      <li><strong>Controller build</strong> can swap in a deliberately broken controller (a testing fixture, never the
+        production code) to show a regression being caught.</li>
+      <li><strong>What's happening</strong> narrates the line in plain words. <strong>Guided walkthroughs</strong> let
+        you operate it by hand, step by step. <strong>Engineer tools</strong> break the plant manually.</li>
+      <li><strong>Alarms</strong> and the <strong>event log</strong> record what the controller noticed and did.</li>
     </ul>
   </details>
 </header>
@@ -42,6 +51,7 @@
   <p class="story-detail" id="story-detail"></p>
   <ol class="story-steps" id="story-steps"></ol>
 </section>
+<section id="result" class="result" aria-live="polite" aria-label="Scenario result" hidden></section>
 <main>
   <div class="col">
     <section aria-label="Line mimic">
@@ -71,9 +81,22 @@
     </section>
   </div>
   <div class="col">
+    <section aria-label="Scenarios" id="scen-panel">
+      <h2>Scenarios: run and verify</h2>
+      <div id="latest"></div>
+      <div class="scen-opts">
+        <label for="runtime">Control runtime</label><select id="runtime"></select>
+        <label for="build">Controller build</label><select id="build"></select>
+      </div>
+      <p class="note" id="runtime-note"></p>
+      <div id="scenarios"></div>
+      <p class="note" id="all-note"></p>
+    </section>
     <section aria-label="Guided walkthroughs" id="tour-panel">
-      <h2>Guided walkthroughs</h2>
+      <details class="tools" id="tour-details">
+      <summary>Guided walkthroughs: operate it by hand, step by step</summary>
       <div id="tour"></div>
+      </details>
     </section>
     <section aria-label="Engineer tools">
       <details class="tools" id="tools">
@@ -163,6 +186,133 @@ $("restart").addEventListener("click", () => {
   $("events").innerHTML = '<p class="empty">No events yet.</p>';  // the old session's rows must go too
 });
 
+// ---- scenarios, runtimes and results ----
+const RT_NOTE = {
+  python: "Runs live on the picture: the scenario runner operates the line exactly as the test suite does.",
+  modbus: "The same Python controller as a separate program, reached only over Modbus TCP. Runs in the background.",
+  openplc: "OpenPLC running a Structured Text port of the controller, in real time. Runs in the background (a PLC restart plus the scenario: ~10-40 s).",
+};
+$("scenarios").innerHTML = CFG.showcase.map((c) =>
+  `<div class="scen-card"><p class="scen-title">${esc(c.title)} <span class="scen-stages">${c.stages} stage${c.stages > 1 ? "s" : ""}</span></p>` +
+  `<p class="scen-desc">${esc(c.description)}</p><div class="buttons">` +
+  `<button type="button" class="attention" data-verify="${c.file}">Run &amp; verify</button>` +
+  `<button type="button" data-compare="${c.file}" title="Run this scenario on every available runtime and compare">Compare runtimes</button>` +
+  (c.walkthrough ? `<button type="button" data-tour="${c.walkthrough}" title="Operate it by hand, step by step">Guided</button>` : "") +
+  "</div></div>").join("");
+$("all-note").innerHTML = `These are ${CFG.showcase.length} of the ${CFG.scenario_count} scenarios; all of them run from the ` +
+  "command line with <code>controllab test</code>.";
+$("build").innerHTML = '<option value="">Correct build (production controller)</option>' + CFG.regressions.map((r) =>
+  `<option value="${r.name}">Deliberate regression: ${esc(r.change)}</option>`).join("");
+$("runtime").addEventListener("change", updateOpts);
+$("build").addEventListener("change", updateOpts);
+function updateOpts() {
+  const rt = $("runtime").value;
+  if (rt !== "python" && $("build").value) $("build").value = "";
+  $("build").disabled = rt !== "python";
+  const r = CFG.regressions.find((x) => x.name === $("build").value);
+  $("runtime-note").textContent = (RT_NOTE[rt] || "") + (r ? ` Controller build: a deliberately broken testing fixture ` +
+    `(services/testing/regressions.py), never the production code. Try it on ${r.demo_scenario}.` : "");
+}
+let runtimesKey = "";
+function renderRuntimes(rts) {
+  const key = JSON.stringify(rts);
+  if (key === runtimesKey) return;
+  const cur = $("runtime").value || "python";
+  $("runtime").innerHTML = Object.entries(rts).map(([id, r]) =>
+    `<option value="${id}" ${r.available ? "" : "disabled"}>${esc(r.label)}${r.available ? "" : " (not reachable)"}</option>`).join("");
+  $("runtime").value = rts[cur] && rts[cur].available ? cur : "python";
+  runtimesKey = key;
+  updateOpts();
+}
+$("scenarios").addEventListener("click", (e) => {
+  const v = e.target.closest("[data-verify]"), c = e.target.closest("[data-compare]"), t = e.target.closest("[data-tour]");
+  if (v) post("/api/verify", { file: v.dataset.verify, runtime: $("runtime").value, regression: $("build").value || null });
+  if (c) post("/api/verify", { file: c.dataset.compare, compare: true });
+  if (t) { $("tour-details").open = true; post("/api/tour", { action: "start", id: t.dataset.tour }); since = 0; eventRows = [];
+           $("events").innerHTML = '<p class="empty">No events yet.</p>'; }
+});
+
+const MARK = { match: "MATCH", mismatch: "MISMATCH", not_reached: "NOT REACHED", not_run: "not run", not_observed: "not observed" };
+const KIND = { operator: "Operator", fault: "Fault injected", repair: "Field repair", process: "Process" };
+function val(v) {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "boolean") return v ? "yes" : "no";
+  if (Array.isArray(v)) return v.length ? v.join(", ") : "none";
+  return String(v);
+}
+function secs(x) { return x === null || x === undefined ? "—" : `${x.toFixed(2)} s`; }
+function runHead(r) {
+  const v = r.verdict + (r.qualifier ? ` (${r.qualifier})` : "");
+  return `<div class="res-head"><span class="res-verdict ${r.passed ? "pass" : "fail"}">${esc(v)}</span>` +
+    `<div><p class="res-name">${esc(r.scenario)}</p><p class="res-meta">${esc(r.runtime)}` +
+    (r.regression ? ` · <strong>controller build: deliberate regression '${esc(r.regression)}'</strong>` : "") + "</p></div></div>";
+}
+function stagesHtml(r) {
+  return r.stages.map((st) =>
+    `<div class="res-stage ${st.status}"><p class="res-stage-h">Stage ${st.n}${st.title ? ": " + esc(st.title) : ""}` +
+    `<span class="res-stage-s">${st.status.replace("_", " ")}${st.response_s !== null ? ` · ${secs(st.response_s)} / limit ${st.within_s} s` : ` · limit ${st.within_s} s`}</span></p>` +
+    (st.actions.length ? `<p class="res-acts">${st.actions.map((a) => `<span class="act ${a.kind}">${KIND[a.kind]}: ${esc(a.key)}` +
+      (a.value === true ? "" : ` = ${esc(val(a.value))}`) + "</span>").join(" ")}</p>` : '<p class="res-acts"><span class="act">Keep watching (no action)</span></p>') +
+    "<table class=\"res-checks\"><tbody>" + st.checks.map((c) =>
+      `<tr class="${c.status}"><td class="mk">${MARK[c.status]}</td><td>${esc(c.label)}</td><td>expected ${esc(val(c.expected))}` +
+      (c.status === "mismatch" ? `, <strong>actual ${esc(val(c.actual))}</strong>` : "") + "</td></tr>").join("") +
+    "</tbody></table></div>").join("");
+}
+let resultId = null;
+function renderResult(ver) {
+  const L = ver.latest;
+  if (!L) { $("latest").innerHTML = '<p class="note" style="margin-top:0">No run yet. Pick a scenario below.</p>'; return; }
+  const first = L.runs[0];
+  $("latest").innerHTML = L.error ? `<p class="latest fail">LATEST RUN · ERROR · ${esc(L.error)}</p>` :
+    `<p class="latest ${first.passed ? "pass" : "fail"}"><span>LATEST RUN</span> <strong>${esc(first.verdict)}</strong> · ` +
+    `${esc(first.scenario.split(" -- ")[0])} · ${esc(L.comparison ? L.runs.length + " runtimes" : first.runtime.split(" (")[0])}` +
+    `${first.regression ? " (regression build)" : ""} · ` +
+    `${first.plant_time_s !== null ? first.plant_time_s.toFixed(1) + " s plant time · " : ""}${first.checks_passed}/${first.checks_evaluated} checks matched</p>`;
+  if (L.id === resultId) return;
+  resultId = L.id;
+  if (L.error) { $("result").hidden = false; $("result").innerHTML = `<p class="res-name">Verification failed to run</p><p>${esc(L.error)}</p>`; return; }
+  const kicker = first.regression ? (first.passed ? "Regression NOT caught" : "Regression caught") : "Scenario result";
+  let html = `<div class="res-top"><p class="story-kicker">${kicker}</p><span>` +
+    '<a href="/api/replay/latest" target="_blank" rel="noopener">Watch this run (replay)</a> · ' +
+    '<button type="button" id="res-close" class="linkish">Close</button></span></div>' + runHead(first);
+  html += `<p class="res-facts"><span><strong>${first.checks_passed}/${first.checks_evaluated}</strong> checks matched` +
+    (first.checks_total !== first.checks_evaluated ? ` (${first.checks_total - first.checks_evaluated} not run or not observed)` : "") + "</span>" +
+    `<span>First-out alarm: <strong>${esc(val(first.first_out))}</strong></span><span>Invariants: ${esc(first.invariants)}</span>` +
+    `<span>${first.plant_time_s !== null ? first.plant_time_s.toFixed(1) + " s plant time" : ""}` +
+    `${first.wall_time_s !== null ? " · " + first.wall_time_s.toFixed(1) + " s wall time" : ""}</span></p>`;
+  if (first.description) html += `<p class="res-desc">${esc(first.description)}</p>`;
+  if (first.first_divergence) {
+    const d = first.first_divergence;
+    html += `<div class="res-div"><p><strong>Failure detected at ${d.stage ? "stage " + d.stage + (d.stage_title ? " (" + esc(d.stage_title) + ")" : "") : "setup"}` +
+      `${d.t !== null ? ", t = " + d.t.toFixed(2) + " s (the stage's deadline)" : ""}</strong> — ${esc(d.kind)}</p>` +
+      (d.unmet.length ? "<ul>" + d.unmet.map((u) => `<li>${esc(u.label)}: expected <strong>${esc(val(u.expected))}</strong>, actual <strong>${esc(val(u.actual))}</strong></li>`).join("") + "</ul>"
+                      : `<p>${esc(d.detail)}</p>`) +
+      '<p class="note">The first divergence is where the run is known to have left the scenario; the cause may be earlier. ' +
+      "It is also what the optional AI run analysis starts from (docs/AI.md).</p></div>";
+  }
+  if (L.comparison) {
+    html += '<p class="res-sub">Same scenario, same plant, different control runtimes</p><table class="res-cmp"><thead><tr>' +
+      "<th>Runtime</th><th>Result</th><th>Checks</th><th>Stage response times</th><th>How compared</th></tr></thead><tbody>" +
+      L.comparison.rows.map((r) => `<tr><td>${esc(r.runtime)}</td><td><strong>${esc(r.verdict)}</strong></td><td>${r.checks}</td>` +
+        `<td>${r.stage_response_s.map(secs).join(", ")}</td><td>${esc(r.how)}</td></tr>`).join("") + "</tbody></table>" +
+      `<p class="note">${L.comparison.all_agree ? "Every runtime agrees." : "The runtimes DISAGREE: see the rows above."}` +
+      (L.not_compared.length ? ` Not compared: ${esc(L.not_compared.join("; "))}.` : "") + "</p>";
+  }
+  html += '<p class="res-sub">Expected vs actual, stage by stage' + (L.comparison ? " (the Python controller's run)" : "") + "</p>" + stagesHtml(first);
+  $("result").innerHTML = html;
+  $("result").hidden = false;
+  $("res-close").addEventListener("click", () => { $("result").hidden = true; });
+  $("result").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function renderBusy(ver) {
+  const busy = !!ver.busy;
+  document.querySelectorAll("[data-verify],[data-compare]").forEach((b) => { b.disabled = busy; });
+  document.querySelectorAll("#commands button, #faults button, #field-resets button, #instruments button, [data-level], #restart")
+    .forEach((b) => { b.disabled = busy; });
+  if (busy) $("latest").innerHTML = `<p class="latest busy"><span>RUNNING</span> ${esc(ver.busy.scenario)} on ${esc(ver.busy.runtime.split(" (")[0])}` +
+    (ver.busy.of > 1 ? ` (runtime ${ver.busy.step} of ${ver.busy.of})` : "") + "…</p>";
+}
+
 let tourKey = "";
 function renderTour(t) {
   document.querySelectorAll(".pulse").forEach((el) => el.classList.remove("pulse"));
@@ -237,6 +387,10 @@ async function poll() {
     $("run").classList.toggle("attention", !running);
     renderStory(s.story);
     renderTour(s.tour);
+    if (s.tour) $("tour-details").open = true;
+    renderRuntimes(s.verification.runtimes);
+    renderResult(s.verification);
+    renderBusy(s.verification);
     $("speed").value = String(s.speed);
     $("clock").textContent = `t = ${s.t.toFixed(1)} s`;
     renderState(s.state);

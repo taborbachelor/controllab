@@ -128,7 +128,25 @@ def _alarm_notes(alarms: list[dict]) -> list[str]:
     return notes
 
 
+def _verifying(s: dict, busy: dict) -> dict:
+    live = s.get("verifying") is not None
+    where = ("The picture shows it live." if live else
+             "It runs in the background against that runtime; the picture below is not part of this run.")
+    step = f" (runtime {busy['step']} of {busy['of']})" if busy.get("of", 1) > 1 else ""
+    return {
+        "tone": "info",
+        "headline": f"Verifying: {busy['scenario']}{step}",
+        "detail": f"The scenario runner is operating the line on the {busy['runtime']}, exactly as the automated "
+                  "test suite does: it sets up the precondition, applies each stage's actions, and checks every "
+                  f"expectation against its time limit. {where} Manual controls are locked until the result is in.",
+        "steps": [],
+    }
+
+
 def narrate(s: dict) -> dict:
+    busy = (s.get("verification") or {}).get("busy")
+    if busy:
+        return _verifying(s, busy)
     running = s.get("running", True)
     state = s["state"]
     v = s["values"]
@@ -233,7 +251,8 @@ def narrate(s: dict) -> dict:
                 "tone": "info" if not unacked else "warn",
                 "headline": "Stopped and ready.",
                 "detail": "Press Start: the conveyor starts first, then the bin gate opens, then the feeder runs, "
-                "moving material from the bin up into the hopper. Or pick a guided walkthrough."
+                "moving material from the bin up into the hopper. Or run a scenario (right) to have the controller verified "
+                "automatically, stage by stage."
                 + (" There's an alarm to acknowledge first (press Acknowledge)." if unacked else ""),
                 "steps": [],
             }

@@ -1094,6 +1094,16 @@ issue and propose the change"):
   including a caught regression.
 - **Scenario `description:` / stage `title:`** — optional, for people;
   printed beside the checks, never part of the verdict.
+- **`services/visualization/verify.py`** — dashboard verification:
+  `SHOWCASE` (the five scenarios the page leads with), `Verifier` (one job
+  at a time on a background thread; OpenPLC detected by its web UI
+  answering). Each runtime goes through the existing path: the Python
+  controller through `LiveSession.run_live()` (runner.execute() on the
+  dashboard's own line, so it's visible, and tested identical to the
+  suite's run), Modbus through `run_scenario(external=True)`, OpenPLC
+  through `run_realtime()`. Comparing runtimes states how each row was
+  compared: lockstep runs event by event, real-time runs by verdict and
+  checks. `POST /api/verify`, `GET /api/replay/latest`.
 
 ## Roadmap (current phase status)
 

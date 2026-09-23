@@ -106,3 +106,35 @@
   .tour-say { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
   @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(47, 95, 138, .7); } 50% { box-shadow: 0 0 0 5px rgba(47, 95, 138, .25); } }
   .pulse { animation: pulse 1.2s ease-in-out infinite; outline: 2px solid var(--accent); outline-offset: 1px; }
+  #scen-panel { border-color: var(--accent); }
+  .scen-opts { display: grid; grid-template-columns: auto 1fr; gap: 6px 8px; align-items: center; font-size: 12px; margin: 8px 0 4px; }
+  .scen-opts select { font: inherit; font-size: 12px; min-width: 0; width: 100%; padding: 2px 4px; }
+  .scen-card { border: 1px solid var(--grid); border-radius: 6px; background: var(--hollow); padding: 8px 10px; margin-top: 8px; }
+  .scen-title { margin: 0; font-weight: 650; } .scen-stages { font-weight: 400; font-size: 11px; color: var(--muted); margin-left: 4px; }
+  .scen-desc { margin: 2px 0 6px; font-size: 12px; color: var(--muted); }
+  .latest { margin: 0; padding: 6px 8px; border-radius: 4px; font-size: 12px; background: var(--hollow); border-left: 4px solid var(--line); }
+  .latest span { font-size: 10px; letter-spacing: .06em; color: var(--muted); }
+  .latest.pass { border-left-color: var(--run); } .latest.fail { border-left-color: var(--trip); } .latest.busy { border-left-color: var(--accent); }
+  .result { margin: 12px 20px 0; padding: 12px 16px; border-radius: 8px; background: var(--panel); border: 1px solid var(--grid); }
+  .res-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13px; }
+  .linkish { font: inherit; background: none; border: none; color: var(--accent); cursor: pointer; padding: 0; text-decoration: underline; }
+  .res-head { display: flex; gap: 14px; align-items: center; margin: 4px 0 6px; }
+  .res-verdict { font-size: 22px; font-weight: 750; padding: 4px 12px; border-radius: 6px; color: #fff; letter-spacing: .03em; }
+  .res-verdict.pass { background: var(--run); } .res-verdict.fail { background: var(--trip); }
+  .res-name { margin: 0; font-size: 16px; font-weight: 650; } .res-meta { margin: 0; font-size: 12px; color: var(--muted); }
+  .res-facts { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 4px 0; font-size: 13px; }
+  .res-desc { margin: 2px 0 8px; font-size: 13px; color: var(--muted); max-width: 95ch; }
+  .res-sub { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+  .res-stage { border-left: 3px solid var(--grid); padding: 2px 0 4px 10px; margin: 6px 0; }
+  .res-stage.passed { border-left-color: var(--run); } .res-stage.failed { border-left-color: var(--trip); } .res-stage.not_run { opacity: .55; }
+  .res-stage-h { margin: 0; font-weight: 600; font-size: 13px; } .res-stage-s { font-weight: 400; color: var(--muted); font-size: 12px; margin-left: 8px; }
+  .res-acts { margin: 2px 0; } .act { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 10px; background: var(--hollow); border: 1px solid var(--grid); margin: 1px 2px 1px 0; }
+  .act.fault { border-color: var(--trip); color: var(--trip); } .act.repair { border-color: var(--run); } .act.operator { border-color: var(--accent); }
+  .res-checks { border-collapse: collapse; font-size: 12px; } .res-checks td { padding: 1px 8px 1px 0; vertical-align: top; }
+  .res-checks .mk { font-weight: 700; white-space: nowrap; } .res-checks tr.match .mk { color: var(--run); }
+  .res-checks tr.mismatch .mk, .res-checks tr.mismatch td { color: var(--trip); } .res-checks tr.not_run, .res-checks tr.not_observed, .res-checks tr.not_reached { color: var(--muted); }
+  .res-div { border: 1px solid var(--trip); border-radius: 6px; padding: 6px 10px; margin: 8px 0; background: #fff5f5; font-size: 13px; }
+  .res-div p { margin: 2px 0; } .res-div ul { margin: 2px 0; padding-left: 20px; }
+  .res-cmp { border-collapse: collapse; font-size: 12px; width: 100%; } .res-cmp th, .res-cmp td { text-align: left; padding: 3px 8px 3px 0; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  .res-checks { width: auto; } .res-checks td { padding: 1px 18px 1px 0; border: none; }
+  .res-checks td:nth-child(2) { min-width: 15rem; }

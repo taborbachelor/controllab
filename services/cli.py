@@ -24,15 +24,9 @@ from pathlib import Path
 from services.testing.regressions import REGRESSIONS
 from services.testing.runner import run_scenario
 from services.testing.scenario import Scenario
-from services.testing.verdict import render_text, summarize
+from services.testing.verdict import RUNTIMES, render_text, summarize
 
 SCENARIOS_DIR = Path(__file__).resolve().parents[1] / "scenarios"
-
-RUNTIMES = {
-    "python": "Python controller (in-process, lockstep)",
-    "modbus": "Python controller in a separate process, over Modbus TCP (lockstep)",
-    "openplc": "OpenPLC Runtime running examples/openplc/controllab_line.st, over Modbus TCP (real time)",
-}
 
 
 def select(patterns: list[str]) -> list[Scenario]:
