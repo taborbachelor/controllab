@@ -1186,6 +1186,12 @@ deterministic (tested byte-identical across rebuilds), and
 `.github/workflows/pages.yml` rebuilds and deploys it from the current code
 on every push to `main`, so it cannot drift from the repository.
 
+**Continuous integration** (`.github/workflows/tests.yml`) runs the full
+suite on every push and pull request, on Python 3.12 and 3.13 on Linux,
+with only the `[dev]` extra installed: no AI SDK and no OpenPLC, so it also
+proves neither is needed. The real-time tests (a free-running reference
+controller at 4× against the wall clock) run there too.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |

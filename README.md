@@ -1,5 +1,7 @@
 # ControlLab
 
+[![Tests](https://github.com/taborbachelor/controllab/actions/workflows/tests.yml/badge.svg)](https://github.com/taborbachelor/controllab/actions/workflows/tests.yml)
+
 **Automated commissioning tests for industrial control logic, run against a
 simulated plant before the logic ever reaches real equipment.**
 
@@ -41,8 +43,9 @@ still plugged.
 - Mass is conserved to the milligram and checked on every scan, and every
   run is deterministic, so the same scenario gives the same result every
   time.
-- 676 automated tests. The demo site is rebuilt from the current code on
-  every push, so it can't drift from the repository.
+- 676 automated tests, run on every push (Python 3.12 and 3.13; the badge
+  above is the latest run). The demo site is rebuilt from the current code
+  on every push too, so it can't drift from the repository.
 
 ## Quick start
 

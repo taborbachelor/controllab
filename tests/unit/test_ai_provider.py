@@ -48,6 +48,9 @@ except services.ai.AIUnavailable as e:
 
 
 def test_no_api_key_is_needed_until_a_model_is_called(monkeypatch):
+    # The fake SDK, so this checks the key handling whether or not the optional
+    # [ai] extra is installed (it isn't in CI; the SDK check would answer first).
+    monkeypatch.setitem(sys.modules, "anthropic", fake_sdk()[0])
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     provider = get_provider("anthropic")  # constructing it needs no key
     with pytest.raises(AIUnavailable, match="ANTHROPIC_API_KEY is not set"):
