@@ -123,6 +123,20 @@ python scripts/external_controller.py         # terminal 2: the controller, over
 Press Start on the dashboard; kill the controller mid-run and the
 watchdog stops the plant within a second.
 
+To run the whole scenario suite against a free-running controller in
+real time, the way you would against a PLC (Phase 9):
+
+```bash
+python scripts/scenario_report.py --realtime reference --speed 4       # our controller, free-running
+python scripts/scenario_report.py --realtime openplc --repeat 3        # a real PLC runtime, see examples/openplc
+```
+
+Limits are still checked in plant time, with a stated I/O latency
+tolerance; a result met only inside it is reported as such, and repeat
+passes report the response-time spread. Against OpenPLC running a
+Structured Text port of the controller, all 15 scenarios pass in all 3
+passes: [`examples/openplc/COMMISSIONING-REPORT.md`](examples/openplc/COMMISSIONING-REPORT.md).
+
 ## Roadmap
 
 | Phase | Focus | Status |
@@ -136,7 +150,7 @@ watchdog stops the plant within a second.
 | 6 | Visualization | done |
 | 7 | Protocols (Modbus + external controller mode) | done |
 | 8 | AI engineering assistance | done (optional) |
-| 9 | Virtual commissioning | in progress (real-time runner done) |
+| 9 | Virtual commissioning | in progress (real-time runner; suite + report against OpenPLC) |
 
 Full detail: `docs/CONTROL-LAB.md` §10.
 

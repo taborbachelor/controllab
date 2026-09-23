@@ -14,16 +14,19 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from setup_openplc import ST_FILE, Plc  # noqa: E402
+from setup_openplc import ST_FILE  # noqa: E402
+
+from services.protocols.openplc import OpenPLCWeb  # noqa: E402
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--plc", default="http://127.0.0.1:8080")
     args = ap.parse_args()
-    plc = Plc(args.plc)
-    plc.post("/login", {"username": "openplc", "password": "openplc"})
+    plc = OpenPLCWeb(args.plc)
+    plc.login("openplc", "openplc")
     page = plc.upload("/upload-program", ST_FILE.name, ST_FILE.read_bytes())
     name = re.search(r"value=['\"](\d+\.st)['\"]", page).group(1)
     plc.post("/upload-program-action", {"prog_name": "compile check", "prog_descr": "", "prog_file": name,

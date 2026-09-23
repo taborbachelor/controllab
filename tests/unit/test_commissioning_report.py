@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from services.telemetry.events import Event
-from services.testing.commissioning_report import describe, render_markdown
+from services.testing.commissioning_report import RealtimeConditions, describe, render_markdown
 from services.testing.report import build_report
 
 ROOT = Path("/somewhere/on/a/build/machine/scenarios")
@@ -28,6 +28,7 @@ class FakeResult:
     detail: str = "all expectations met"
     events: list[Event] = field(default_factory=list)
     when_applied_t: float | None = 1.0
+    within_tolerance: bool = False
 
 
 def render(*pairs) -> str:
@@ -101,3 +102,20 @@ def test_fault_reason_only_shown_on_entering_a_fault_state():
 
 def test_an_unknown_event_type_renders_instead_of_raising():
     assert describe(Event(0.0, "something_new", {"k": 1})) == "something_new: {'k': 1}"
+
+
+def test_a_realtime_report_states_its_conditions_and_marks_tolerance_passes():
+    s1, s2 = FakeScenario("On time", path=ROOT / "a.yaml"), FakeScenario("Late", within_s=0.3, path=ROOT / "b.yaml")
+    rt = RealtimeConditions(latency_s=0.5, speed=1.0, passes=3,
+                            responses={s1.path: [0.2, 0.3, 0.2], s2.path: [0.4, None, 0.3]})
+    md = render_markdown(build_report([(s1, FakeResult(True, 0.3)), (s2, FakeResult(True, 0.4, within_tolerance=True))]),
+                         ROOT, "a PLC", rt)
+    assert "## Real-time conditions" in md
+    assert "**Latency tolerance: 0.5 s**" in md and "**Passes: 3.**" in md
+    assert "| 🟡 PASS within tolerance | Late | 0.40 s | 0.30 s | -0.10 s |" in md  # the overrun shows, not hidden
+    assert "| Late | 2/3 | 0.30 s | 0.40 s | 0.40, fail, 0.30 |" in md
+
+
+def test_without_realtime_the_report_has_no_realtime_sections():
+    md = render((FakeScenario("S1"), FakeResult(True)))
+    assert "Real-time conditions" not in md and "across" not in md

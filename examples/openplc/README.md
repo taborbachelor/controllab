@@ -6,8 +6,8 @@ remote I/O; OpenPLC runs [`controllab_line.st`](controllab_line.st), an IEC 6113
 Text port of ControlLab's own line controller. Nothing is shared between the two except the
 register map in [`docs/MODBUS-MAP.md`](../../docs/MODBUS-MAP.md).
 
-It is a manual, documented demo (docs/CONTROL-LAB.md §10, Phase 7 step 4) — OpenPLC is not
-a dependency of the automated test suite. What *is* in the suite:
+It is a manual, documented setup (docs/CONTROL-LAB.md §10, Phase 7 step 4; the suite against it,
+Phase 9 step 2) — OpenPLC is not a dependency of the automated test suite. What *is* in the suite:
 `tests/unit/test_openplc_program.py` checks every located variable in the `.st` file against
 the register map, so the program's I/O addresses can't drift from what ControlLab serves.
 
@@ -71,8 +71,22 @@ inside the container** (see findings), port 5020, and the five ranges from the m
 
 Then *Dashboard → Start PLC*.
 
-**5. Run the commissioning checks** — or just press buttons on the dashboard at
-http://127.0.0.1:8000 and watch the PLC run the line:
+**5. Run the commissioning suite against the PLC.** Stop the dashboard first: the runner serves
+the plant on port 5020 itself, one fresh plant per scenario, and cold-restarts the PLC (Stop PLC,
+Start PLC, through its web UI) before each one:
+
+```bash
+python scripts/scenario_report.py --realtime openplc --repeat 3 --markdown examples/openplc/COMMISSIONING-REPORT.md
+```
+
+Every scenario in `scenarios/` runs unchanged against the PLC, with limits in plant time plus a
+stated I/O latency tolerance (0.5 s by default). [`COMMISSIONING-REPORT.md`](COMMISSIONING-REPORT.md)
+is a recorded run: **15/15 scenarios, 45/45 runs over 3 passes, none needing the tolerance**,
+response times within one tick of each other across passes.
+
+**6. Walk through the recovery procedure**, which the suite's single-stage `given`/`when` scenarios
+can't express. Start the dashboard again (step 2), then run the walkthrough, or just press
+buttons at http://127.0.0.1:8000 and watch the PLC run the line:
 
 ```bash
 python examples/openplc/run_demo.py --dashboard http://127.0.0.1:8000

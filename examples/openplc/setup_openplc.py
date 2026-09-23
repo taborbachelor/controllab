@@ -20,67 +20,27 @@ resolved *inside the PLC container* (`--container`, via `docker exec ...
 getent`), which is where the name has to mean something.
 
 Stdlib only. The ranges come from LINE_REGISTER_MAP.controller_ranges(),
-not a copy, so this can't drift from the map ControlLab serves.
+not a copy, so this can't drift from the map ControlLab serves. The web
+client is services/protocols/openplc.py's, shared with the real-time
+commissioning run (Phase 9), which restarts the PLC through it.
 """
 from __future__ import annotations
 
 import argparse
-import http.cookiejar
 import ipaddress
 import re
 import subprocess
 import sys
 import time
-import urllib.parse
-import urllib.request
-import uuid
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
 from services.protocols.line_map import LINE_REGISTER_MAP  # noqa: E402
+from services.protocols.openplc import OpenPLCError, OpenPLCWeb  # noqa: E402
 
 ST_FILE = Path(__file__).with_name("controllab_line.st")
-
-
-class Plc:
-    def __init__(self, base: str) -> None:
-        self.base = base.rstrip("/")
-        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
-
-    def get(self, path: str) -> str:
-        with self.opener.open(self.base + path, timeout=30) as r:
-            return r.read().decode("utf-8", "replace")
-
-    def post(self, path: str, fields: dict[str, str]) -> str:
-        data = urllib.parse.urlencode(fields).encode()
-        with self.opener.open(self.base + path, data=data, timeout=30) as r:
-            return r.read().decode("utf-8", "replace")
-
-    def upload(self, path: str, filename: str, content: bytes) -> str:
-        boundary = uuid.uuid4().hex
-        body = (
-            f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
-            f"Content-Type: application/octet-stream\r\n\r\n"
-        ).encode() + content + f"\r\n--{boundary}--\r\n".encode()
-        req = urllib.request.Request(
-            self.base + path, data=body, headers={"Content-Type": f"multipart/form-data; boundary={boundary}"}
-        )
-        with self.opener.open(req, timeout=30) as r:
-            return r.read().decode("utf-8", "replace")
-
-
-def wait_for_webserver(plc: Plc, timeout_s: float = 60) -> None:
-    deadline = time.monotonic() + timeout_s
-    while True:
-        try:
-            plc.get("/login")
-            return
-        except OSError:
-            if time.monotonic() > deadline:
-                raise
-            time.sleep(1)
 
 
 def resolve_in_container(container: str | None, host: str) -> str:
@@ -111,12 +71,12 @@ def main() -> int:
     args = ap.parse_args()
     controllab_ip = resolve_in_container(args.container, args.controllab_host)
 
-    plc = Plc(args.plc)
-    wait_for_webserver(plc)
-
-    page = plc.post("/login", {"username": args.user, "password": args.password})
-    if "Bad credentials" in page or "Dashboard" not in page:
-        print("login failed", file=sys.stderr)
+    plc = OpenPLCWeb(args.plc)
+    plc.wait_until_up()
+    try:
+        plc.login(args.user, args.password)
+    except OpenPLCError as e:
+        print(e, file=sys.stderr)
         return 1
     print("logged in")
 

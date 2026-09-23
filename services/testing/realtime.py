@@ -49,6 +49,8 @@ import itertools
 import math
 import threading
 import time
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 from services.protocols import external_controller
@@ -307,7 +309,62 @@ def _judge_timing(result: ScenarioResult, pacer: _Pacer) -> ScenarioResult:
     return result
 
 
+@dataclass
+class RepeatedRuns:
+    """One scenario run N times against a free-running controller (Phase 9
+    step 2). Real time isn't bit-exact, so repeatability is measured: the
+    spread of response times, and whether every run passed."""
+
+    scenario: Scenario
+    runs: list[ScenarioResult]
+
+    @property
+    def responses(self) -> list[float | None]:
+        """Response time of each run in order; None where it failed."""
+        return [r.elapsed_s if r.passed else None for r in self.runs]
+
+    def combined(self) -> ScenarioResult:
+        """One result for the coverage matrix and the report: passed only
+        if every run passed. It carries the worst run's record -- the
+        first failure, or else the slowest pass -- so what the report
+        shows is the case that needs looking at, never the best one."""
+        failures = [(i, r) for i, r in enumerate(self.runs, 1) if not r.passed]
+        if failures:
+            i, first = failures[0]
+            detail = first.detail
+            if len(self.runs) > 1:
+                detail = f"failed {len(failures)}/{len(self.runs)} runs; first failure (run {i}): {detail}"
+            return replace(first, detail=detail)
+        slowest = max(self.runs, key=lambda r: r.elapsed_s)
+        return replace(slowest, within_tolerance=any(r.within_tolerance for r in self.runs))
+
+
+def run_suite_realtime(
+    scenarios: list[Scenario],
+    plant: RealtimePlant,
+    controller: ControllerUnderTest,
+    repeat: int = 1,
+    speed: float = 1.0,
+    latency_s: float = LATENCY_S,
+    on_result: Callable[[int, Scenario, ScenarioResult], None] | None = None,
+) -> list[RepeatedRuns]:
+    """The whole suite, `repeat` times over (each pass complete before the
+    next starts, so the passes are independent), every scenario from its
+    own restarted controller. `on_result(pass_number, scenario, result)`
+    reports progress; a real PLC takes several seconds per scenario."""
+    if repeat < 1:
+        raise ValueError("repeat must be at least 1")
+    collected = [RepeatedRuns(s, []) for s in scenarios]
+    for n in range(1, repeat + 1):
+        for entry in collected:
+            result = run_realtime(entry.scenario, plant, controller, speed=speed, latency_s=latency_s)
+            entry.runs.append(result)
+            if on_result is not None:
+                on_result(n, entry.scenario, result)
+    return collected
+
+
 __all__ = [
     "CONTROLLER_SILENCE_S", "ControllerUnderTest", "LATENCY_S", "MAX_LAG_S",
-    "RealtimePlant", "ReferenceController", "run_realtime",
+    "RealtimePlant", "ReferenceController", "RepeatedRuns", "run_realtime", "run_suite_realtime",
 ]

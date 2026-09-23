@@ -115,3 +115,18 @@ def test_a_controller_dying_mid_run_invalidates_the_run(rt):
     result = run_realtime(scenario("shutdown/normal_stop.yaml"), plant, ctl, speed=SPEED)
     assert not result.passed
     assert result.detail.startswith("run invalid, not a verdict on the logic: controller stopped writing")
+
+
+def test_repeated_passes_give_a_spread_and_one_combined_verdict(rt):
+    from services.testing.realtime import run_suite_realtime
+
+    plant, controller = rt
+    scenarios = [scenario("faults/feeder_trip_while_running.yaml"), scenario("faults/bin_low_blocks_start.yaml")]
+    seen = []
+    runs = run_suite_realtime(scenarios, plant, controller(), repeat=2, speed=SPEED,
+                              on_result=lambda n, s, r: seen.append((n, s.name)))
+    assert [n for n, _ in seen] == [1, 1, 2, 2]  # each pass completes before the next starts
+    for entry in runs:
+        assert len(entry.responses) == 2 and all(t is not None for t in entry.responses)
+        combined = entry.combined()
+        assert combined.passed and combined.elapsed_s == max(entry.responses)

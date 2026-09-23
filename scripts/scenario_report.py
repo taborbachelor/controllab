@@ -7,6 +7,17 @@ report: pass/fail per scenario, then the interlock coverage matrix
     python scripts/scenario_report.py --out coverage_report.txt
     python scripts/scenario_report.py --markdown commissioning_report.md
     python scripts/scenario_report.py --external    # same suite, controller across Modbus
+    python scripts/scenario_report.py --realtime reference --speed 4
+    python scripts/scenario_report.py --realtime openplc --repeat 3 --markdown report.md
+
+--realtime runs the suite against a FREE-RUNNING controller (Phase 9,
+services/testing/realtime.py): the plant is served on 127.0.0.1:--modbus-port
+and paced on the wall clock. `reference` is ControlLab's own controller in a
+thread; `openplc` is an OpenPLC Runtime already set up to poll that port
+(examples/openplc/README.md, with scripts/dashboard.py NOT running, since
+this takes its port), cold-restarted through its web UI before every
+scenario. --repeat runs the whole suite that many times and reports the
+response-time spread.
 
 --out saves the console text below. --markdown writes the full
 commissioning report (services/testing/commissioning_report.py): the same
@@ -24,7 +35,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from services.testing.commissioning_report import render_markdown
+from services.testing.commissioning_report import RealtimeConditions, render_markdown
 from services.testing.report import CoverageReport, build_report
 from services.testing.runner import run_scenario
 from services.testing.scenario import Scenario, ScenarioLoadError
@@ -52,9 +63,9 @@ def render(report: CoverageReport) -> str:
     lines.append("Results:")
     for scenario, result in report.results:
         rel = scenario.path.relative_to(SCENARIOS_DIR).as_posix()
-        mark = "PASS" if result.passed else "FAIL"
-        lines.append(f"  {mark}  {scenario.name}  (t={result.elapsed_s:.2f}s)  {rel}")
-        if not result.passed:
+        mark = ("PASS~" if result.within_tolerance else "PASS") if result.passed else "FAIL"
+        lines.append(f"  {mark:5} {scenario.name}  (t={result.elapsed_s:.2f}s)  {rel}")
+        if not result.passed or result.within_tolerance:
             lines.append(f"        {result.detail}")
     lines.append("")
 
@@ -101,20 +112,44 @@ def main() -> int:
     parser.add_argument(
         "--markdown", type=Path, default=None, help="also write the full Markdown commissioning report to this file"
     )
+    rt = parser.add_argument_group("real-time run against a free-running controller (Phase 9)")
+    rt.add_argument("--realtime", choices=("reference", "openplc"), default=None)
+    rt.add_argument("--modbus-port", type=int, default=5020, help="port the plant is served on (the one the PLC polls)")
+    rt.add_argument("--repeat", type=int, default=1, help="run the whole suite this many times")
+    rt.add_argument("--latency", type=float, default=None, help="I/O latency tolerance, plant seconds (default 0.5)")
+    rt.add_argument("--speed", type=float, default=1.0, help="plant speed; reference controller only (a real PLC runs at 1)")
+    rt.add_argument("--plc", default="http://127.0.0.1:8080", help="OpenPLC web UI")
+    rt.add_argument("--plc-user", default="openplc")
+    rt.add_argument("--plc-password", default="openplc")
     args = parser.parse_args()
+    if args.realtime and args.external:
+        parser.error("--realtime and --external are different modes; pick one")
+    if args.realtime == "openplc" and args.speed != 1.0:
+        parser.error("a real PLC's timers run on wall time: --realtime openplc runs at --speed 1")
 
     scenarios = Scenario.discover(SCENARIOS_DIR)
-    results: list[tuple[Scenario, object]] = []
-    for scenario in scenarios:
+    conditions = None
+    controller_name = "reference external controller over Modbus TCP (`--external`)" if args.external else ""
+    if args.realtime:
         try:
-            result = run_scenario(scenario, external=args.external)
+            results, conditions, controller_name = _run_realtime(args, scenarios)
         except ScenarioLoadError as e:
             print(f"FATAL: {e}", file=sys.stderr)
             return 2
-        results.append((scenario, result))
+    else:
+        results = []
+        for scenario in scenarios:
+            try:
+                result = run_scenario(scenario, external=args.external)
+            except ScenarioLoadError as e:
+                print(f"FATAL: {e}", file=sys.stderr)
+                return 2
+            results.append((scenario, result))
 
     report = build_report(results)
     text = render(report)
+    if conditions is not None:
+        text = f"Controller under test: {controller_name}\n" + _render_spread(report, conditions) + "\n" + text
     print(text)
 
     if args.out is not None:
@@ -122,11 +157,50 @@ def main() -> int:
         print(f"\nWrote {args.out}")
 
     if args.markdown is not None:
-        controller = "reference external controller over Modbus TCP (`--external`)" if args.external else ""
-        args.markdown.write_text(render_markdown(report, SCENARIOS_DIR, controller), encoding="utf-8")
+        args.markdown.write_text(render_markdown(report, SCENARIOS_DIR, controller_name, conditions), encoding="utf-8")
         print(f"\nWrote {args.markdown}")
 
     return 0 if report.gap_count == 0 and report.passed_count == len(results) else 1
+
+
+def _run_realtime(args, scenarios):
+    from services.testing.realtime import LATENCY_S, RealtimePlant, ReferenceController, run_suite_realtime
+
+    latency = LATENCY_S if args.latency is None else args.latency
+    plant = RealtimePlant(port=args.modbus_port)
+    if args.realtime == "openplc":
+        from services.protocols.openplc import OpenPLCController
+
+        controller = OpenPLCController(args.plc, args.plc_user, args.plc_password)
+    else:
+        controller = ReferenceController(plant.port, speed=args.speed)
+
+    def progress(n, scenario, result):
+        mark = ("PASS~" if result.within_tolerance else "PASS") if result.passed else "FAIL"
+        print(f"  pass {n}/{args.repeat}  {mark:5} {result.elapsed_s:5.2f}s  {scenario.name}", flush=True)
+
+    print(f"Real-time run: {controller.name}; plant on 127.0.0.1:{plant.port}, {args.speed:g}x, "
+          f"latency tolerance {latency:g}s, {args.repeat} pass(es)", flush=True)
+    try:
+        runs = run_suite_realtime(scenarios, plant, controller, repeat=args.repeat, speed=args.speed,
+                                  latency_s=latency, on_result=progress)
+    finally:
+        controller.close()
+        plant.close()
+    print()
+    conditions = RealtimeConditions(latency, args.speed, args.repeat, {r.scenario.path: r.responses for r in runs})
+    return [(r.scenario, r.combined()) for r in runs], conditions, controller.name
+
+
+def _render_spread(report: CoverageReport, conditions: RealtimeConditions) -> str:
+    lines = [f"Latency tolerance {conditions.latency_s:g}s; PASS~ = met after its limit, inside the tolerance."]
+    if conditions.passes > 1:
+        lines.append(f"Response time across {conditions.passes} passes (min - max):")
+        for scenario, _ in report.results:
+            ok = [t for t in conditions.responses.get(scenario.path, []) if t is not None]
+            span = f"{min(ok):.2f} - {max(ok):.2f}s" if ok else "no passing run"
+            lines.append(f"  {len(ok)}/{conditions.passes}  {span:16} {scenario.name}")
+    return "\n".join(lines) + "\n"
 
 
 if __name__ == "__main__":

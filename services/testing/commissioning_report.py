@@ -23,9 +23,18 @@ generated from is the right provenance record, not a date inside it.
 
 Markdown only, for now (CLAUDE.md §14: "don't implement every export
 format immediately") -- GitHub renders it, and it diffs as text.
+
+A real-time run against a free-running controller (Phase 9) passes
+`realtime`: the report then states the conditions (latency tolerance,
+plant speed, number of passes), marks a result met only inside the
+tolerance as exactly that, and adds each scenario's response-time spread
+across the passes. Such a report is a record of one session on real
+hardware timing, so it is NOT byte-identical run to run -- the lockstep
+report still is.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from services.telemetry.events import Event
@@ -39,11 +48,27 @@ STATUS_LABEL = {
 }
 
 
-def render_markdown(report: CoverageReport, scenarios_root: Path, controller: str = "") -> str:
+@dataclass
+class RealtimeConditions:
+    """How a real-time run was made (services/testing/realtime.py).
+    `responses` maps a scenario's path to its response time in each pass,
+    None where that pass failed."""
+
+    latency_s: float
+    speed: float
+    passes: int
+    responses: dict[Path, list[float | None]] = field(default_factory=dict)
+
+
+def render_markdown(
+    report: CoverageReport, scenarios_root: Path, controller: str = "", realtime: RealtimeConditions | None = None
+) -> str:
     """`scenarios_root` only relativizes scenario file paths for display,
     so the output never contains a machine-specific absolute path.
     `controller` names what was tested when it isn't the built-in one
-    (Phase 7 step 3b); omitted, the output is exactly as before."""
+    (Phase 7 step 3b); omitted, the output is exactly as before.
+    `realtime` describes a real-time run (Phase 9); see the module
+    docstring."""
     lines: list[str] = []
     total = len(report.results)
     failed = total - report.passed_count
@@ -61,8 +86,12 @@ def render_markdown(report: CoverageReport, scenarios_root: Path, controller: st
         "scenario's `when` stimulus is applied until every `expect` condition holds.",
         "",
     ]
+    if realtime is not None:
+        lines += _realtime_conditions(realtime)
 
     lines += _results_table(report, scenarios_root)
+    if realtime is not None and realtime.passes > 1:
+        lines += _spread_table(report, scenarios_root, realtime)
     lines += _coverage_table(report)
     if report.unknown_tags:
         lines += ["## Unrecognized interlock tags", ""]
@@ -81,7 +110,12 @@ def _results_table(report: CoverageReport, scenarios_root: Path) -> list[str]:
         "|---|---|---:|---:|---:|---|",
     ]
     for scenario, result in report.results:
-        mark = "✅ PASS" if result.passed else "❌ FAIL"
+        if not result.passed:
+            mark = "❌ FAIL"
+        elif result.within_tolerance:
+            mark = "🟡 PASS within tolerance"
+        else:
+            mark = "✅ PASS"
         if result.passed:
             response = f"{result.elapsed_s:.2f} s"
             margin = f"{scenario.within_s - result.elapsed_s:.2f} s"
@@ -98,6 +132,46 @@ def _results_table(report: CoverageReport, scenarios_root: Path) -> list[str]:
         lines += ["**Failures:**", ""]
         lines += [f"- **{_cell(s.name)}** — {_cell(r.detail)}" for s, r in failures]
         lines.append("")
+    return lines
+
+
+def _realtime_conditions(rt: RealtimeConditions) -> list[str]:
+    speed = "real time (1×)" if rt.speed == 1 else f"{rt.speed:g}× real time"
+    return [
+        "## Real-time conditions",
+        "",
+        f"The controller ran free on its own clock against the plant paced at {speed}, "
+        "reaching it only over Modbus TCP. Every scenario started from a fresh plant and a cold-restarted "
+        "controller, brought to a clean IDLE by the operator procedure (acknowledge, reset), which is not "
+        "part of the scenario's record.",
+        "",
+        f"- **Latency tolerance: {rt.latency_s:g} s** of plant time for the I/O round trip (a Modbus poll and "
+        "a controller scan on each side of a hand-off). A result met after its limit but inside the "
+        "tolerance is marked 🟡 *PASS within tolerance*, never counted as on time. The same allowance "
+        "is the settle before `when` and the grace on the feeder-onto-an-unproven-conveyor invariant.",
+        f"- **Passes: {rt.passes}.** A scenario passes only if every pass passed; the result shown is the "
+        "worst pass (the first failure, or else the slowest).",
+        "- Real-time results are not bit-exact: response times vary with where in the controller's scan "
+        "a change lands. The lockstep report is the deterministic one.",
+        "",
+    ]
+
+
+def _spread_table(report: CoverageReport, scenarios_root: Path, rt: RealtimeConditions) -> list[str]:
+    lines = [
+        f"## Response time across {rt.passes} passes",
+        "",
+        "| Scenario | Passed | Min | Max | Each pass |",
+        "|---|---:|---:|---:|---|",
+    ]
+    for scenario, _ in report.results:
+        times = rt.responses.get(scenario.path, [])
+        ok = [t for t in times if t is not None]
+        each = ", ".join("fail" if t is None else f"{t:.2f}" for t in times)
+        lo = f"{min(ok):.2f} s" if ok else "—"
+        hi = f"{max(ok):.2f} s" if ok else "—"
+        lines.append(f"| {_cell(scenario.name)} | {len(ok)}/{len(times)} | {lo} | {hi} | {each} |")
+    lines.append("")
     return lines
 
 

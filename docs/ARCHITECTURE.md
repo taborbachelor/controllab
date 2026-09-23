@@ -117,7 +117,9 @@ ControlLab/
 │   │   ├── line_map.py               this line's hand-written addresses (step 2)
 │   │   ├── external_controller.py    the reference external controller: our LineController
 │   │   │                              over ModbusIOSync (step 3a)
-│   │   └── controller_status.py      status block codec + code tables (step 3b)
+│   │   ├── controller_status.py      status block codec + code tables (step 3b)
+│   │   └── openplc.py                OpenPLC web client + OpenPLCController (cold
+│   │                                  restart between scenarios, Phase 9 step 2)
 │   └── visualization/
 │       ├── replay.py                 build_frames()/build_replay()/render_html() --
 │       │                             replay reconstructed from telemetry (Phase 6 step 2)
@@ -132,7 +134,9 @@ ControlLab/
 │   └── openplc/                      a real PLC runtime (OpenPLC, Docker) running a
 │                                      Structured Text port of the controller against
 │                                      the plant: controllab_line.st, setup_openplc.py,
-│                                      run_demo.py, README.md, TRANSCRIPT.txt
+│                                      run_demo.py, README.md, TRANSCRIPT.txt, and
+│                                      COMMISSIONING-REPORT.md (the suite against it,
+│                                      Phase 9 step 2)
 ├── scenarios/
 │   ├── startup/normal_start.yaml
 │   ├── shutdown/normal_stop.yaml
@@ -898,6 +902,25 @@ issue and propose the change"):
   invalidates it; `GivenUnreachable` (a `ScenarioLoadError` subclass)
   becomes a failed result about the controller.
 
+## Module responsibilities (Phase 9 step 2)
+
+- **`services/protocols/openplc.py`** — `OpenPLCWeb` (login, form
+  posts, upload; shared with `setup_openplc.py` and `compile_check.py`)
+  and `OpenPLCController`, a `ControllerUnderTest` whose `restart()` is
+  `stop_plc` + `start_plc` (cold, probed). It only presses the
+  runtime's own buttons; the logic is reached over Modbus alone.
+- **`run_suite_realtime()` / `RepeatedRuns`** (`realtime.py`) — N
+  independent passes; `combined()` is the one result the coverage
+  matrix and report see (all passes must pass; the worst pass's record
+  is carried), `responses` the per-pass spread.
+- **`RealtimeConditions`** (`commissioning_report.py`) — optional:
+  adds the real-time conditions section, the 🟡 within-tolerance mark,
+  and the spread table. Without it the report is byte-for-byte the
+  lockstep one.
+- **`scripts/scenario_report.py --realtime {reference,openplc}`** with
+  `--repeat`, `--latency`, `--speed` (reference only), `--modbus-port`,
+  `--plc`.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |
@@ -911,7 +934,7 @@ issue and propose the change"):
 | 6 | Visualization | done — tag history in every scenario run; HTML replay viewer; live localhost dashboard with operator commands, fault injection, and replay download |
 | 7 | Protocols | done — Modbus server + client; register map (five PLC-master ranges); external-controller mode with the full scenario suite passing across Modbus; OpenPLC running a Structured Text port of the controller against the plant |
 | 8 | AI engineering assistance | done — deterministic candidate review gate; start inhibit; optional AI (provider abstraction, Anthropic first): gated scenario generation, bounded failed-run analysis |
-| 9 | Virtual commissioning | in progress — step 1 done: real-time runner (unchanged scenarios against a free-running external controller, latency tolerance, known starting state) |
+| 9 | Virtual commissioning | in progress — steps 1-2 done: real-time runner (unchanged scenarios against a free-running external controller, latency tolerance, known starting state); the commissioning report against OpenPLC (45/45 runs, 3 passes) |
 
 Full detail and "done when" criteria per phase: `CONTROL-LAB.md` §10.
 
