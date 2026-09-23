@@ -1,0 +1,51 @@
+name: Normal Operation -- Start Sequence, Material Flow, Stop Sequence
+description: "A full normal cycle: the line starts downstream-first, material flows with nothing spilled, and it stops upstream-first, purging the belt before the conveyor stops."
+title: "Start begins downstream-first: conveyor commanded, feeder not yet"
+
+given:
+  line_state: idle
+
+when:
+  start: true
+
+trigger: start
+
+expect:
+  line_state: starting
+  conveyor_run_commanded: true
+  feeder_run_commanded: false
+
+within:
+  seconds: 0.3
+
+then:
+  - title: "Every device proves running and material flows"
+    expect:
+      line_state: running
+      conveyor_running: true
+      gate_open: true
+      feeder_running: true
+      feeder_flowing: true
+      spilled: false
+    within:
+      seconds: 3.0
+  # Stop is the reverse: feed stops first, the conveyor keeps running to purge.
+  - title: "Stop begins upstream-first: feeder and gate off, conveyor keeps purging"
+    when:
+      stop: true
+    expect:
+      line_state: stopping
+      feeder_run_commanded: false
+      gate_open_commanded: false
+      conveyor_run_commanded: true
+    within:
+      seconds: 0.3
+  - title: "The purge ends and the line is idle, nothing spilled"
+    expect:
+      line_state: idle
+      conveyor_running: false
+      feeder_running: false
+      gate_open: false
+      spilled: false
+    within:
+      seconds: 3.0

@@ -1074,6 +1074,27 @@ issue and propose the change"):
   `POST /api/tour`. Every walkthrough runs to completion in the suite, and
   no action step may complete before its action.
 
+## Module responsibilities (Phase 10: validation workflow)
+
+- **`services/testing/verdict.py`** — `summarize(scenario, result,
+  runtime)`: the engineering result of one run (setup, each stage's
+  actions classified as operator action / fault injected / field repair /
+  process condition, every check as MATCH / MISMATCH / NOT REACHED / not
+  run / not observed, first-out from the event log, invariants, the first
+  divergence, times). Built only from the runner's own record.
+  `render_text()` is the console form; `event_signature()` compares two
+  runs' event logs.
+- **`services/testing/regressions.py`** — named, deliberately broken
+  `LineController` subclasses (testing fixtures only; production code is
+  never modified). `run_scenario(..., line_cls=)` / `build_rig(line_cls=)`
+  build one in-process.
+- **`services/cli.py`** — `controllab test [patterns] [--runtime
+  python|modbus|openplc] [--regression NAME]` (`[project.scripts]`;
+  `python -m services.cli` without installing). Exit 1 on any failure,
+  including a caught regression.
+- **Scenario `description:` / stage `title:`** — optional, for people;
+  printed beside the checks, never part of the verdict.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |

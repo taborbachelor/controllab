@@ -127,7 +127,7 @@ class ScenarioResult:
     unmet: dict = field(default_factory=dict)
 
 
-def run_scenario(scenario: Scenario, external: bool = False, status: bool = True) -> ScenarioResult:
+def run_scenario(scenario: Scenario, external: bool = False, status: bool = True, line_cls=None) -> ScenarioResult:
     """`external=True` runs the same scenario against the reference
     external controller across Modbus (Phase 7 step 3b,
     services/testing/external.py): the rig's `line` is then a RemoteLine,
@@ -138,13 +138,18 @@ def run_scenario(scenario: Scenario, external: bool = False, status: bool = True
     `status=False` withholds the controller's status (vocabulary.
     StatusWithheld): the scenario is judged on field evidence alone, as
     against a controller that publishes no status block -- deterministic,
-    in lockstep, for the suite and the review gate."""
+    in lockstep, for the suite and the review gate.
+
+    `line_cls` builds a different controller class in-process: only the
+    deliberate-regression fixtures (services/testing/regressions.py) use it."""
+    if line_cls is not None and external:
+        raise ValueError("a regression fixture runs in-process only (line_cls with external=True)")
     if external:
         from services.testing.external import build_external_rig  # protocols only when asked for
 
         rig = build_external_rig()
     else:
-        rig = build_rig()
+        rig = build_rig(line_cls=line_cls) if line_cls is not None else build_rig()
     try:
         if not status:
             rig.line = StatusWithheld(rig.line)

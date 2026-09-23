@@ -1,4 +1,6 @@
 name: Feeder Jam Recovery -- Reset Refused Until The Jam Is Cleared
+description: "A feeder jam trips the line; reset is refused while the chute is plugged; the line recovers only through the correct operator sequence."
+title: "The jam trips the line and every output drops"
 
 given:
   line_state: running
@@ -19,7 +21,8 @@ within:
 then:
   # The chute is still plugged: reset is refused. (The ack in the same press
   # proves the reset was evaluated -- both are consumed in one scan.)
-  - when:
+  - title: "Reset is refused while the chute is still plugged"
+    when:
       acknowledge: true
       reset: true
     expect:
@@ -30,20 +33,23 @@ then:
       seconds: 1.0
   # Clear the jam at the feeder: the plug switch drops, the acknowledged
   # alarm goes out.
-  - when:
+  - title: "Clearing the jam at the feeder clears the alarm"
+    when:
       feeder_jam: false
     expect:
       latched_alarm_ids: []
     within:
       seconds: 1.0
-  - when:
+  - title: "Reset is accepted once the cause is gone"
+    when:
       reset: true
     expect:
       line_state: idle
     within:
       seconds: 1.0
   # Restart: material flows again.
-  - when:
+  - title: "The line restarts and material flows"
+    when:
       start: true
     expect:
       line_state: running

@@ -1,0 +1,62 @@
+name: Conveyor Trip Recovery -- Reset Refused Until The Overload Is Reset
+description: "The conveyor motor's overload trips mid-run; reset is refused until the overload is reset at the field, then the line restarts."
+title: "The overload trips the line and every output drops"
+
+given:
+  line_state: running
+
+when:
+  conveyor_trip: true
+
+trigger: conveyor_trip
+
+expect:
+  line_state: faulted
+  fault_reason: "conveyor trip"
+  first_out: "M-104.OL"
+  feeder_run_commanded: false
+  conveyor_run_commanded: false
+  gate_open_commanded: false
+
+within:
+  seconds: 0.5
+
+then:
+  # The ack in the same press proves the reset was evaluated (both are
+  # consumed in one scan), as in the feeder trip recovery.
+  - title: "Reset is refused while the overload is still tripped"
+    when:
+      acknowledge: true
+      reset: true
+    expect:
+      line_state: faulted
+      any_unacknowledged_trip: false
+    within:
+      seconds: 1.0
+  - title: "Clearing the fault and resetting the overload clears the alarm"
+    when:
+      conveyor_trip: false
+      conveyor_overload_reset: true
+    expect:
+      latched_alarm_ids: []
+    within:
+      seconds: 1.0
+  - title: "Reset is accepted once the overload is healthy"
+    when:
+      reset: true
+    expect:
+      line_state: idle
+      fault_reason: null
+    within:
+      seconds: 1.0
+  - title: "The line restarts"
+    when:
+      start: true
+    expect:
+      line_state: running
+      conveyor_running: true
+      feeder_running: true
+    within:
+      seconds: 3.0
+
+interlock: "Any motor fail-to-start / trip"

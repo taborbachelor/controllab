@@ -7,6 +7,9 @@ requires-python = ">=3.12"
 license = { text = "MIT" }
 dependencies = ["pyyaml>=6.0"]
 
+[project.scripts]
+controllab = "services.cli:main"
+
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pymodbus>=3.10,<4"]  # pymodbus: interop tests only, never imported at runtime
 # Optional AI engineering assistance (Phase 8). Never needed for simulation,

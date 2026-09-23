@@ -66,8 +66,13 @@ class Rig:
 
 
 def build_rig(
-    plant_overrides: dict | None = None, line_overrides: dict | None = None, with_controller: bool = True
+    plant_overrides: dict | None = None,
+    line_overrides: dict | None = None,
+    with_controller: bool = True,
+    line_cls: type[LineController] = LineController,
 ) -> Rig:
+    """`line_cls`: the controller class to build. Always LineController except
+    for the deliberate-regression fixtures (services/testing/regressions.py)."""
     plant_cfg = dict(DEFAULT_PLANT_CONFIG)
     plant_cfg.update(plant_overrides or {})
     cfg = PlantConfig(**plant_cfg)
@@ -76,11 +81,16 @@ def build_rig(
     io = build_line_io_image()
     publish_plant_inputs(plant, io)
 
-    line = build_line_controller(io, cfg.hopper_capacity_kg, line_overrides) if with_controller else None
+    line = build_line_controller(io, cfg.hopper_capacity_kg, line_overrides, line_cls) if with_controller else None
     return Rig(plant=plant, io=io, line=line)
 
 
-def build_line_controller(io: IOImage, hopper_capacity_kg: float, line_overrides: dict | None = None) -> LineController:
+def build_line_controller(
+    io: IOImage,
+    hopper_capacity_kg: float,
+    line_overrides: dict | None = None,
+    line_cls: type[LineController] = LineController,
+) -> LineController:
     """The canonical controller stack (three device-control modules + the
     line state machine) on a given I/O image -- split out of build_rig()
     so the reference external controller (services/protocols/
@@ -102,7 +112,7 @@ def build_line_controller(io: IOImage, hopper_capacity_kg: float, line_overrides
 
     line_cfg = dict(DEFAULT_LINE_CONFIG)
     line_cfg.update(line_overrides or {})
-    return LineController(
+    return line_cls(
         io,
         feeder_ctrl,
         conveyor_ctrl,

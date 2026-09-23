@@ -1,4 +1,6 @@
 name: High-High Switch Stuck Healthy -- WT-105 Still Trips (1oo2) And The Disagreement Is Alarmed
+description: "The high-high level switch is stuck reading 'not full' and the hopper is overfilled; the weight transmitter still trips the line, and the switch/weight disagreement is alarmed."
+title: "The weight transmitter trips the line on its own"
 
 # A seized float or welded contact leaves LSHH-105 reading "below high-high"
 # whatever the level: fail-safe polarity only catches a broken wire, not this.
@@ -29,7 +31,8 @@ within:
   seconds: 0.5
 
 then:
-  - expect:
+  - title: "The switch/weight disagreement is alarmed"
+    expect:
       latched_alarm_ids: ["LSHH-105.DISAGREE", "WT-105.HIGH_HIGH"]
       line_state: faulted
     within:

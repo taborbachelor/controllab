@@ -1,4 +1,6 @@
 name: Hopper Weight Failure Recovery -- Reset Refused Until The Signal Is Restored
+description: "The hopper weight transmitter loses its signal; the line trips (unknown means stop) and cannot be reset until the instrument is repaired."
+title: "The lost signal trips the line and every output drops"
 
 given:
   line_state: running
@@ -18,7 +20,8 @@ within:
 
 then:
   # Signal still lost: reset refused (the ack proves it was evaluated).
-  - when:
+  - title: "Reset is refused while the signal is still lost"
+    when:
       acknowledge: true
       reset: true
     expect:
@@ -27,20 +30,23 @@ then:
     within:
       seconds: 1.0
   # Repair the transmitter: the reading is true again and the alarm goes out.
-  - when:
+  - title: "Repairing the transmitter restores a true reading and clears the alarm"
+    when:
       sensor_restored: "WT-105"
     expect:
       hopper_weight_agrees: true
       latched_alarm_ids: []
     within:
       seconds: 1.0
-  - when:
+  - title: "Reset is accepted once the signal is back"
+    when:
       reset: true
     expect:
       line_state: idle
     within:
       seconds: 1.0
-  - when:
+  - title: "The line restarts and material flows"
+    when:
       start: true
     expect:
       line_state: running

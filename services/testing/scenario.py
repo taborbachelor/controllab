@@ -47,6 +47,13 @@ produce, or it passes before the command is even processed: in the
 example, `any_unacknowledged_trip: false` can only hold after the scan
 that consumed the acknowledge -- the same scan that evaluated the reset.
 
+**`title:` and `description:` (optional)** are for people, not the runner:
+`description` is one line saying what the scenario proves, and `title`
+names a stage's purpose ("Reset is refused while the chute is still
+plugged") -- top level for the first stage, inside a `then:` entry for the
+others. Run summaries (services/testing/verdict.py) print them next to the
+checks; pass or fail still comes only from the checks.
+
 **`given` is preconditions, `when` is the triggering stimulus — this
 distinction is load-bearing, not stylistic.** The runner (runner.py)
 settles `given` (runner.SETTLE_TICKS: published through the I/O image
@@ -87,6 +94,7 @@ class Stage:
     when: dict
     expect: dict
     within_s: float
+    title: str = ""
 
 
 @dataclass
@@ -100,11 +108,13 @@ class Scenario:
     interlock: str | None = None
     then: tuple[Stage, ...] = ()
     trigger: tuple[str, ...] = ()
+    description: str = ""
+    title: str = ""  # the first stage's title
 
     @property
     def stages(self) -> list[Stage]:
         """Every stage in order: the top-level when/expect/within first."""
-        return [Stage(self.when, self.expect, self.within_s), *self.then]
+        return [Stage(self.when, self.expect, self.within_s, self.title), *self.then]
 
     @classmethod
     def load(cls, path: Path) -> "Scenario":
@@ -126,11 +136,13 @@ class Scenario:
             raise ScenarioLoadError(f"{path}: then must be a list of stages")
         stages = []
         for n, stage in enumerate(then, start=2):
-            if not isinstance(stage, dict) or set(stage) - {"when", "expect", "within"} or not {"expect", "within"} <= set(stage):
-                raise ScenarioLoadError(f"{path}: stage {n} must have expect and within, optionally when, and nothing else")
+            if not isinstance(stage, dict) or set(stage) - {"when", "expect", "within", "title"}                     or not {"expect", "within"} <= set(stage):
+                raise ScenarioLoadError(
+                    f"{path}: stage {n} must have expect and within, optionally when and title, and nothing else")
             if not isinstance(stage["expect"], dict) or not stage["expect"]:
                 raise ScenarioLoadError(f"{path}: stage {n} must expect something")
-            stages.append(Stage(stage.get("when") or {}, stage["expect"], _within_s(stage["within"], f"{path}: stage {n}")))
+            stages.append(Stage(stage.get("when") or {}, stage["expect"], _within_s(stage["within"], f"{path}: stage {n}"),
+                                str(stage.get("title") or "")))
 
         trigger = raw.get("trigger") or []
         if isinstance(trigger, str):
@@ -149,6 +161,8 @@ class Scenario:
             interlock=raw.get("interlock"),
             then=tuple(stages),
             trigger=tuple(trigger),
+            description=str(raw.get("description") or ""),
+            title=str(raw.get("title") or ""),
         )
 
     @staticmethod
