@@ -1,0 +1,17 @@
+name: Bin Low While Running Raises A Warning, Not A Trip
+
+given:
+  line_state: running
+
+when:
+  bin_level_pct: 5.0
+
+expect:
+  line_state: running
+  latched_alarm_ids: ["LSL-101.LOW"]
+  any_unacknowledged_trip: false
+
+within:
+  seconds: 0.5
+
+interlock: "Bin not low"

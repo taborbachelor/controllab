@@ -56,8 +56,11 @@ INTERLOCKS: list[InterlockRow] = [
     InterlockRow(
         "Bin not low",
         "Permissive",
-        note='the "warning only while running" half has no mechanism yet -- '
-        "no alarm/notification system exists before Phase 4/5",
+        note='the "warning only while running" half is proven by a scenario reaching the '
+        "warning, and sustained over 10 s of running at the pytest level -- a declarative "
+        "scenario passes the moment its expectations first hold, so it can't show the line "
+        "never trips later; see tests/integration/test_line_controller.py::"
+        "test_bin_low_while_running_stays_a_warning_for_the_whole_run",
     ),
     InterlockRow(
         "Conveyor proven running",

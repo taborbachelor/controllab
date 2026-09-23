@@ -11,7 +11,7 @@ recovery, before any physical equipment exists.
 Control (the I/O image, device control modules, and the full
 `IDLE/STARTING/RUNNING/STOPPING/FAULTED/ESTOPPED` line state machine, all
 in Auto mode); Testing — a declarative `given`/`when`/`expect` scenario
-format, 14 scenarios covering all 8 interlocks, and an interlock
+format, 15 scenarios covering all 8 interlocks, and an interlock
 coverage matrix (`python scripts/scenario_report.py`) reporting 8/8, 0
 gaps; and alarm management — latching, first-out, and acknowledge, wired
 into `LineController` so a start is refused while any trip-class alarm

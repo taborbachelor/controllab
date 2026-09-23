@@ -612,3 +612,23 @@ def test_estop_holds_everything_off_and_requires_explicit_restart():
     line.start()
     run(plant, io, line, 5.0)
     assert line.state == LineState.RUNNING
+
+
+def test_bin_low_while_running_stays_a_warning_for_the_whole_run():
+    """The sustained half of scenarios/faults/bin_low_while_running_warns_only.yaml.
+    A declarative scenario passes the moment its expectations first hold,
+    so it can't prove the line doesn't trip a few seconds later; this
+    checks every tick for 10 s of feeding from a low bin."""
+    plant, io, line = make_rig()
+    line.start()
+    run(plant, io, line, 5.0)
+    assert line.state == LineState.RUNNING
+
+    plant.bin.level_kg = 500.0  # 5% -- under the 10% low threshold
+    for _ in range(100):
+        tick(plant, io, line)
+        assert line.state == LineState.RUNNING, line.fault_reason
+    warning = line.alarms.get("LSL-101.LOW")
+    assert warning.active and warning.is_warning
+    assert not line.alarms.any_unacknowledged_trip()
+    assert plant.bin.level_kg < 500.0  # it really was feeding from the low bin, not idling

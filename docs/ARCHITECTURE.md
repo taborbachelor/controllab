@@ -98,9 +98,10 @@ ControlLab/
 │   ├── shutdown/normal_stop.yaml
 │   ├── safety/                       estop_from_running.yaml (CLAUDE.md §10's
 │   │                                  own example, made real), estop_blocks_start.yaml
-│   └── faults/                       10 files -- one or more per §6.3 interlock row
+│   └── faults/                       11 files -- one or more per §6.3 interlock row
 │                                      (gate_travel_timeout.yaml, hopper_high_high_
 │                                      blocks_start.yaml, bin_low_blocks_start.yaml,
+│                                      bin_low_while_running_warns_only.yaml,
 │                                      belt_slip_stops_feeder.yaml, hopper_high_high_
 │                                      trips_running.yaml, conveyor_fail_to_start.yaml,
 │                                      feeder_fail_to_start.yaml, conveyor_trip_while_
