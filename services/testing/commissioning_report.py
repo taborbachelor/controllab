@@ -226,6 +226,12 @@ def _sequences(report: CoverageReport, scenarios_root: Path) -> list[str]:
     for scenario, result in report.results:
         mark = "NOT OBSERVABLE" if result.not_observable else "PASS" if result.passed else "FAIL"
         lines += [f"### {scenario.name} — {mark}", "", f"`{_rel(scenario.path, scenarios_root)}`", ""]
+        stage_elapsed = result.stage_elapsed
+        if len(stage_elapsed) > 1:
+            limits = [scenario.within_s] + [st.within_s for st in scenario.then]
+            lines += ["Stages: " + " · ".join(
+                f"{n}: {t:.2f} s / {lim:.2f} s" for n, (t, lim) in enumerate(zip(stage_elapsed, limits), start=1)
+            ), ""]
         if not result.events:
             lines += ["*No events recorded.*", ""]
             continue

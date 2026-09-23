@@ -964,6 +964,15 @@ issue and propose the change"):
 - **CLIs** — `--map` on `scenario_report.py --realtime`,
   `register_map.py`, and `examples/openplc/setup_openplc.py`.
 
+## Module responsibilities (Phase 4 completion, 4a: multi-stage scenarios)
+
+- **`Scenario.then` / `Stage` / `Scenario.stages`** (`scenario.py`) —
+  optional further `when`/`expect`/`within` stages; strict loading.
+- **`runner.execute()`** — runs the stages in order (`_poll_stage`),
+  each stage's `when` applied the tick after the previous stage's
+  expectations held; `ScenarioResult.stage_elapsed`. Details of a
+  failing later stage are prefixed `stage n/N:`.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |

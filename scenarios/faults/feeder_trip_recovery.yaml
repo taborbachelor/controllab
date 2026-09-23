@@ -1,0 +1,59 @@
+name: Feeder Trip Recovery -- Reset Refused Until The Drive Is Reset
+
+# The full recovery procedure a commissioning engineer walks through after a
+# trip, as stages (then:). Each stage is applied once the previous one's
+# expectations hold, the way an operator acts on what the HMI shows.
+
+given:
+  line_state: running
+
+when:
+  feeder_trip: true
+
+expect:
+  line_state: faulted
+  fault_reason: "feeder trip"
+
+within:
+  seconds: 0.5
+
+then:
+  # Reset is refused while the drive itself is still faulted. The ack in the
+  # same press is what proves the reset was evaluated: both are consumed in
+  # one scan, so no unacknowledged trip can only hold after that scan.
+  - when:
+      acknowledge: true
+      reset: true
+    expect:
+      line_state: faulted
+      any_unacknowledged_trip: false
+    within:
+      seconds: 1.0
+  # Clear the cause and reset the drive at the field; its (acknowledged)
+  # alarm goes out once the healthy drive is seen.
+  - when:
+      feeder_trip: false
+      feeder_drive_reset: true
+    expect:
+      latched_alarm_ids: []
+    within:
+      seconds: 1.0
+  # Only then reset the line. Pressing reset in the same moment as the field
+  # reset races the drive's feedback: the controller can evaluate it against
+  # a still-faulted drive and refuse it (a one-shot command, so it's lost).
+  - when:
+      reset: true
+    expect:
+      line_state: idle
+      fault_reason: null
+    within:
+      seconds: 1.0
+  - when:
+      start: true
+    expect:
+      line_state: running
+      feeder_running: true
+    within:
+      seconds: 3.0
+
+interlock: "Any motor fail-to-start / trip"

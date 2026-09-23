@@ -19,6 +19,7 @@ class FakeScenario:
     within_s: float = 1.0
     interlock: str | None = None
     path: Path = ROOT / "faults" / "fake.yaml"
+    then: tuple = ()
 
 
 @dataclass
@@ -31,6 +32,7 @@ class FakeResult:
     within_tolerance: bool = False
     not_observable: bool = False
     not_observed: tuple = ()
+    stage_elapsed: tuple = ()
 
 
 def render(*pairs) -> str:

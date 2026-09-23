@@ -19,6 +19,27 @@ applies no stimulus); `name`, `expect`, and `within` are required. An
 optional `interlock:` field names which row of docs/CONTROL-LAB.md §6.3
 this scenario covers, for the coverage report.
 
+**Multi-stage (`then:`, Phase 4 completion).** A fault's lifecycle --
+trip, reset refused while the cause remains, clear the cause, reset,
+restart -- is a sequence of operator actions, each taken only after the
+previous result was seen. `then:` is an optional list of further stages,
+each its own `when`/`expect`/`within`, run in order: a stage's `when` is
+applied the tick after the previous stage's expectations were all met,
+the way an operator acts on what the HMI shows. The scenario passes only
+if every stage does. The first stage is the top-level when/expect/within,
+so a single-stage scenario is exactly what it always was.
+
+    then:
+      - when: {acknowledge: true, reset: true}
+        expect: {line_state: faulted, any_unacknowledged_trip: false}
+        within: {seconds: 1.0}
+
+A stage that claims something is *refused* ("reset while the jam
+remains") must expect something only the command's evaluation can
+produce, or it passes before the command is even processed: in the
+example, `any_unacknowledged_trip: false` can only hold after the scan
+that consumed the acknowledge -- the same scan that evaluated the reset.
+
 **`given` is preconditions, `when` is the triggering stimulus — this
 distinction is load-bearing, not stylistic.** The runner (runner.py)
 settles `given` (runner.SETTLE_TICKS: published through the I/O image
@@ -54,6 +75,13 @@ class GivenUnreachable(ScenarioLoadError):
     finding about that controller."""
 
 
+@dataclass(frozen=True)
+class Stage:
+    when: dict
+    expect: dict
+    within_s: float
+
+
 @dataclass
 class Scenario:
     name: str
@@ -63,6 +91,12 @@ class Scenario:
     expect: dict
     within_s: float
     interlock: str | None = None
+    then: tuple[Stage, ...] = ()
+
+    @property
+    def stages(self) -> list[Stage]:
+        """Every stage in order: the top-level when/expect/within first."""
+        return [Stage(self.when, self.expect, self.within_s), *self.then]
 
     @classmethod
     def load(cls, path: Path) -> "Scenario":
@@ -78,15 +112,17 @@ class Scenario:
         if missing:
             raise ScenarioLoadError(f"{path}: missing required key(s): {', '.join(missing)}")
 
-        within = raw["within"]
-        if not isinstance(within, dict):
-            raise ScenarioLoadError(f"{path}: within must be a mapping (seconds: ... or milliseconds: ...)")
-        if "seconds" in within:
-            within_s = float(within["seconds"])
-        elif "milliseconds" in within:
-            within_s = float(within["milliseconds"]) / 1000.0
-        else:
-            raise ScenarioLoadError(f"{path}: within must specify seconds or milliseconds")
+        within_s = _within_s(raw["within"], path)
+        then = raw.get("then") or []
+        if not isinstance(then, list):
+            raise ScenarioLoadError(f"{path}: then must be a list of stages")
+        stages = []
+        for n, stage in enumerate(then, start=2):
+            if not isinstance(stage, dict) or set(stage) - {"when", "expect", "within"} or not {"expect", "within"} <= set(stage):
+                raise ScenarioLoadError(f"{path}: stage {n} must have expect and within, optionally when, and nothing else")
+            if not isinstance(stage["expect"], dict) or not stage["expect"]:
+                raise ScenarioLoadError(f"{path}: stage {n} must expect something")
+            stages.append(Stage(stage.get("when") or {}, stage["expect"], _within_s(stage["within"], f"{path}: stage {n}")))
 
         return cls(
             name=raw["name"],
@@ -96,6 +132,7 @@ class Scenario:
             expect=raw["expect"],
             within_s=within_s,
             interlock=raw.get("interlock"),
+            then=tuple(stages),
         )
 
     @staticmethod
@@ -103,3 +140,13 @@ class Scenario:
         """Every *.yaml file under root, sorted for a stable, repeatable
         run order (docs/CONTROL-LAB.md §7, item 3: deterministic)."""
         return [Scenario.load(p) for p in sorted(root.rglob("*.yaml"))]
+
+
+def _within_s(within: object, where: object) -> float:
+    if not isinstance(within, dict):
+        raise ScenarioLoadError(f"{where}: within must be a mapping (seconds: ... or milliseconds: ...)")
+    if "seconds" in within:
+        return float(within["seconds"])
+    if "milliseconds" in within:
+        return float(within["milliseconds"]) / 1000.0
+    raise ScenarioLoadError(f"{where}: within must specify seconds or milliseconds")

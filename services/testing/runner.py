@@ -71,7 +71,7 @@ from services.telemetry.events import Event, EventLog
 from services.telemetry.tag_history import TagHistory
 from services.testing.invariants import InvariantViolation, Invariants
 from services.testing.rig import DT, Rig, build_rig, tick
-from services.testing.scenario import GivenUnreachable, Scenario, ScenarioLoadError
+from services.testing.scenario import GivenUnreachable, Scenario, ScenarioLoadError, Stage
 from services.testing.vocabulary import NotObservable, ScenarioError, apply_field, read_field, values_match
 
 # Generous safety cap for driving `given.line_state` to its target -- if
@@ -108,6 +108,9 @@ class ScenarioResult:
     not_observed: tuple[str, ...] = ()
     # No expectation was observable at all: neither passed nor failed.
     not_observable: bool = False
+    # Multi-stage scenarios (`then:`): each stage's response, in order.
+    # elapsed_s stays the first stage's, the response to `when`.
+    stage_elapsed: tuple[float, ...] = ()
 
 
 def run_scenario(scenario: Scenario, external: bool = False) -> ScenarioResult:
@@ -191,14 +194,71 @@ def _run_from_given(
         except InvariantViolation as e:
             return ScenarioResult(scenario, False, i * DT, f"invariant violated settling given: {e}")
 
-    try:
-        _apply_when(rig, scenario)
-    except ScenarioError as e:
-        raise ScenarioLoadError(f"{scenario.path}: {e}") from e
+    when_applied_t = None
+    stages = scenario.stages
+    elapsed_by_stage: list[float] = []
+    not_observed_all: list[str] = []
+    within_tolerance = False
+    for n, stage in enumerate(stages, start=1):
+        label = f"stage {n}/{len(stages)}: " if len(stages) > 1 else ""
+        try:
+            for key, value in stage.when.items():
+                apply_field(rig, key, value)
+        except ScenarioError as e:
+            raise ScenarioLoadError(f"{scenario.path}: {label}{e}") from e
+        invariants.rebaseline()  # when's own fields are ALSO deliberate setup, not a violation
+        if when_applied_t is None:
+            when_applied_t = rig.plant.time_s
 
-    invariants.rebaseline()  # when's own fields are ALSO deliberate setup, not a violation
-    when_applied_t = rig.plant.time_s
+        outcome = _poll_stage(rig, scenario, stage, invariants, step, tolerance_s)
+        for key in outcome.not_observed:
+            if key not in not_observed_all:
+                not_observed_all.append(key)
+        common = dict(when_applied_t=when_applied_t, not_observed=tuple(not_observed_all))
+        if outcome.not_observable:
+            return ScenarioResult(
+                scenario, False, 0.0,
+                f"{label}not observable: every expectation ({', '.join(outcome.not_observed)}) needs the "
+                "controller's status block, which this controller doesn't publish",
+                not_observable=True, **common,
+            )
+        if not outcome.passed:
+            return ScenarioResult(
+                scenario, False, elapsed_by_stage[0] if elapsed_by_stage else outcome.elapsed,
+                label + outcome.detail, **common,
+            )
+        elapsed_by_stage.append(outcome.elapsed)
+        within_tolerance = within_tolerance or outcome.within_tolerance
 
+    met = "all observable expectations met" if not_observed_all else "all expectations met"
+    if not_observed_all:
+        met += f" (not observed: {', '.join(not_observed_all)})"
+    first = elapsed_by_stage[0]
+    if len(stages) > 1:
+        met += " -- stage responses " + ", ".join(
+            f"{t:.2f}s/{st.within_s}s" for t, st in zip(elapsed_by_stage, stages)
+        )
+    elif within_tolerance:
+        met += f" at {first:.2f}s: over the {scenario.within_s}s limit, inside the {tolerance_s}s latency tolerance"
+    return ScenarioResult(
+        scenario, True, first, met, when_applied_t=when_applied_t, within_tolerance=within_tolerance,
+        not_observed=tuple(not_observed_all), stage_elapsed=tuple(elapsed_by_stage),
+    )
+
+
+@dataclass
+class _StageOutcome:
+    passed: bool
+    elapsed: float
+    detail: str = ""
+    within_tolerance: bool = False
+    not_observed: tuple[str, ...] = ()
+    not_observable: bool = False
+
+
+def _poll_stage(
+    rig: Rig, scenario: Scenario, stage: Stage, invariants: Invariants, step: Callable[[], None], tolerance_s: float
+) -> _StageOutcome:
     # Tick BEFORE checking, every iteration -- not the reverse. Per
     # docs/CONTROL-LAB.md §3.3's scan cycle, Testing applies a stimulus
     # and Simulation advances within the SAME tick; checking before the
@@ -206,57 +266,27 @@ def _run_from_given(
     # Python call order, not one the real system ever passes through
     # (e.g. estop.trip() sets a flag, but nothing forces motors out of
     # RUNNING until Plant.step() actually runs).
-    max_ticks = round((scenario.within_s + tolerance_s) / DT)
+    max_ticks = round((stage.within_s + tolerance_s) / DT)
     unmet: dict = {}
     not_observed: tuple[str, ...] = ()
     for i in range(1, max_ticks + 1):
         step()
-
         try:
             invariants.check()
         except InvariantViolation as e:
-            return ScenarioResult(
-                scenario, False, i * DT, f"invariant violated at t={i * DT:.2f}s: {e}", when_applied_t=when_applied_t
-            )
-
+            return _StageOutcome(False, i * DT, f"invariant violated at t={i * DT:.2f}s: {e}")
         try:
-            unmet, not_observed = _unmet_expectations(rig, scenario)
+            unmet, not_observed = _unmet_expectations(rig, stage.expect)
         except ScenarioError as e:
             raise ScenarioLoadError(f"{scenario.path}: {e}") from e
-        if scenario.expect and len(not_observed) == len(scenario.expect):
-            return ScenarioResult(
-                scenario, False, 0.0,
-                f"not observable: every expectation ({', '.join(not_observed)}) needs the controller's "
-                "status block, which this controller doesn't publish",
-                when_applied_t=when_applied_t, not_observed=not_observed, not_observable=True,
-            )
+        if stage.expect and len(not_observed) == len(stage.expect):
+            return _StageOutcome(False, 0.0, not_observed=not_observed, not_observable=True)
         if not unmet:
             elapsed = round(i * DT, 9)
-            met = "all observable expectations met" if not_observed else "all expectations met"
-            if not_observed:
-                met += f" (not observed: {', '.join(not_observed)})"
-            if elapsed <= scenario.within_s + 1e-9:
-                return ScenarioResult(
-                    scenario, True, elapsed, met, when_applied_t=when_applied_t, not_observed=not_observed
-                )
-            return ScenarioResult(
-                scenario,
-                True,
-                elapsed,
-                f"{met} at {elapsed:.2f}s: over the {scenario.within_s}s limit, "
-                f"inside the {tolerance_s}s latency tolerance",
-                when_applied_t=when_applied_t,
-                within_tolerance=True,
-                not_observed=not_observed,
-            )
-
-    window = f"{scenario.within_s}s" + (f" (+{tolerance_s}s latency tolerance)" if tolerance_s else "")
-    return ScenarioResult(
-        scenario,
-        False,
-        round(scenario.within_s + tolerance_s, 9),
-        f"timed out after {window} -- unmet: {unmet}",
-        when_applied_t=when_applied_t,
+            return _StageOutcome(True, elapsed, within_tolerance=elapsed > stage.within_s + 1e-9, not_observed=not_observed)
+    window = f"{stage.within_s}s" + (f" (+{tolerance_s}s latency tolerance)" if tolerance_s else "")
+    return _StageOutcome(
+        False, round(stage.within_s + tolerance_s, 9), f"timed out after {window} -- unmet: {unmet}",
         not_observed=not_observed,
     )
 
@@ -294,11 +324,6 @@ def _apply_given(rig: Rig, scenario: Scenario, invariants: Invariants, step: Cal
     raise GivenUnreachable(f"{scenario.path}: given.line_state=running was never reached within {MAX_GIVEN_RUNUP_S}s")
 
 
-def _apply_when(rig: Rig, scenario: Scenario) -> None:
-    for key, value in scenario.when.items():
-        apply_field(rig, key, value)
-
-
 def _line_running(rig: Rig) -> bool:
     """The controller's own word when it publishes one; otherwise the
     field evidence of a running line -- conveyor running, gate open,
@@ -311,11 +336,11 @@ def _line_running(rig: Rig) -> bool:
         return plant.conveyor.motor.running and plant.gate.is_open and plant.feeder.motor.running
 
 
-def _unmet_expectations(rig: Rig, scenario: Scenario) -> tuple[dict, tuple[str, ...]]:
+def _unmet_expectations(rig: Rig, expect: dict) -> tuple[dict, tuple[str, ...]]:
     """(unmet expectations, keys that couldn't be observed at all)."""
     unmet = {}
     not_observed = []
-    for key, expected in scenario.expect.items():
+    for key, expected in expect.items():
         try:
             actual = read_field(rig, key)
         except NotObservable:
