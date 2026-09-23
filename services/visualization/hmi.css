@@ -67,3 +67,5 @@
   .note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
   .banner { display: none; background: var(--trip); color: #fff; padding: 10px 20px; font-weight: 600; }
   .banner.show { display: block; }
+  .inst-row { align-items: center; margin-bottom: 6px; }
+  .inst-label { min-width: 13rem; font-size: 13px; }

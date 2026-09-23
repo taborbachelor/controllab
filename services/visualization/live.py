@@ -52,6 +52,7 @@ from urllib.parse import parse_qs, urlparse
 from services.protocols.register_map import HmiHandshake
 from services.telemetry.events import Event, EventLog
 from services.telemetry.tag_history import TagHistory
+from services.simulation.equipment.instruments import InstrumentFault
 from services.testing.invariants import InvariantViolation, Invariants
 from services.testing.rig import DEFAULT_PLANT_CONFIG, DT, build_rig, tick
 from services.testing.vocabulary import apply_field
@@ -77,6 +78,11 @@ STIMULI: dict[str, str] = {
     "gate_reset": "action",
     "hopper_level_pct": "pct",
     "bin_level_pct": "pct",
+    # Instrument faults (the value is an input tag): what a field
+    # instrument reports, not what the process is doing.
+    "sensor_stuck": "instrument",
+    "sensor_failed": "instrument",
+    "sensor_restored": "instrument",
 }
 # Directly setting a level is a deliberate setup action, not a physical
 # event -- the conservation invariant is rebaselined after it, exactly as
@@ -182,6 +188,15 @@ class LiveSession:
             raise ValueError("estop takes 'tripped' or 'healthy'")
         if kind == "pct" and (isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 100):
             raise ValueError(f"{key} takes a number from 0 to 100")
+        if kind == "instrument":
+            # Checked here, not when the tick applies it: a bad request is the
+            # caller's error, and must not surface inside the scan.
+            io = self.rig.io
+            if not isinstance(value, str) or value not in io or not io.tag(value).type.is_input:
+                raise ValueError(f"{key} takes an input tag")
+            if key == "sensor_failed" and value not in self.rig.plant.instruments.diagnosed \
+                    and not isinstance(io.read(value), bool):
+                raise ValueError(f"{value} has no channel diagnostic, so it can only stick")
         with self._lock:
             self._pending.append((key, lambda: apply_field(self.rig, key, value)))
 
@@ -285,6 +300,13 @@ class LiveSession:
                     "gate_stuck": plant.gate.stuck,
                     "belt_slip": plant.conveyor.motion_switch_stuck_false,
                     "feeder_jam": plant.feeder.jammed,
+                    # {tag: "stuck" | "failed"} for every unhealthy instrument
+                    "instruments": {
+                        name: fault.name.lower()
+                        for name in self.rig.io.names()
+                        if self.rig.io.tag(name).type.is_input
+                        and (fault := plant.instruments.fault(name)) is not InstrumentFault.HEALTHY
+                    },
                 },
                 "violation": self.violation,
             }

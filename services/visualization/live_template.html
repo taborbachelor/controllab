@@ -59,6 +59,9 @@
         <button type="button" data-action="conveyor_overload_reset">Reset conveyor overload</button>
         <button type="button" data-action="gate_reset">Reset gate actuator</button>
       </div>
+      <h2 style="margin-top:12px">Instrument faults</h2>
+      <div id="instruments"></div>
+      <p class="note"><strong>Stuck</strong> freezes the reading (a seized float, a frozen transmitter): nothing in the signal says it's wrong. <strong>Failed</strong> is a lost signal: WT-105 reads 0 with its channel diagnostic set; a switch reads 0, which the fail-safe level switches report as high. Try LSHH-105 stuck, then set the hopper to 97 %: WT-105 still trips the line (1oo2), and the cross-check names the switch.</p>
       <div class="stim">
         <label for="hopper-pct">Set hopper level (%)</label>
         <span><input id="hopper-pct" type="number" min="0" max="100" step="1" value="97"> <button type="button" data-level="hopper_level_pct" data-input="hopper-pct">Set</button></span>
@@ -84,6 +87,7 @@
 const CFG = /*__LIVE_CONFIG__*/null;
 initMimic(CFG.plant);
 
+const INSTRUMENTS = [["WT-105", "Hopper weight"], ["LSH-105", "Hopper high switch"], ["LSHH-105", "Hopper high-high switch"]];
 const FAULTS = [
   ["estop", "E-stop"], ["conveyor_trip", "Conveyor trip"], ["feeder_trip", "Feeder trip"],
   ["conveyor_fail_to_start", "Conveyor fail-to-start"], ["feeder_fail_to_start", "Feeder fail-to-start"],
@@ -105,6 +109,15 @@ $("faults").addEventListener("click", (e) => {
   if (!k) return;
   const value = k === "estop" ? (injected.estop === "tripped" ? "healthy" : "tripped") : !injected[k];
   post("/api/stimulus", { key: k, value });
+});
+$("instruments").innerHTML = INSTRUMENTS.map(([tag, label]) =>
+  `<div class="buttons inst-row"><span class="inst-label"><code>${tag}</code> ${label}</span>` +
+  `<button type="button" data-inst="${tag}" data-kind="stuck" aria-pressed="false">Stuck</button>` +
+  `<button type="button" data-inst="${tag}" data-kind="failed" aria-pressed="false">Failed</button>` +
+  `<button type="button" data-inst="${tag}" data-kind="restored">Restore</button></div>`).join("");
+$("instruments").addEventListener("click", (e) => {
+  const tag = e.target.dataset.inst, kind = e.target.dataset.kind;
+  if (tag) post("/api/stimulus", { key: `sensor_${kind}`, value: tag });
 });
 $("field-resets").addEventListener("click", (e) => { const k = e.target.dataset.action; if (k) post("/api/stimulus", { key: k, value: true }); });
 document.querySelectorAll("[data-level]").forEach((b) => b.addEventListener("click", () =>
@@ -152,6 +165,11 @@ async function poll() {
       const on = b.dataset.fault === "estop" ? injected.estop === "tripped" : injected[b.dataset.fault];
       b.classList.toggle("on", on);
       b.setAttribute("aria-pressed", String(on));
+    });
+    document.querySelectorAll("[data-inst]").forEach((b) => {
+      const on = (injected.instruments || {})[b.dataset.inst] === b.dataset.kind;
+      b.classList.toggle("on", on);
+      if (b.dataset.kind !== "restored") b.setAttribute("aria-pressed", String(on));
     });
     $("violation").textContent = s.violation ? `Invariant violated ${s.violation} — this session is no longer a clean run. Start a new session to clear.` : "";
     $("violation").classList.toggle("show", !!s.violation);

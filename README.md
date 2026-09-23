@@ -7,7 +7,7 @@ feeder → conveyor → hopper — so deterministic control logic can be run
 against it and tested: startup, shutdown, interlocks, fault injection, and
 recovery, before any physical equipment exists.
 
-**Status:** all ten roadmap phases (0-9) complete; 597 tests passing.
+**Status:** all ten roadmap phases (0-9) complete; 601 tests passing.
 
 What's in it:
 
@@ -135,7 +135,10 @@ python scripts/dashboard.py        # then open http://127.0.0.1:8000
 
 Start it, inject a fault, and walk through the recovery (clear the
 fault, reset the device at the field, acknowledge, reset, start) the
-way a commissioning engineer would. Localhost only, no dependencies
+way a commissioning engineer would. The instrument panel makes the
+hopper's weight transmitter and level switches stick or fail: stick
+LSHH-105, set the hopper to 97 %, and watch WT-105 trip the line on its
+own while the cross-check names the switch. Localhost only, no dependencies
 beyond the standard library. Add `--modbus-port 5020` to also expose the
 line to any Modbus TCP client (a SCADA package, Modbus Poll, a PLC):
 sensors and outputs readable, operator commands on HMI coils 100-103.

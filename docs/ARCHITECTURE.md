@@ -1043,6 +1043,13 @@ issue and propose the change"):
   `LineController` before the alarm scan; `AlarmManager` reads them for
   `LSH-105.DISAGREE` (warning) and `LSHH-105.DISAGREE` (trip-class).
 
+## Module responsibilities (dashboard: instrument faults)
+
+- **`LiveSession.stimulus()`** — `sensor_stuck` / `sensor_failed` /
+  `sensor_restored` (value: an input tag), validated before queueing;
+  `snapshot()["injected"]["instruments"]` lists every unhealthy one.
+  The page offers WT-105, LSH-105 and LSHH-105.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |

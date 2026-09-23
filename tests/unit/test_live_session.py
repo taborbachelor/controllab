@@ -87,6 +87,9 @@ def test_invariant_violation_is_reported_not_raised():
         lambda s: s.stimulus("hopper_level_pct", 150),
         lambda s: s.stimulus("bin_level_pct", True),
         lambda s: s.stimulus("gate_reset", False),
+        lambda s: s.stimulus("sensor_stuck", "XV-102.CMD_OPEN"),  # an output, not an instrument
+        lambda s: s.stimulus("sensor_failed", "LT-101"),  # analog, no diagnostic: can only stick
+        lambda s: s.stimulus("sensor_restored", True),
     ],
 )
 def test_invalid_inputs_are_rejected_before_anything_is_queued(call):
@@ -139,3 +142,22 @@ def test_without_a_field_reset_the_tripped_drive_blocks_recovery():
     s.command("reset")
     steps(s, 3)
     assert s.snapshot()["state"] == "faulted"
+
+
+def test_instrument_faults_from_the_dashboard_show_the_level_protection():
+    """The dashboard's instrument panel: LSHH-105 stuck healthy, the hopper
+    set to 97 %, and WT-105 still trips the line (1oo2); the cross-check
+    then names the switch."""
+    s = LiveSession()
+    s.command("start")
+    steps(s, 20)
+    s.stimulus("sensor_stuck", "LSHH-105")
+    s.stimulus("hopper_level_pct", 97)
+    steps(s, 3)
+    snap = s.snapshot()
+    assert snap["state"] == "faulted" and snap["injected"]["instruments"] == {"LSHH-105": "stuck"}
+    steps(s, 12)
+    assert {a["id"] for a in s.snapshot()["alarms"]} == {"WT-105.HIGH_HIGH", "LSHH-105.DISAGREE"}
+    s.stimulus("sensor_restored", "LSHH-105")
+    s.step()
+    assert s.snapshot()["injected"]["instruments"] == {}
