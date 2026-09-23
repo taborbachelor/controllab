@@ -113,6 +113,12 @@ class AlarmManager:
             lambda: self._il.conveyor_ctrl.start_proof_fault,
         )
         self._register("WT-105.HIGH_HIGH", "Hopper high-high", lambda: self._il.hopper_high_high)
+        # Registered after the original nine, not in process order: the
+        # published alarm bits (services/protocols/controller_status.py) are
+        # append-only. Order only breaks same-scan first-out ties, and a plug
+        # can't coincide with another trip's rising edge in practice: it takes
+        # plug_detect_s of the feeder running jammed to make.
+        self._register("LSH-103.JAM", "Feeder jam (discharge chute plugged)", lambda: self._il.feeder_plugged)
 
     def _register(self, alarm_id: str, description: str, condition: AlarmCondition, is_warning: bool = False) -> None:
         alarm = Alarm(id=alarm_id, description=description, is_warning=is_warning)

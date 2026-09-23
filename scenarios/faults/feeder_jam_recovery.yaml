@@ -1,0 +1,51 @@
+name: Feeder Jam Recovery -- Reset Refused Until The Jam Is Cleared
+
+given:
+  line_state: running
+
+when:
+  feeder_jam: true
+
+expect:
+  line_state: faulted
+  fault_reason: "feeder jam"
+
+within:
+  seconds: 1.0
+
+then:
+  # The chute is still plugged: reset is refused. (The ack in the same press
+  # proves the reset was evaluated -- both are consumed in one scan.)
+  - when:
+      acknowledge: true
+      reset: true
+    expect:
+      line_state: faulted
+      fault_reason: "feeder jam"
+      any_unacknowledged_trip: false
+    within:
+      seconds: 1.0
+  # Clear the jam at the feeder: the plug switch drops, the acknowledged
+  # alarm goes out.
+  - when:
+      feeder_jam: false
+    expect:
+      latched_alarm_ids: []
+    within:
+      seconds: 1.0
+  - when:
+      reset: true
+    expect:
+      line_state: idle
+    within:
+      seconds: 1.0
+  # Restart: material flows again.
+  - when:
+      start: true
+    expect:
+      line_state: running
+      feeder_flowing: true
+    within:
+      seconds: 3.0
+
+interlock: "Feeder jam"

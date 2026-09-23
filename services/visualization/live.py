@@ -71,6 +71,7 @@ STIMULI: dict[str, str] = {
     "feeder_fail_to_start": "bool",
     "gate_stuck": "bool",
     "belt_slip": "bool",
+    "feeder_jam": "bool",
     "feeder_drive_reset": "action",  # field resets: true only, one-shot
     "conveyor_overload_reset": "action",
     "gate_reset": "action",
@@ -283,6 +284,7 @@ class LiveSession:
                     "feeder_fail_to_start": plant.feeder.motor.fail_to_start,
                     "gate_stuck": plant.gate.stuck,
                     "belt_slip": plant.conveyor.motion_switch_stuck_false,
+                    "feeder_jam": plant.feeder.jammed,
                 },
                 "violation": self.violation,
             }

@@ -23,6 +23,7 @@ EXPECTED_TAGS = {
     "M-103.RUNNING": TagType.DI,
     "M-103.FAULT": TagType.DI,
     "SC-103": TagType.AO,
+    "LSH-103": TagType.DI,
     "M-104.RUN": TagType.DO,
     "M-104.RUNNING": TagType.DI,
     "M-104.OL": TagType.DI,

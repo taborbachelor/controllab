@@ -50,11 +50,13 @@ function renderMimic(v, animate) {
   gate.setAttribute("stroke-dasharray", gateFb === gateCmd ? "none" : "6 4");
   $("xv102-txt").textContent = (gateOpen ? "OPEN" : gateClosed ? "CLOSED" : "TRAVELLING") + ` · cmd ${gateCmd ? "open" : "close"}`;
 
-  const fRun = v["M-103.RUNNING"], fCmd = v["M-103.RUN"], fTrip = v["M-103.FAULT"];
+  const fRun = v["M-103.RUNNING"], fCmd = v["M-103.RUN"], fTrip = v["M-103.FAULT"], plugged = v["LSH-103"];
   device($("m103"), fCmd, fRun, fTrip);
   $("m103-l").setAttribute("fill", fRun || fTrip ? "#fff" : "var(--ink)");
-  $("feeder-body").setAttribute("stroke", fTrip ? TRIP : LINE);
-  $("m103-txt").textContent = (fTrip ? "FAULT" : fRun ? "RUNNING" : "STOPPED") + ` · cmd ${fCmd ? "run" : "stop"} · SC-103 ${v["SC-103"].toFixed(0)} %`;
+  // LSH-103, the discharge-chute plug switch: a jam. The drive still reports
+  // RUNNING through one, so this is the only sign of it on the mimic.
+  $("feeder-body").setAttribute("stroke", fTrip || plugged ? TRIP : LINE);
+  $("m103-txt").textContent = (fTrip ? "FAULT" : plugged ? "PLUGGED (LSH-103)" : fRun ? "RUNNING" : "STOPPED") + ` · cmd ${fCmd ? "run" : "stop"} · SC-103 ${v["SC-103"].toFixed(0)} %`;
 
   const cRun = v["M-104.RUNNING"], cCmd = v["M-104.RUN"], cTrip = v["M-104.OL"], motion = v["ZSS-104"];
   device($("m104"), cCmd, cRun, cTrip);

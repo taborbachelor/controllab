@@ -57,6 +57,7 @@ FAULT_REASONS: tuple[str | None, ...] = (
     "gate failed to prove open",         # 7
     "conveyor lost confirmation",        # 8
     "gate travel fault",                 # 9
+    "feeder jam",                        # 10  (Phase 4 completion)
 )
 
 # (id, description, is_warning) in AlarmManager's registration order.
@@ -70,6 +71,7 @@ ALARMS: tuple[tuple[str, str, bool], ...] = (
     ("ZSS-104.LOST", "Conveyor motion loss (belt slip)", False),      # bit 6
     ("M-104.START_PROOF", "Conveyor failed to prove running", False), # bit 7
     ("WT-105.HIGH_HIGH", "Hopper high-high", False),                  # bit 8
+    ("LSH-103.JAM", "Feeder jam (discharge chute plugged)", False),   # bit 9  (Phase 4 completion)
 )
 _ALARM_INDEX = {alarm_id: i for i, (alarm_id, _, _) in enumerate(ALARMS)}
 

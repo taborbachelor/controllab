@@ -245,6 +245,8 @@ class LineController:
             return "conveyor trip"
         if self.feeder_ctrl.faulted:
             return "feeder trip"
+        if self.interlocks.feeder_plugged:
+            return "feeder jam"
         if self.conveyor_ctrl.start_proof_fault:
             return "conveyor failed to prove running"
         if self.feeder_ctrl.start_proof_fault:
@@ -290,6 +292,10 @@ class LineController:
             return "hopper high-high"
         if self.feeder_ctrl.faulted:
             return "feeder trip"
+        if self.interlocks.feeder_plugged:
+            # The drive still reports RUNNING through a jam (current limit),
+            # so feeder_ctrl.faulted never sees it -- only the plug switch does.
+            return "feeder jam"
         if self.conveyor_ctrl.faulted:
             return "conveyor trip"
         if not self.interlocks.conveyor_confirmed_running:
@@ -329,6 +335,8 @@ class LineController:
             return "conveyor trip"
         if self.feeder_ctrl.faulted:
             return "feeder trip"
+        if self.interlocks.feeder_plugged:
+            return "feeder jam"
         if self.gate_ctrl.travel_fault:
             return "gate travel fault"
         return None
@@ -375,6 +383,7 @@ class LineController:
             self.interlocks.hopper_high_high
             or self.conveyor_ctrl.faulted
             or self.feeder_ctrl.faulted
+            or self.interlocks.feeder_plugged  # the jam is still in the chute
         )
 
     def _clear_all_device_faults(self) -> None:

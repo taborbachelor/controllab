@@ -45,6 +45,7 @@ VALUE_SHAPES: dict[str, str] = {
     "feeder_trip": "true/false (inject/clear a feeder VFD trip; trips only a running motor)",
     "conveyor_fail_to_start": "true/false (conveyor motor never proves running)",
     "feeder_fail_to_start": "true/false (feeder motor never proves running)",
+    "feeder_jam": "true/false (jam/clear the feeder discharge: flow stops, drive keeps running, plug switch LSH-103 makes after the screw pushes against it)",
     "gate_stuck": "true/false (gate never reaches its limit switch)",
     "belt_slip": "true/false (conveyor motion switch reads no motion)",
     "feeder_drive_reset": "true (field reset of the feeder drive's own fault latch)",
@@ -57,6 +58,7 @@ VALUE_SHAPES: dict[str, str] = {
     "fault_reason": "string (see fault_reasons) or null",
     "conveyor_running": "true/false",
     "feeder_running": "true/false",
+    "feeder_flowing": "true/false (material actually leaving the feeder; false while running = jammed)",
     "gate_open": "true/false",
     "estop_healthy": "true/false",
     "spilled_kg": "number",
@@ -64,6 +66,7 @@ VALUE_SHAPES: dict[str, str] = {
     "hopper_level_kg": "number",
     "any_unacknowledged_trip": "true/false",
     "latched_alarm_ids": "sorted list of alarm ids (see alarms)",
+    "first_out": "alarm id of the first-out alarm, or null",
     "start_inhibit": 'sorted list of reason names, ["NONE"] when the most recent start was accepted',
 }
 

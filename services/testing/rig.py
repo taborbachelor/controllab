@@ -34,6 +34,7 @@ DEFAULT_PLANT_CONFIG = dict(
     gate_travel_time_s=1.0,
     feeder_max_rate_kg_s=5.0,
     feeder_start_delay_s=0.2,
+    feeder_plug_detect_s=0.5,
     conveyor_length_m=4.0,
     conveyor_speed_m_s=2.0,
     conveyor_start_delay_s=0.2,

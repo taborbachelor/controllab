@@ -1,0 +1,31 @@
+name: Feeder Jam Is Detected By The Plug Switch And Faults The Line
+
+# A jam stops the flow at once but the drive keeps reporting RUNNING (it sits
+# in current limit), so no motor fault is ever raised. Stage 1 shows exactly
+# that state; stage 2 shows the discharge-chute plug switch catching it.
+
+given:
+  line_state: running
+
+when:
+  feeder_jam: true
+
+expect:
+  feeder_running: true
+  feeder_flowing: false
+  line_state: running
+
+within:
+  seconds: 0.2
+
+then:
+  - expect:
+      line_state: faulted
+      fault_reason: "feeder jam"
+      first_out: "LSH-103.JAM"
+      latched_alarm_ids: ["LSH-103.JAM"]
+      feeder_running: false
+    within:
+      seconds: 1.0
+
+interlock: "Feeder jam"

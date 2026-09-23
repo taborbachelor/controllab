@@ -79,6 +79,7 @@ INTERLOCKS: list[InterlockRow] = [
     InterlockRow("Hopper high-high", "Trip"),
     InterlockRow("Any motor fail-to-start / trip", "Trip"),
     InterlockRow("Gate travel timeout", "Trip"),
+    InterlockRow("Feeder jam", "Trip"),
 ]
 
 

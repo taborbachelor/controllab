@@ -10,7 +10,7 @@ Everything a controller needs is five contiguous ranges, one per table — exact
 
 | Table | Direction | Start | Size | Contents |
 |---|---|---:|---:|---|
-| Discrete inputs (FC 02) | read | 0 | 11 | field sensors |
+| Discrete inputs (FC 02) | read | 0 | 12 | field sensors |
 | Input registers (FC 04) | read | 0 | 2 | analog sensors |
 | Holding registers (FC 03) | read | 100 | 1 | HMI request word |
 | Coils (FC 15) | write | 0 | 3 | field outputs |
@@ -31,6 +31,7 @@ Everything a controller needs is five contiguous ranges, one per table — exact
 | 8 | 10009 | `LSH-105` | Hopper high level switch (80%) |
 | 9 | 10010 | `LSHH-105` | Hopper high-high level switch (95%) |
 | 10 | 10011 | `ES-001` | E-stop healthy (1 = healthy; fail-safe polarity) |
+| 11 | 10012 | `LSH-103` | Feeder discharge chute plug switch (jam) |
 
 ## Input registers (FC 04, read-only)
 
@@ -112,6 +113,7 @@ Kept apart from field I/O and outside the controller view: writing 1 issues the 
 | 7 | gate failed to prove open |
 | 8 | conveyor lost confirmation |
 | 9 | gate travel fault |
+| 10 | feeder jam |
 
 ### Alarm bits (`alarms_active`, `alarms_unacked`; `first_out` = bit + 1)
 
@@ -126,6 +128,7 @@ Kept apart from field I/O and outside the controller view: writing 1 issues the 
 | 6 | `ZSS-104.LOST` | Conveyor motion loss (belt slip) | trip |
 | 7 | `M-104.START_PROOF` | Conveyor failed to prove running | trip |
 | 8 | `WT-105.HIGH_HIGH` | Hopper high-high | trip |
+| 9 | `LSH-103.JAM` | Feeder jam (discharge chute plugged) | trip |
 
 ### `start_inhibit` bits (why the most recent start request was refused; 0 = NONE)
 

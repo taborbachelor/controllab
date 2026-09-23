@@ -118,6 +118,13 @@ def _apply_gate_reset(rig: Rig, value: bool) -> None:
         rig.plant.gate.clear_fault()
 
 
+def _apply_feeder_jam(rig: Rig, value: bool) -> None:
+    """true: the feeder's discharge jams (flow stops, the drive keeps
+    running, the plug switch makes after it has pushed against the jam
+    for plug_detect_s); false: the jam is physically cleared."""
+    rig.plant.feeder.jammed = value
+
+
 def _apply_hopper_level_pct(rig: Rig, value: float) -> None:
     rig.plant.hopper.level_kg = (value / 100.0) * rig.plant.hopper.capacity_kg
 
@@ -138,6 +145,7 @@ APPLY_ACTIONS: dict[str, Callable[[Rig, object], None]] = {
     "feeder_fail_to_start": _apply_feeder_fail_to_start,
     "gate_stuck": _apply_gate_stuck,
     "belt_slip": _apply_belt_slip,
+    "feeder_jam": _apply_feeder_jam,
     "feeder_drive_reset": _apply_feeder_drive_reset,
     "conveyor_overload_reset": _apply_conveyor_overload_reset,
     "gate_reset": _apply_gate_reset,
@@ -151,6 +159,9 @@ READ_FIELDS: dict[str, Callable[[Rig], object]] = {
     "fault_reason": lambda rig: rig.line.fault_reason,
     "conveyor_running": lambda rig: rig.plant.conveyor.motor.running,
     "feeder_running": lambda rig: rig.plant.feeder.motor.running,
+    # Material actually leaving the feeder (field truth). With feeder_running
+    # it tells a jam (running, not flowing) apart from a stopped feeder.
+    "feeder_flowing": lambda rig: rig.plant.feeder.current_rate_kg_s() > 0,
     "gate_open": lambda rig: rig.plant.gate.is_open,
     "estop_healthy": lambda rig: rig.plant.estop.healthy,
     "spilled_kg": lambda rig: rig.plant.spilled_kg,
@@ -158,6 +169,8 @@ READ_FIELDS: dict[str, Callable[[Rig], object]] = {
     "hopper_level_kg": lambda rig: rig.plant.hopper.level_kg,
     "any_unacknowledged_trip": lambda rig: rig.line.alarms.any_unacknowledged_trip(),
     "latched_alarm_ids": lambda rig: sorted(a.id for a in rig.line.alarms.latched_alarms),
+    # The first-out alarm's id, or null: which alarm started this episode.
+    "first_out": lambda rig: next((a.id for a in rig.line.alarms.all_alarms if a.first_out), None),
     # Why the most recent start request was refused: sorted reason names, or
     # ["NONE"]. Set only when a start is evaluated, so asserting it proves a
     # start was issued -- see StartInhibit (services/control/line_state.py).
@@ -170,7 +183,9 @@ READ_FIELDS: dict[str, Callable[[Rig], object]] = {
 # truth, observable against any controller. Tied to READ_FIELDS by a test
 # (tests/unit/test_observability.py), so a new controller field can't
 # silently be treated as always observable.
-CONTROLLER_FIELDS = frozenset({"line_state", "fault_reason", "any_unacknowledged_trip", "latched_alarm_ids", "start_inhibit"})
+CONTROLLER_FIELDS = frozenset(
+    {"line_state", "fault_reason", "any_unacknowledged_trip", "latched_alarm_ids", "first_out", "start_inhibit"}
+)
 
 
 def apply_field(rig: Rig, key: str, value: object) -> None:

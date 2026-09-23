@@ -127,13 +127,18 @@ def test_passed_count_reflects_results_not_rows():
     assert report.passed_count == 1
 
 
-def test_interlocks_table_has_exactly_the_eight_docs_rows():
+def test_interlocks_table_matches_the_docs_rows_exactly():
     """A change to docs/CONTROL-LAB.md §6.3 that isn't mirrored here
-    should be caught by a human reviewing this test failing, not
-    discovered by someone noticing the report quietly under- or
-    over-counts."""
-    assert len(INTERLOCKS) == 8
-    assert len({row.name for row in INTERLOCKS}) == 8  # no duplicate rows
+    should be caught by this test failing, not discovered by someone
+    noticing the report quietly under- or over-counts. Read from the spec
+    itself (it was a hardcoded count until Phase 4's completion added a
+    row)."""
+    spec = (Path(__file__).resolve().parents[2] / "docs" / "CONTROL-LAB.md").read_text(encoding="utf-8")
+    section = spec.split("### 6.3 Interlocks", 1)[1].split("Trips cascade", 1)[0]
+    rows = [(cells[1].strip(), cells[2].strip()) for cells in (line.split("|") for line in section.splitlines())
+            if len(cells) == 5 and cells[1].strip() not in ("Interlock", "") and not cells[1].startswith("---")]
+    assert [(row.name, row.kind) for row in INTERLOCKS] == rows
+    assert len({row.name for row in INTERLOCKS}) == len(INTERLOCKS)  # no duplicate rows
 
 
 def test_a_row_whose_scenarios_observed_nothing_is_not_observable_not_a_gap():

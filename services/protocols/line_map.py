@@ -44,6 +44,8 @@ LINE_REGISTER_MAP = RegisterMap(
         Point("LSH-105", DISCRETE_INPUT, 8),
         Point("LSHH-105", DISCRETE_INPUT, 9),
         Point("ES-001", DISCRETE_INPUT, 10),
+        # Appended (Phase 4 completion): never shift an address in use.
+        Point("LSH-103", DISCRETE_INPUT, 11),
         # Input registers -- analog sensors (AI)
         Point("LT-101", INPUT_REGISTER, 0, scale=100, full_scale=100.0),
         # WT-105 range = the hopper's 2,000 kg capacity -- the transmitter's

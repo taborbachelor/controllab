@@ -28,6 +28,7 @@ class PlantConfig:
 
     feeder_max_rate_kg_s: float = 5.0
     feeder_start_delay_s: float = 0.5
+    feeder_plug_detect_s: float = 2.0  # running against a jam until LSH-103 makes
 
     conveyor_length_m: float = 20.0
     conveyor_speed_m_s: float = 2.0
@@ -46,7 +47,7 @@ class Plant:
         cfg = config or PlantConfig()
         self.bin = MaterialBin("BIN-101", cfg.bin_capacity_kg, cfg.bin_level_kg, cfg.bin_low_pct)
         self.gate = Gate("XV-102", cfg.gate_travel_time_s)
-        self.feeder = Feeder("FDR-103", cfg.feeder_max_rate_kg_s, cfg.feeder_start_delay_s)
+        self.feeder = Feeder("FDR-103", cfg.feeder_max_rate_kg_s, cfg.feeder_start_delay_s, cfg.feeder_plug_detect_s)
         self.conveyor = Conveyor(
             "CV-104", cfg.conveyor_length_m, cfg.conveyor_speed_m_s, cfg.conveyor_start_delay_s
         )

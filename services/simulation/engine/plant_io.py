@@ -29,6 +29,7 @@ _TAGS: list[tuple[str, TagType, str, str]] = [
     ("M-103.RUNNING", TagType.DI, "", "Feeder motor running feedback (VFD)"),
     ("M-103.FAULT", TagType.DI, "", "Feeder VFD fault"),
     ("SC-103", TagType.AO, "%", "Feeder speed reference"),
+    ("LSH-103", TagType.DI, "", "Feeder discharge chute plug switch (jam)"),
     ("M-104.RUN", TagType.DO, "", "Conveyor motor run command"),
     ("M-104.RUNNING", TagType.DI, "", "Conveyor motor running feedback (contactor aux)"),
     ("M-104.OL", TagType.DI, "", "Conveyor motor overload tripped"),
@@ -59,6 +60,7 @@ def publish_plant_inputs(plant: Plant, io: IOImage) -> None:
 
     io.write_input("M-103.RUNNING", plant.feeder.motor.running)
     io.write_input("M-103.FAULT", plant.feeder.motor.fault)
+    io.write_input("LSH-103", plant.feeder.plugged)
 
     io.write_input("M-104.RUNNING", plant.conveyor.motor.running)
     io.write_input("M-104.OL", plant.conveyor.motor.fault)

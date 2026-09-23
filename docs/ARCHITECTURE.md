@@ -973,6 +973,17 @@ issue and propose the change"):
   expectations held; `ScenarioResult.stage_elapsed`. Details of a
   failing later stage are prefixed `stage n/N:`.
 
+## Module responsibilities (Phase 4 completion, 4b: feeder jam)
+
+- **`Feeder.jammed` / `plugged` / `plug_detect_s`** (simulation) — the
+  jam and the discharge-chute plug switch it trips; `LSH-103` published
+  by `plant_io`.
+- **`Interlocks.feeder_plugged`**, the "feeder jam" trip in
+  `LineController`, and `_fault_cause_cleared()` refusing a reset while
+  plugged; alarm `LSH-103.JAM` (registered last: append-only bits).
+- **Vocabulary** — `feeder_jam`; read fields `feeder_flowing`,
+  `first_out` (a controller field).
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |

@@ -49,6 +49,13 @@ class Interlocks:
         return self.io.read("LSL-101")
 
     @property
+    def feeder_plugged(self) -> bool:
+        """LSH-103, the discharge-chute plug switch: a feeder jam. It stays
+        made until the jam is physically cleared, so unlike a timing
+        diagnostic it can gate a reset."""
+        return self.io.read("LSH-103")
+
+    @property
     def hopper_high(self) -> bool:
         return self.io.read("LSH-105")
 
