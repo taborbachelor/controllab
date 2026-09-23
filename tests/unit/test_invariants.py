@@ -113,3 +113,16 @@ def test_no_motor_energized_during_estop_checks_conveyor_too():
     rig.plant.conveyor.motor.state = MotorState.RUNNING
     with pytest.raises(InvariantViolation):
         Invariants(rig).check()
+
+
+def test_feeder_unconfirmed_grace_is_configurable_for_real_io_latency():
+    """Against a free-running controller over real I/O (Phase 9) the
+    reaction also waits for a poll and a scan, so the grace is the stated
+    latency allowance in ticks, not lockstep's one scan."""
+    rig = build_rig()
+    inv = Invariants(rig, feeder_grace_ticks=3)
+    rig.plant.feeder.motor.state = MotorState.RUNNING
+    for _ in range(3):
+        inv.check()  # ticks 1-3: inside the allowance
+    with pytest.raises(InvariantViolation, match="more than 3 scans"):
+        inv.check()

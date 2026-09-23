@@ -40,16 +40,28 @@ the same no-second-path reason.
 `when_applied_t` marks the boundary between setup and the response
 under test: events at or before it came from reaching `given`; events
 after it are the system's reaction to `when`.
+
+`execute()` is the runner itself, with the one thing that differs
+between execution modes passed in: `step`, which advances the rig by
+exactly one DT and samples telemetry. Lockstep (run_scenario) ticks
+controller and plant back to back; the real-time runner (Phase 9,
+services/testing/realtime.py) paces the plant on the wall clock while
+the controller free-runs on its own. Every elapsed time is a count of
+steps × DT, so both measure in plant time. `tolerance_s` (0 in
+lockstep) extends the polling window past `within` by a stated I/O
+latency allowance: expectations met inside it pass with
+`within_tolerance=True`, never silently as if on time.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from services.telemetry.events import Event, EventLog
 from services.telemetry.tag_history import TagHistory
 from services.testing.invariants import InvariantViolation, Invariants
 from services.testing.rig import DT, Rig, build_rig, tick
-from services.testing.scenario import Scenario, ScenarioLoadError
+from services.testing.scenario import GivenUnreachable, Scenario, ScenarioLoadError
 from services.testing.vocabulary import ScenarioError, apply_field, read_field, values_match
 
 # Generous safety cap for driving `given.line_state` to its target -- if
@@ -78,6 +90,9 @@ class ScenarioResult:
     events: list[Event] = field(default_factory=list)
     tags: TagHistory | None = None
     when_applied_t: float | None = None  # None: never got past given
+    # Met after `within` but inside the latency tolerance (real-time mode
+    # only; always False in lockstep, where the tolerance is 0).
+    within_tolerance: bool = False
 
 
 def run_scenario(scenario: Scenario, external: bool = False) -> ScenarioResult:
@@ -94,19 +109,33 @@ def run_scenario(scenario: Scenario, external: bool = False) -> ScenarioResult:
     else:
         rig = build_rig()
     try:
-        invariants = Invariants(rig)
         telemetry = _Telemetry(EventLog(rig.line), TagHistory(rig.io))
-        rig.line.command_sink = telemetry.events.record_command
-        telemetry.sample(rig.plant.time_s)
-
-        setup_failure = _apply_given(rig, scenario, invariants, telemetry)
-        result = setup_failure or _run_from_given(rig, scenario, invariants, telemetry)
-        result.events = telemetry.events.events
-        result.tags = telemetry.tags
-        return result
+        return execute(rig, scenario, lambda: _tick(rig, telemetry), Invariants(rig), telemetry)
     finally:
         if external:
             rig.line.close()
+
+
+def execute(
+    rig: Rig,
+    scenario: Scenario,
+    step: Callable[[], None],
+    invariants: Invariants,
+    telemetry: "_Telemetry",
+    settle_ticks: int = SETTLE_TICKS,
+    tolerance_s: float = 0.0,
+) -> ScenarioResult:
+    """Runs one scenario on an already-built rig. `step()` must advance
+    the plant by exactly one DT and sample `telemetry`; see the module
+    docstring for what differs between the modes that call this."""
+    rig.line.command_sink = telemetry.events.record_command
+    telemetry.sample(rig.plant.time_s)
+
+    setup_failure = _apply_given(rig, scenario, invariants, step)
+    result = setup_failure or _run_from_given(rig, scenario, invariants, step, settle_ticks, tolerance_s)
+    result.events = telemetry.events.events
+    result.tags = telemetry.tags
+    return result
 
 
 @dataclass
@@ -127,14 +156,21 @@ def _tick(rig: Rig, telemetry: _Telemetry) -> None:
     telemetry.sample(rig.plant.time_s)
 
 
-def _run_from_given(rig: Rig, scenario: Scenario, invariants: Invariants, telemetry: _Telemetry) -> ScenarioResult:
+def _run_from_given(
+    rig: Rig,
+    scenario: Scenario,
+    invariants: Invariants,
+    step: Callable[[], None],
+    settle_ticks: int,
+    tolerance_s: float,
+) -> ScenarioResult:
 
-    # Settle: SETTLE_TICKS so given's effects (e.g. a direct level
+    # Settle: settle_ticks (SETTLE_TICKS in lockstep) so given's effects (e.g. a direct level
     # write) are published through the I/O image AND scanned by Control
     # before `when` is applied -- same reasoning as the tick-before-check
     # rule below, one level up.
-    for i in range(1, SETTLE_TICKS + 1):
-        _tick(rig, telemetry)
+    for i in range(1, settle_ticks + 1):
+        step()
         try:
             invariants.check()
         except InvariantViolation as e:
@@ -155,10 +191,10 @@ def _run_from_given(rig: Rig, scenario: Scenario, invariants: Invariants, teleme
     # Python call order, not one the real system ever passes through
     # (e.g. estop.trip() sets a flag, but nothing forces motors out of
     # RUNNING until Plant.step() actually runs).
-    max_ticks = round(scenario.within_s / DT)
+    max_ticks = round((scenario.within_s + tolerance_s) / DT)
     unmet: dict = {}
     for i in range(1, max_ticks + 1):
-        _tick(rig, telemetry)
+        step()
 
         try:
             invariants.check()
@@ -172,18 +208,30 @@ def _run_from_given(rig: Rig, scenario: Scenario, invariants: Invariants, teleme
         except ScenarioError as e:
             raise ScenarioLoadError(f"{scenario.path}: {e}") from e
         if not unmet:
-            return ScenarioResult(scenario, True, i * DT, "all expectations met", when_applied_t=when_applied_t)
+            elapsed = round(i * DT, 9)
+            if elapsed <= scenario.within_s + 1e-9:
+                return ScenarioResult(scenario, True, elapsed, "all expectations met", when_applied_t=when_applied_t)
+            return ScenarioResult(
+                scenario,
+                True,
+                elapsed,
+                f"all expectations met at {elapsed:.2f}s: over the {scenario.within_s}s limit, "
+                f"inside the {tolerance_s}s latency tolerance",
+                when_applied_t=when_applied_t,
+                within_tolerance=True,
+            )
 
+    window = f"{scenario.within_s}s" + (f" (+{tolerance_s}s latency tolerance)" if tolerance_s else "")
     return ScenarioResult(
         scenario,
         False,
-        scenario.within_s,
-        f"timed out after {scenario.within_s}s -- unmet: {unmet}",
+        round(scenario.within_s + tolerance_s, 9),
+        f"timed out after {window} -- unmet: {unmet}",
         when_applied_t=when_applied_t,
     )
 
 
-def _apply_given(rig: Rig, scenario: Scenario, invariants: Invariants, telemetry: _Telemetry) -> ScenarioResult | None:
+def _apply_given(rig: Rig, scenario: Scenario, invariants: Invariants, step: Callable[[], None]) -> ScenarioResult | None:
     """Returns a failed ScenarioResult if an invariant trips while
     reaching `given` (a real finding -- even the baseline setup is
     broken), or None once `given` is successfully established."""
@@ -205,7 +253,7 @@ def _apply_given(rig: Rig, scenario: Scenario, invariants: Invariants, telemetry
 
     rig.line.start()
     for i in range(1, round(MAX_GIVEN_RUNUP_S / DT) + 1):
-        _tick(rig, telemetry)
+        step()
         try:
             invariants.check()
         except InvariantViolation as e:
@@ -213,7 +261,7 @@ def _apply_given(rig: Rig, scenario: Scenario, invariants: Invariants, telemetry
         if rig.line.state.name == "RUNNING":
             return None
 
-    raise ScenarioLoadError(f"{scenario.path}: given.line_state=running was never reached within {MAX_GIVEN_RUNUP_S}s")
+    raise GivenUnreachable(f"{scenario.path}: given.line_state=running was never reached within {MAX_GIVEN_RUNUP_S}s")
 
 
 def _apply_when(rig: Rig, scenario: Scenario) -> None:

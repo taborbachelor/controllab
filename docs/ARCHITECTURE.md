@@ -89,8 +89,11 @@ ControlLab/
 │   │   ├── report.py                 the interlock coverage matrix (pure logic)
 │   │   ├── candidates.py             review(): the gate every candidate scenario
 │   │   │                             passes before an engineer sees it (Phase 8 step 1)
-│   │   ├── external.py               RemoteLine + build_external_rig(): the suite
-│   │   │                             against the external controller (Phase 7 step 3b)
+│   │   ├── external.py               ObservedLine / RemoteLine + build_external_rig():
+│   │   │                             the suite against the external controller (Phase 7 step 3b)
+│   │   ├── realtime.py               RealtimePlant + run_realtime(): the suite against a
+│   │   │                             FREE-RUNNING external controller, plant paced in
+│   │   │                             real time (Phase 9 step 1)
 │   │   └── commissioning_report.py   render_markdown() -- the Markdown
 │   │                                 commissioning report (pure logic, Phase 5 step 4)
 │   └── telemetry/
@@ -866,6 +869,35 @@ issue and propose the change"):
   omissions stated) in; unverified, evidence-cited hypotheses out, in
   one Markdown file. Nothing is changed.
 
+## Module responsibilities (Phase 9 step 1)
+
+- **`runner.execute()`** — the runner with its one mode-dependent
+  piece passed in: `step()`, which advances exactly one DT and samples
+  telemetry. `run_scenario()` passes the lockstep tick and is otherwise
+  unchanged. `tolerance_s` (0 in lockstep) extends polling past
+  `within`; a result met inside the extra window has
+  `within_tolerance=True`.
+- **`ObservedLine`** (`external.py`) — the LineController surface over
+  Modbus with no controller behind it: commands → HMI handshake, state
+  ← status registers. `RemoteLine` is now `ObservedLine` plus the
+  in-process lockstep controller.
+- **`RealtimePlant`** (`realtime.py`) — a plant-only rig served over
+  Modbus on the port the controller polls; `fresh()` swaps the rig
+  per scenario without dropping the controller's connection.
+- **`ControllerUnderTest`** — the only handle ControlLab has on the
+  controller: `restart()` (cold, like a power cycle) and `close()`.
+  `ReferenceController` runs our own controller free in a thread;
+  `scan_s` models a slower PLC task. Step 2 adds OpenPLC.
+- **`run_realtime()`** — fresh plant, restarted controller, the
+  power-up procedure (wait for its first full write, then acknowledge
+  and reset until a clean IDLE, not recorded as part of the scenario),
+  then `execute()` with a wall-clock `_Pacer`. The latency allowance
+  (`LATENCY_S`, plant seconds) is the tolerance, the settle, and the
+  feeder invariant's grace (`Invariants(feeder_grace_ticks=...)`).
+  Controller silence aborts the run; plant lag beyond `MAX_LAG_S`
+  invalidates it; `GivenUnreachable` (a `ScenarioLoadError` subclass)
+  becomes a failed result about the controller.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |
@@ -879,7 +911,7 @@ issue and propose the change"):
 | 6 | Visualization | done — tag history in every scenario run; HTML replay viewer; live localhost dashboard with operator commands, fault injection, and replay download |
 | 7 | Protocols | done — Modbus server + client; register map (five PLC-master ranges); external-controller mode with the full scenario suite passing across Modbus; OpenPLC running a Structured Text port of the controller against the plant |
 | 8 | AI engineering assistance | done — deterministic candidate review gate; start inhibit; optional AI (provider abstraction, Anthropic first): gated scenario generation, bounded failed-run analysis |
-| 9 | Virtual commissioning | in progress — scoped (`CONTROL-LAB.md` §10) |
+| 9 | Virtual commissioning | in progress — step 1 done: real-time runner (unchanged scenarios against a free-running external controller, latency tolerance, known starting state) |
 
 Full detail and "done when" criteria per phase: `CONTROL-LAB.md` §10.
 

@@ -10,7 +10,11 @@ Covers three of the four invariants §7 lists, in order:
 - The feeder is never running while the conveyor is not proven running,
   beyond one scan — the one-scan grace matches the standard one-tick
   scan-cycle lag everywhere else in this project (LineController takes
-  one tick to react to a freshly-published tag).
+  one tick to react to a freshly-published tag). That grace is a
+  lockstep fact, not a law: against a free-running controller over real
+  I/O (Phase 9's real-time runner) the reaction also waits for a Modbus
+  poll and a PLC scan, so the requirement becomes a time bound, the
+  stated I/O latency allowance, passed in as `feeder_grace_ticks`.
 - No motor output is energized while the E-stop is tripped — always
   true, zero grace: Plant.step() handles the whole trip atomically
   within one call, so there's no tick where it's observably false.
@@ -36,9 +40,10 @@ class InvariantViolation(AssertionError):
 
 
 class Invariants:
-    def __init__(self, rig: Rig) -> None:
+    def __init__(self, rig: Rig, feeder_grace_ticks: int = 1) -> None:
         self.rig = rig
         self.starting_mass_kg = rig.plant.total_mass_kg()
+        self.feeder_grace_ticks = feeder_grace_ticks
         self._feeder_unconfirmed_ticks = 0
 
     def rebaseline(self) -> None:
@@ -79,8 +84,9 @@ class Invariants:
             self._feeder_unconfirmed_ticks += 1
         else:
             self._feeder_unconfirmed_ticks = 0
-        if self._feeder_unconfirmed_ticks > 1:
-            raise InvariantViolation("feeder ran onto an unconfirmed conveyor for more than one scan")
+        if self._feeder_unconfirmed_ticks > self.feeder_grace_ticks:
+            allowed = "one scan" if self.feeder_grace_ticks == 1 else f"{self.feeder_grace_ticks} scans"
+            raise InvariantViolation(f"feeder ran onto an unconfirmed conveyor for more than {allowed}")
 
     def _check_no_motor_energized_during_estop(self) -> None:
         if not self.rig.plant.estop.tripped:

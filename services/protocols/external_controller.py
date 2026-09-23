@@ -65,17 +65,21 @@ class ExternalController:
         self.scans += 1
 
 
-def run(host: str, port: int, speed: float = 1.0, stop: threading.Event | None = None) -> None:
-    """Scan every DT/speed wall-clock seconds until `stop` is set or the
+def run(
+    host: str, port: int, speed: float = 1.0, stop: threading.Event | None = None, scan_s: float = DT
+) -> None:
+    """Scan every scan_s/speed wall-clock seconds until `stop` is set or the
     connection drops. `speed` must match the plant's, the same way a real
-    PLC's scan time is set for the process it controls."""
+    PLC's scan time is set for the process it controls. `scan_s` is the
+    task cycle (default one plant tick); a longer one models a slower PLC
+    task, and with it real I/O latency (Phase 9's real-time tests)."""
     stop = stop or threading.Event()
     with ModbusClient(host, port) as client:
         controller = ExternalController(client)
         next_at = time.monotonic()
         while not stop.is_set():
-            controller.scan_once()
-            next_at += DT / speed
+            controller.scan_once(scan_s)
+            next_at += scan_s / speed
             if time.monotonic() - next_at > 1.0:
                 next_at = time.monotonic()  # resync after a stall rather than bursting
             stop.wait(max(0.0, next_at - time.monotonic()))

@@ -1,0 +1,117 @@
+"""The real-time runner (Phase 9 step 1): the unchanged scenarios against
+a FREE-RUNNING external controller, the plant paced on the wall clock.
+
+The controller under test is ControlLab's reference controller in a
+thread, running free on its own clock and reaching the plant only over
+Modbus, so no PLC runtime is needed; examples/openplc covers a real one.
+The plant runs at SPEED x real time, which is valid only because the
+reference controller's timers count plant time per scan (a real PLC runs
+at 1x). The full suite at 1x is a CLI run, not a unit test.
+"""
+import threading
+from pathlib import Path
+
+import pytest
+
+from services.testing.realtime import RealtimePlant, ReferenceController, run_realtime
+from services.testing.scenario import Scenario
+
+REPO = Path(__file__).resolve().parents[2]
+SPEED = 4.0
+
+
+def scenario(rel):
+    return Scenario.load(REPO / "scenarios" / rel)
+
+
+@pytest.fixture
+def rt():
+    plant = RealtimePlant(port=0)
+    controllers = []
+
+    def controller(**kw):
+        c = ReferenceController(plant.port, speed=SPEED, **kw)
+        controllers.append(c)
+        return c
+
+    yield plant, controller
+    for c in controllers:
+        c.close()
+    plant.close()
+
+
+@pytest.mark.parametrize("rel", [
+    "startup/normal_start.yaml",
+    "faults/feeder_trip_while_running.yaml",
+    "faults/bin_low_blocks_start.yaml",
+    "safety/estop_from_running.yaml",
+])
+def test_scenarios_pass_unchanged_against_a_free_running_controller(rt, rel):
+    plant, controller = rt
+    result = run_realtime(scenario(rel), plant, controller(), speed=SPEED)
+    assert result.passed, result.detail
+    assert not result.within_tolerance  # a fast controller needs none of the allowance
+
+
+def test_every_scenario_starts_from_a_clean_restarted_controller(rt):
+    """A trip leaves the controller FAULTED with a latched alarm; the next
+    scenario must still start from a clean IDLE, and the power-up
+    procedure that got it there isn't part of the scenario's record."""
+    plant, controller = rt
+    ctl = controller()
+    tripped = run_realtime(scenario("faults/feeder_trip_while_running.yaml"), plant, ctl, speed=SPEED)
+    assert tripped.passed, tripped.detail
+
+    refused = run_realtime(scenario("faults/bin_low_blocks_start.yaml"), plant, ctl, speed=SPEED)
+    assert refused.passed, refused.detail  # IDLE + start_inhibit == BIN_LOW: not stale state
+    commands = [e.data["command"] for e in refused.events if e.type == "command_issued"]
+    assert commands == ["start"]
+
+
+def test_a_slow_controller_is_judged_with_the_stated_tolerance(rt):
+    """A 300 ms task cycle: the trip can't be seen, acted on, and published
+    inside 0.1 s of plant time, so the result is met *within tolerance*,
+    and says so, rather than passing as on time or failing outright."""
+    plant, controller = rt
+    tight = Scenario(
+        name="trip with a limit tighter than one scan", path=Path("tight.yaml"),
+        given={"line_state": "running"}, when={"feeder_trip": True},
+        expect={"line_state": "faulted"}, within_s=0.1,
+    )
+    result = run_realtime(tight, plant, controller(scan_s=0.3), speed=SPEED, latency_s=0.5)
+    assert result.passed and result.within_tolerance, result.detail
+    assert "inside the 0.5s latency tolerance" in result.detail
+
+
+class _NeverStarts:
+    name = "a controller that isn't there"
+
+    def restart(self):
+        pass
+
+    def close(self):
+        pass
+
+
+def test_a_controller_that_never_writes_is_reported_not_blamed_on_the_scenario(rt):
+    plant, _ = rt
+    result = run_realtime(scenario("startup/normal_start.yaml"), plant, _NeverStarts(), speed=SPEED, ready_timeout_s=0.5)
+    assert not result.passed
+    assert "never wrote its outputs" in result.detail
+
+
+def test_a_controller_dying_mid_run_invalidates_the_run(rt):
+    """The run stops at the silence with that reason -- not a timeout, and
+    not a 30 s wait for a RUNNING that can never come."""
+    plant, controller = rt
+    ctl = controller()
+    original_restart = ctl.restart
+
+    def restart_then_die():
+        original_restart()
+        threading.Timer(0.3, ctl.close).start()
+
+    ctl.restart = restart_then_die
+    result = run_realtime(scenario("shutdown/normal_stop.yaml"), plant, ctl, speed=SPEED)
+    assert not result.passed
+    assert result.detail.startswith("run invalid, not a verdict on the logic: controller stopped writing")

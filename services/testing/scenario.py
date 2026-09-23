@@ -46,6 +46,14 @@ class ScenarioLoadError(Exception):
     through a run."""
 
 
+class GivenUnreachable(ScenarioLoadError):
+    """`given.line_state` was never reached. Against the built-in
+    controller that means the rig or the scenario is wrong, so it stays a
+    ScenarioLoadError; the real-time runner (Phase 9) catches it, because
+    against someone else's controller "never reached RUNNING" is a
+    finding about that controller."""
+
+
 @dataclass
 class Scenario:
     name: str

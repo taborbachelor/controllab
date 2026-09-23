@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
+from contextlib import nullcontext
 
 from services.control.line_state import LineState
 from services.protocols import controller_status
@@ -45,25 +46,37 @@ from services.testing.rig import DT, Rig, build_rig
 COMMANDS = ("start", "stop", "reset", "acknowledge")
 
 
-class RemoteLine:
-    def __init__(self, rig: Rig) -> None:
-        self.handshake = HmiHandshake(LINE_REGISTER_MAP.commands)
-        store = IOImageDataStore(LINE_REGISTER_MAP, lambda: rig.io, outputs_writable=True, handshake=self.handshake)
-        self._server = ModbusServer(store, port=0)
-        threading.Thread(target=self._server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
-        port = self._server.server_address[1]
-        self._controller_client = ModbusClient(port=port)
-        self._observer = ModbusIOSync(ModbusClient(port=port), LINE_REGISTER_MAP, rig.io)
-        self.controller = ExternalController(self._controller_client)
+class ObservedLine:
+    """A controller on the far side of Modbus, seen the way an HMI sees
+    it: commands go out as HMI requests through `handshake`, state comes
+    back from the status registers read by `observer`. The LineController
+    surface the runner and vocabulary use, with none of the logic.
+
+    `refresh()` reads the status over the wire, so it must never be
+    called while holding `lock` (the Modbus server needs that lock to
+    answer). `lock` guards the handshake when the server runs
+    concurrently (the real-time runner); lockstep needs none."""
+
+    def __init__(self, handshake: HmiHandshake, observer: ModbusIOSync, lock=None) -> None:
+        self.handshake = handshake
+        self._observer = observer
+        self._lock = lock if lock is not None else nullcontext()
         self.command_sink: Callable[[str], None] | None = None
+        self.refresh()
+
+    def refresh(self) -> None:
         self._status = controller_status.decode(self._observer.read_status())
+
+    def scan(self, dt: float) -> None:
+        self.refresh()
 
     # ---- the LineController surface the runner and vocabulary use -------
 
     def _command(self, name: str) -> None:
         if self.command_sink is not None:
             self.command_sink(name)
-        self.handshake.request(name)
+        with self._lock:
+            self.handshake.request(name)
 
     def start(self) -> None:
         self._command("start")
@@ -76,10 +89,6 @@ class RemoteLine:
 
     def acknowledge(self) -> None:
         self._command("acknowledge")
-
-    def scan(self, dt: float) -> None:
-        self.controller.scan_once(dt)
-        self._status = controller_status.decode(self._observer.read_status())
 
     @property
     def state(self) -> LineState:
@@ -102,8 +111,31 @@ class RemoteLine:
         return _AlarmView(self._status)
 
     def close(self) -> None:
-        self._controller_client.close()
         self._observer.client.close()
+
+
+class RemoteLine(ObservedLine):
+    """ObservedLine plus, in-process, the Modbus server for the plant and
+    the reference external controller, scanned in lockstep: `scan()` runs
+    one controller scan, then refreshes the status."""
+
+    def __init__(self, rig: Rig) -> None:
+        handshake = HmiHandshake(LINE_REGISTER_MAP.commands)
+        store = IOImageDataStore(LINE_REGISTER_MAP, lambda: rig.io, outputs_writable=True, handshake=handshake)
+        self._server = ModbusServer(store, port=0)
+        threading.Thread(target=self._server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
+        port = self._server.server_address[1]
+        self._controller_client = ModbusClient(port=port)
+        self.controller = ExternalController(self._controller_client)
+        super().__init__(handshake, ModbusIOSync(ModbusClient(port=port), LINE_REGISTER_MAP, rig.io))
+
+    def scan(self, dt: float) -> None:
+        self.controller.scan_once(dt)
+        self.refresh()
+
+    def close(self) -> None:
+        self._controller_client.close()
+        super().close()
         self._server.shutdown()
         self._server.server_close()
 
@@ -132,4 +164,4 @@ def build_external_rig() -> Rig:
     return rig
 
 
-__all__ = ["DT", "RemoteLine", "build_external_rig"]
+__all__ = ["DT", "ObservedLine", "RemoteLine", "build_external_rig"]
