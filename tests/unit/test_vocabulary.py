@@ -114,3 +114,25 @@ def test_values_match_exact_for_strings_and_none():
     assert values_match("idle", "idle") is True
     assert values_match("idle", "running") is False
     assert values_match(None, None) is True
+
+
+@pytest.mark.parametrize(
+    "key,device",
+    [
+        ("feeder_drive_reset", lambda rig: rig.plant.feeder.motor),
+        ("conveyor_overload_reset", lambda rig: rig.plant.conveyor.motor),
+    ],
+)
+def test_field_reset_clears_the_motors_own_fault_latch(key, device):
+    rig = build_rig()
+    rig.line.start()
+    run(rig, 3.0)
+    device(rig).trip_now = True
+    run(rig, 0.3)
+    device(rig).trip_now = False
+    assert device(rig).fault is True  # un-injecting alone doesn't clear the latch
+
+    apply_field(rig, key, False)  # one-shot: false is a no-op
+    assert device(rig).fault is True
+    apply_field(rig, key, True)
+    assert device(rig).fault is False

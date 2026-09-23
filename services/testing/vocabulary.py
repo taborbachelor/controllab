@@ -83,6 +83,32 @@ def _apply_belt_slip(rig: Rig, value: bool) -> None:
     rig.plant.conveyor.motion_switch_stuck_false = value
 
 
+# Field resets (Phase 6 step 3): clearing a device's OWN latched fault --
+# resetting a VFD fault, an overload relay, or a gate actuator locally at
+# the equipment. Separate from un-injecting the cause (feeder_trip: false
+# etc.) on purpose: in a real plant those are two different actions, and
+# tests/integration/test_line_controller.py::test_reset_succeeds_once_a_
+# passthrough_cause_clears already documents that recovery needs both.
+# Plant-side only -- there is no I/O tag for this, so Control can't do it,
+# the same as a real line where someone walks to the MCC. One-shot like
+# start/stop: true performs the reset, false is a no-op.
+
+
+def _apply_feeder_drive_reset(rig: Rig, value: bool) -> None:
+    if value:
+        rig.plant.feeder.motor.clear_fault()
+
+
+def _apply_conveyor_overload_reset(rig: Rig, value: bool) -> None:
+    if value:
+        rig.plant.conveyor.motor.clear_fault()
+
+
+def _apply_gate_reset(rig: Rig, value: bool) -> None:
+    if value:
+        rig.plant.gate.clear_fault()
+
+
 def _apply_hopper_level_pct(rig: Rig, value: float) -> None:
     rig.plant.hopper.level_kg = (value / 100.0) * rig.plant.hopper.capacity_kg
 
@@ -103,6 +129,9 @@ APPLY_ACTIONS: dict[str, Callable[[Rig, object], None]] = {
     "feeder_fail_to_start": _apply_feeder_fail_to_start,
     "gate_stuck": _apply_gate_stuck,
     "belt_slip": _apply_belt_slip,
+    "feeder_drive_reset": _apply_feeder_drive_reset,
+    "conveyor_overload_reset": _apply_conveyor_overload_reset,
+    "gate_reset": _apply_gate_reset,
     "hopper_level_pct": _apply_hopper_level_pct,
     "bin_level_pct": _apply_bin_level_pct,
 }

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ControlLab Live</title>
+<!--
+  ControlLab live dashboard (docs/CONTROL-LAB.md §10, Phase 6 step 3).
+  Served by services/visualization/live.py; the line mimic, styles and
+  renderers are the shared hmi.css / mimic.svg.html / hmi.js that the
+  replay viewer also uses (page.py inlines them). Polls /api/state ~10x a
+  second; every button is a JSON POST applied at the next tick boundary.
+-->
+<style>
+/*__HMI_CSS__*/
+</style>
+</head>
+<body>
+<div id="violation" class="banner" role="alert"></div>
+<header>
+  <h1>ControlLab — Live</h1>
+  <span class="meta">Simulated line, real-time. Operator commands on the left, test stimuli on the right.</span>
+</header>
+<main>
+  <div class="col">
+    <section aria-label="Line mimic">
+      <h2>Line</h2>
+<!--__MIMIC_SVG__-->
+      <div class="controls">
+        <button id="run" type="button">⏸ Pause</button>
+        <select id="speed" aria-label="Simulation speed">
+          <option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option>
+          <option value="5">5×</option><option value="10">10×</option>
+        </select>
+        <button id="restart" type="button" title="Discard this session and start a fresh line">New session</button>
+        <a id="download" href="/api/replay" download="live-session.replay.html">Download replay</a>
+        <span class="clock" id="clock"></span>
+        <span class="state" id="state"></span>
+      </div>
+      <p class="note" id="reason"></p>
+    </section>
+    <section aria-label="Operator commands">
+      <h2>Operator</h2>
+      <div class="buttons" id="commands"></div>
+      <p class="note">Acknowledge and reset are separate on purpose: acknowledging says an operator has seen the alarm; reset says the cause is fixed.</p>
+    </section>
+    <section aria-label="Event log">
+      <h2>Events</h2>
+      <div id="events"><p class="empty">No events yet.</p></div>
+    </section>
+  </div>
+  <div class="col">
+    <section aria-label="Test stimuli">
+      <h2>Test stimuli — fault injection</h2>
+      <div class="buttons" id="faults"></div>
+      <h2 style="margin-top:12px">Field resets</h2>
+      <div class="buttons" id="field-resets">
+        <button type="button" data-action="feeder_drive_reset">Reset feeder drive</button>
+        <button type="button" data-action="conveyor_overload_reset">Reset conveyor overload</button>
+        <button type="button" data-action="gate_reset">Reset gate actuator</button>
+      </div>
+      <div class="stim">
+        <label for="hopper-pct">Set hopper level (%)</label>
+        <span><input id="hopper-pct" type="number" min="0" max="100" step="1" value="97"> <button type="button" data-level="hopper_level_pct" data-input="hopper-pct">Set</button></span>
+        <label for="bin-pct">Set bin level (%)</label>
+        <span><input id="bin-pct" type="number" min="0" max="100" step="1" value="5"> <button type="button" data-level="bin_level_pct" data-input="bin-pct">Set</button></span>
+      </div>
+      <p class="note">Stimuli act on the simulated plant, never on Control — the same vocabulary scenario files use. A highlighted button is a fault currently injected; click again to clear it. Clearing a motor trip also needs a field reset of that device's own latch — the same two-step recovery a real line has — before Control's reset will take.</p>
+    </section>
+    <section aria-label="Alarms">
+      <h2>Alarms</h2>
+      <div id="alarms"></div>
+    </section>
+    <section aria-label="Tags">
+      <h2>I/O tags</h2>
+      <div class="tagwrap"><table><thead><tr><th>Tag</th><th>Type</th><th class="num">Value</th></tr></thead><tbody id="tags"></tbody></table></div>
+    </section>
+  </div>
+</main>
+<script>
+/*__HMI_JS__*/
+</script>
+<script>
+const CFG = /*__LIVE_CONFIG__*/null;
+initMimic(CFG.plant);
+
+const FAULTS = [
+  ["estop", "E-stop"], ["conveyor_trip", "Conveyor trip"], ["feeder_trip", "Feeder trip"],
+  ["conveyor_fail_to_start", "Conveyor fail-to-start"], ["feeder_fail_to_start", "Feeder fail-to-start"],
+  ["gate_stuck", "Gate stuck"], ["belt_slip", "Belt slip"],
+];
+
+async function post(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  if (!r.ok) console.error(path, (await r.json()).error);
+}
+
+$("commands").innerHTML = CFG.commands.map((c) => `<button type="button" data-cmd="${c}">${c[0].toUpperCase() + c.slice(1)}</button>`).join("");
+$("commands").addEventListener("click", (e) => { const c = e.target.dataset.cmd; if (c) post("/api/command", { name: c }); });
+
+$("faults").innerHTML = FAULTS.map(([k, label]) => `<button type="button" data-fault="${k}" aria-pressed="false">${label}</button>`).join("");
+let injected = {};
+$("faults").addEventListener("click", (e) => {
+  const k = e.target.dataset.fault;
+  if (!k) return;
+  const value = k === "estop" ? (injected.estop === "tripped" ? "healthy" : "tripped") : !injected[k];
+  post("/api/stimulus", { key: k, value });
+});
+$("field-resets").addEventListener("click", (e) => { const k = e.target.dataset.action; if (k) post("/api/stimulus", { key: k, value: true }); });
+document.querySelectorAll("[data-level]").forEach((b) => b.addEventListener("click", () =>
+  post("/api/stimulus", { key: b.dataset.level, value: +$(b.dataset.input).value })));
+
+let running = true;
+$("run").addEventListener("click", () => post("/api/run", { running: !running }));
+$("speed").addEventListener("change", (e) => post("/api/run", { speed: +e.target.value }));
+$("restart").addEventListener("click", () => { post("/api/restart"); since = 0; eventRows = []; prev = null; });
+
+let since = 0, eventRows = [], prev = null;
+function renderEvents(newEvents) {
+  if (!newEvents.length) return;
+  eventRows = eventRows.concat(newEvents.map((e) => `<tr><td class="num">${e.t.toFixed(2)} s</td><td>${describe(e)}</td></tr>`));
+  eventRows = eventRows.slice(-200);
+  $("events").innerHTML = "<table><tbody>" + eventRows.slice().reverse().join("") + "</tbody></table>";
+}
+
+async function poll() {
+  try {
+    const s = await (await fetch(`/api/state?since=${since}`)).json();
+    if (s.event_count < since) { since = 0; eventRows = []; $("events").innerHTML = '<p class="empty">No events yet.</p>'; return; }
+    since = s.event_count;
+    running = s.running;
+    injected = s.injected;
+    $("run").textContent = running ? "⏸ Pause" : "▶ Run";
+    $("speed").value = String(s.speed);
+    $("clock").textContent = `t = ${s.t.toFixed(1)} s`;
+    renderState(s.state);
+    const why = [];
+    if (s.fault_reason) why.push(`Fault reason: ${s.fault_reason}`);
+    if (s.state === "idle" && s.last_start_refusal.length) why.push(`Last start refused: ${s.last_start_refusal.join("; ")}`);
+    $("reason").textContent = why.join(" · ");
+    renderMimic(s.values, running);
+    renderTags(CFG.tags, s.values, prev);
+    prev = s.values;
+    renderAlarms(s.alarms);
+    renderEvents(s.events);
+    document.querySelectorAll("[data-fault]").forEach((b) => {
+      const on = b.dataset.fault === "estop" ? injected.estop === "tripped" : injected[b.dataset.fault];
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-pressed", String(on));
+    });
+    $("violation").textContent = s.violation ? `Invariant violated ${s.violation} — this session is no longer a clean run. Start a new session to clear.` : "";
+    $("violation").classList.toggle("show", !!s.violation);
+  } catch (err) {
+    $("reason").textContent = "Lost connection to the ControlLab server.";
+  } finally {
+    setTimeout(poll, 100);
+  }
+}
+poll();
+</script>
+</body>
+</html>

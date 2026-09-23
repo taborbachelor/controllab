@@ -24,10 +24,12 @@ complete: a generic, IOImage-only sampled tag-value recorder
 optional sink on `LineController`, and a generated Markdown
 commissioning report — pass/fail, response time vs. each scenario's
 limit, the interlock coverage matrix, and every scenario's recorded
-event/alarm sequence. Phase 6 (Visualization) in progress: a
+event/alarm sequence. Phase 6 (Visualization) complete: a
 self-contained HTML replay viewer for any scenario run (line mimic,
-alarm board, event log, and I/O tags, scrubbable tick by tick). No
-live dashboard or protocol support yet.
+alarm board, event log, and I/O tags, scrubbable tick by tick) and a
+live localhost dashboard: the line running in real time, operator
+commands, a separate fault-injection panel, and one-click download of
+the session as a replay. No protocol support yet.
 
 ## Documentation
 
@@ -68,6 +70,17 @@ python scripts/replay.py scenarios/safety/estop_from_running.yaml   # writes est
 
 Open the file in any browser. It needs no server and no network.
 
+To run the line live:
+
+```bash
+python scripts/dashboard.py        # then open http://127.0.0.1:8000
+```
+
+Start it, inject a fault, and walk through the recovery (clear the
+fault, reset the device at the field, acknowledge, reset, start) the
+way a commissioning engineer would. Localhost only, no dependencies
+beyond the standard library.
+
 ## Roadmap
 
 | Phase | Focus | Status |
@@ -78,7 +91,7 @@ Open the file in any browser. It needs no server and no network.
 | 3 | Testing / commissioning scenarios | done |
 | 4 | Fault injection, alarms | done (feeder jam / sensor failure hooks deferred) |
 | 5 | Telemetry | done |
-| 6 | Visualization | in progress (steps 1-2 of 3 done: tag history in every run; HTML replay viewer) |
+| 6 | Visualization | done |
 | 7 | Protocols (Modbus, OPC UA, MQTT) | not started |
 | 8 | AI engineering assistance | not started |
 | 9 | Virtual commissioning | not started |

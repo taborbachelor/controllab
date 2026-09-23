@@ -17,7 +17,8 @@ Full reasoning in `CONTROL-LAB.md` §3. In short:
 - **Telemetry** (`services/telemetry/`, Phase 5, done) observes
   Simulation and Control from outside, pull/diff, the same non-invasive
   relationship Testing already has. **Visualization** (`services/visualization/`,
-  Phase 6, in progress) replays recorded telemetry; it reads Telemetry only.
+  Phase 6, done) replays recorded telemetry (reads Telemetry only) and
+  serves the live dashboard (drives the rig through Testing's vocabulary).
 
 Control must only ever observe and command Simulation through a shared I/O
 tag table (the "I/O image") — never by reaching into simulation objects
@@ -97,7 +98,13 @@ ControlLab/
 │   └── visualization/
 │       ├── replay.py                 build_frames()/build_replay()/render_html() --
 │       │                             replay reconstructed from telemetry (Phase 6 step 2)
-│       └── replay_template.html      the viewer: vanilla JS + inline SVG line mimic
+│       ├── replay_template.html      the replay viewer page
+│       ├── live.py                   LiveSession / Pacer / make_handler() -- the live
+│       │                             dashboard (Phase 6 step 3)
+│       ├── live_template.html        the live dashboard page
+│       ├── page.py                   assemble(): inlines the shared pieces below
+│       ├── hmi.css, hmi.js           shared styles + mimic/alarm/tag renderers
+│       └── mimic.svg.html            the shared line mimic (inline SVG)
 ├── scenarios/
 │   ├── startup/normal_start.yaml
 │   ├── shutdown/normal_stop.yaml
@@ -113,11 +120,12 @@ ControlLab/
 │                                      running.yaml, feeder_trip_while_running.yaml,
 │                                      unacknowledged_alarm_blocks_start.yaml)
 ├── scripts/
-│   └── scenario_report.py            thin CLI: runs every scenario, prints
-│                                      report.py's coverage matrix, --out FILE,
-│                                      --markdown FILE.md (commissioning report)
-│   └── replay.py                     runs one scenario, writes a self-contained
-│                                      HTML replay of it
+│   ├── scenario_report.py            thin CLI: runs every scenario, prints
+│   │                                  report.py's coverage matrix, --out FILE,
+│   │                                  --markdown FILE.md (commissioning report)
+│   ├── replay.py                     runs one scenario, writes a self-contained
+│   │                                  HTML replay of it
+│   └── dashboard.py                  starts the live dashboard on 127.0.0.1
 ├── tests/
 │   ├── unit/                        one test module per equipment/engine/control/
 │   │                                 testing/telemetry class, plus test_control_boundary.py
@@ -645,6 +653,42 @@ issue and propose the change"):
   drifted (found through the replay data), and every telemetry
   timestamp comes from it.
 
+## Module responsibilities (Phase 6 step 3)
+
+- **`LiveSession`** (`services/visualization/live.py`) — the
+  dashboard's deterministic core. A rig from `build_rig()`, the same
+  `EventLog` + command sink + `TagHistory` the runner records, and
+  `Invariants`. `command()`/`stimulus()` validate immediately and
+  *queue*; `step()` applies the queue at the tick boundary, ticks once,
+  samples telemetry, and checks invariants. A violation is kept and
+  shown, not raised. Level stimuli rebaseline conservation, exactly as
+  the runner does. `snapshot(since)` returns the replay-frame shape plus
+  only the new events. `replay_html()` renders the session through the
+  step-2 viewer. It has no wall clock, so its tests are as
+  deterministic as scenario runs.
+- **`Pacer`** — the only real-time code: a daemon thread stepping the
+  session every DT/speed seconds. It resyncs after a stall of more than
+  1 s instead of bursting catch-up ticks.
+- **`make_handler()`** — stdlib HTTP routes: `/` (the assembled page),
+  `/api/state?since=N`, `/api/replay` (attachment), and POSTs for
+  `command`/`stimulus`/`run`/`restart`. POSTs must be
+  `application/json` and the Host header must be localhost. That's the
+  cheap CSRF + DNS-rebinding defense for an unauthenticated localhost
+  server, and both are tested.
+- **Stimuli go through `vocabulary.apply_field`**, the same closed set
+  scenario files use, plus three new **field resets**
+  (`feeder_drive_reset`, `conveyor_overload_reset`, `gate_reset`) that
+  clear a device's own latched fault. Without them a tripped motor could
+  never be recovered live. They're deliberately separate from
+  un-injecting the cause, because a real repair is two actions.
+- **`page.py` + `hmi.css` / `mimic.svg.html` / `hmi.js`** — the line
+  mimic and panel renderers, written once and inlined into both pages.
+  `hmi.js` functions take values as arguments (no page globals), which
+  is what lets a recorded frame and a live snapshot share them.
+- **Dependency direction:** `live.py` depends on Testing (rig,
+  vocabulary, invariants) because it *drives* the line, the runner's
+  role; `replay.py` only observes and depends on Telemetry alone.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |
@@ -655,7 +699,7 @@ issue and propose the change"):
 | 3 | Testing / commissioning scenarios | done |
 | 4 | Fault injection, alarms | done (steps 1-3: alarm core; wired into `LineController`; surfaced through Testing, 8/8 interlocks covered). Step 4 (feeder jam + sensor failure hooks) deliberately deferred — see `CONTROL-LAB.md` §10 |
 | 5 | Telemetry | done — generic sampled tag history; state/alarm diffing observer; optional command sink; generated Markdown commissioning report |
-| 6 | Visualization | in progress — steps 1-2 done (tag history in every scenario run; HTML replay viewer) |
+| 6 | Visualization | done — tag history in every scenario run; HTML replay viewer; live localhost dashboard with operator commands, fault injection, and replay download |
 | 7 | Protocols | not started |
 | 8 | AI engineering assistance | not started |
 | 9 | Virtual commissioning | not started |
@@ -674,8 +718,8 @@ Full detail and "done when" criteria per phase: `CONTROL-LAB.md` §10.
 - **Frontend: vanilla JS + inline SVG** (Phase 6), no build step, no
   node toolchain. The replay viewer is one template file. React only if
   UI complexity ever justifies it.
-- **Live dashboard server (Phase 6 step 3, not built yet): Python's
-  stdlib `http.server`**, polled JSON + POSTed commands, zero new
-  dependencies. This supersedes the earlier "FastAPI + React is the
+- **Live dashboard server (Phase 6 step 3): Python's stdlib
+  `ThreadingHTTPServer`**, polled JSON + POSTed commands, zero new
+  dependencies, bound to 127.0.0.1. This supersedes the earlier "FastAPI + React is the
   intent" note; FastAPI is the upgrade path if push or multiple clients
   become a real need. No database.

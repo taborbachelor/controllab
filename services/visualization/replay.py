@@ -19,7 +19,7 @@ same way.
 
 Writes no files, the same split every other layer uses: build_frames()
 is the tested data model, render_html() only substitutes it into
-replay_template.html (read, never written) and returns a string;
+replay_template.html (assembled by page.py with the shared mimic) and returns a string;
 scripts/replay.py is the only thing that writes one. Output is
 deterministic (no timestamps, no absolute paths), so a replay file can
 be committed and diffed like the commissioning report.
@@ -28,12 +28,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from pathlib import Path
 
 from services.telemetry.events import Event
 from services.telemetry.tag_history import TagHistory
+from services.visualization.page import assemble
 
-TEMPLATE = Path(__file__).with_name("replay_template.html")
 DATA_PLACEHOLDER = "/*__REPLAY_DATA__*/null"
 
 
@@ -123,6 +122,6 @@ def render_html(replay: dict) -> str:
     """Substitutes the replay data into the template. `</` is escaped so
     no recorded string can close the <script> block early."""
     data = json.dumps(replay, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
-    template = TEMPLATE.read_text(encoding="utf-8")
+    template = assemble("replay_template.html")
     assert template.count(DATA_PLACEHOLDER) == 1, "replay_template.html must contain the data placeholder exactly once"
     return template.replace(DATA_PLACEHOLDER, data)

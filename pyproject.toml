@@ -21,4 +21,4 @@ build-backend = "setuptools.build_meta"
 include = ["services*"]
 
 [tool.setuptools.package-data]
-"services.visualization" = ["*.html"]
+"services.visualization" = ["*.html", "*.css", "*.js"]

@@ -8,6 +8,7 @@ import re
 from services.simulation.engine.io_image import IOImage, TagType
 from services.telemetry.events import Event
 from services.telemetry.tag_history import TagHistory
+from services.visualization.page import assemble
 from services.visualization.replay import build_frames, build_replay, render_html
 
 
@@ -62,7 +63,8 @@ def test_render_html_embeds_the_data_and_cannot_be_broken_out_of():
     replay = build_replay("T</script><script>alert(1)", [], history(2), plant={"hopper_capacity_kg": 1.0})
     html = render_html(replay)
     assert "/*__REPLAY_DATA__*/" not in html
-    assert html.count("</script>") == 1  # only the template's own closing tag
+    # Only the template's own closing tags -- the title's "</script>" was escaped.
+    assert html.count("</script>") == assemble("replay_template.html").count("</script>")
 
     embedded = re.search(r"const R = (.*?);\n", html).group(1)
     assert json.loads(embedded.replace("<\/", "</"))["title"] == "T</script><script>alert(1)"
