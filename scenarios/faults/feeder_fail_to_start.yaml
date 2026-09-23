@@ -1,5 +1,9 @@
 name: Feeder Fails To Prove Running
 
+# Two stages, because the field evidence of this fault is a sequence: the start sequence reaches the feeder (conveyor proven, gate open) and commands it,
+# then -- once it never proves -- every output is dropped. The final field
+# state alone (everything off) would look exactly like a start never pressed.
+
 given:
   line_state: idle
   feeder_fail_to_start: true
@@ -8,10 +12,19 @@ when:
   start: true
 
 expect:
-  line_state: faulted
-  fault_reason: "feeder failed to prove running"
+  feeder_run_commanded: true
 
 within:
-  seconds: 5.0
+  seconds: 3.0
+
+then:
+  - expect:
+      line_state: faulted
+      fault_reason: "feeder failed to prove running"
+      feeder_run_commanded: false
+      conveyor_run_commanded: false
+      gate_open_commanded: false
+    within:
+      seconds: 5.0
 
 interlock: "Any motor fail-to-start / trip"

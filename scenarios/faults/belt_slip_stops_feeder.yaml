@@ -10,6 +10,9 @@ expect:
   line_state: faulted
   fault_reason: "conveyor lost confirmation"
   feeder_running: false
+  feeder_run_commanded: false
+  conveyor_run_commanded: false
+  gate_open_commanded: false
 
 within:
   seconds: 0.5

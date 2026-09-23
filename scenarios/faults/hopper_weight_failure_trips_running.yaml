@@ -23,6 +23,9 @@ expect:
   first_out: "WT-105.FAIL"
   feeder_running: false
   hopper_weight_agrees: false
+  feeder_run_commanded: false
+  conveyor_run_commanded: false
+  gate_open_commanded: false
 
 within:
   seconds: 0.5

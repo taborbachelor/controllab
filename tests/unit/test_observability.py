@@ -109,3 +109,44 @@ def test_a_statusless_observed_line_never_reports_zeros_as_idle(prop):
     line = ObservedLine(HmiHandshake(LINE_REGISTER_MAP.commands), _NoObserver(), status=False)
     with pytest.raises(NotObservable):
         getattr(line, prop)
+
+
+def test_the_commanded_output_fields_are_field_evidence_not_controller_state():
+    for key in ("feeder_run_commanded", "conveyor_run_commanded", "gate_open_commanded"):
+        assert key in READ_FIELDS and key not in CONTROLLER_FIELDS
+
+
+def test_a_trip_drops_every_commanded_output_in_the_scan_it_faults():
+    from services.control.line_state import LineState
+    from services.testing.rig import tick
+
+    rig = build_rig()
+    rig.line.start()
+    for _ in range(30):
+        tick(rig)
+    assert rig.line.state == LineState.RUNNING
+    assert [read_field(rig, k) for k in ("feeder_run_commanded", "conveyor_run_commanded", "gate_open_commanded")] == [True] * 3
+    rig.plant.feeder.motor.trip_now = True
+    while rig.line.state != LineState.FAULTED:
+        tick(rig)
+    assert [read_field(rig, k) for k in ("feeder_run_commanded", "conveyor_run_commanded", "gate_open_commanded")] == [False] * 3
+
+
+def test_no_scenario_is_vacuous_on_field_evidence_alone():
+    """Every scenario that passes judged only on field evidence (status
+    withheld) must fail that way once its `when` is removed -- otherwise a
+    run against a controller without a status block would pass it on
+    evidence the stimulus never caused."""
+    import dataclasses
+
+    from services.testing.runner import run_scenario
+
+    observable = []
+    for s in Scenario.discover(REPO / "scenarios"):
+        blind = run_scenario(s, status=False)
+        if blind.not_observable:
+            continue
+        assert blind.passed, (s.path.name, blind.detail)
+        assert not run_scenario(dataclasses.replace(s, when={}), status=False).passed, s.path.name
+        observable.append(s.path.name)
+    assert len(observable) >= 13  # was 8 before the commanded-output fields

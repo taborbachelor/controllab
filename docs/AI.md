@@ -86,7 +86,7 @@ always passed and hitting it is an error), or invalid JSON raises
   twice against the built-in controller (determinism) and once across
   Modbus (agreement), and checks it is **not vacuous**: it must fail with
   its whole `when` removed, and — with a declared trigger — fail with
-  exactly the trigger removed. The second check is the one a generated
+  exactly the trigger removed (it also reports how much of it is observable from the field alone, and warns if, judged only on field evidence, it would pass without its stimulus). The second check is the one a generated
   scenario needs most: a model can put the requested action in `when`
   while the expectations hold without it (e.g. an E-stop in the same
   `when` stops the motors anyway); that candidate is REJECTED.

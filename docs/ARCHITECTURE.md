@@ -1013,6 +1013,16 @@ issue and propose the change"):
   `scripted_provider.py` (canned, labelled stand-in answers from
   `canned/`). Full description: `docs/AI.md`.
 
+## Module responsibilities (field-observable expectations)
+
+- **Read fields `feeder_run_commanded` / `conveyor_run_commanded` /
+  `gate_open_commanded`** — the controller's output coils; field
+  evidence, not controller state.
+- **`vocabulary.StatusWithheld` + `run_scenario(status=False)`** — any
+  scenario judged on field evidence alone, deterministically.
+- **The review gate's `field` check** — field-observable share, and a
+  warning if the candidate would pass vacuously without a status block.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |

@@ -25,6 +25,8 @@ then:
       first_out: "LSH-103.JAM"
       latched_alarm_ids: ["LSH-103.JAM"]
       feeder_running: false
+      conveyor_run_commanded: false
+      gate_open_commanded: false
     within:
       seconds: 1.0
 

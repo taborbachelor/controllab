@@ -13,6 +13,9 @@ expect:
   line_state: estopped
   conveyor_running: false
   feeder_running: false
+  feeder_run_commanded: false
+  conveyor_run_commanded: false
+  gate_open_commanded: false
 
 within:
   milliseconds: 500

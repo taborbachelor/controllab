@@ -72,7 +72,14 @@ from services.telemetry.tag_history import TagHistory
 from services.testing.invariants import InvariantViolation, Invariants
 from services.testing.rig import DT, Rig, build_rig, tick
 from services.testing.scenario import GivenUnreachable, Scenario, ScenarioLoadError, Stage
-from services.testing.vocabulary import NotObservable, ScenarioError, apply_field, read_field, values_match
+from services.testing.vocabulary import (
+    NotObservable,
+    ScenarioError,
+    StatusWithheld,
+    apply_field,
+    read_field,
+    values_match,
+)
 
 # Generous safety cap for driving `given.line_state` to its target -- if
 # a healthy line can't reach RUNNING this fast, the rig itself is
@@ -120,13 +127,18 @@ class ScenarioResult:
     unmet: dict = field(default_factory=dict)
 
 
-def run_scenario(scenario: Scenario, external: bool = False) -> ScenarioResult:
+def run_scenario(scenario: Scenario, external: bool = False, status: bool = True) -> ScenarioResult:
     """`external=True` runs the same scenario against the reference
     external controller across Modbus (Phase 7 step 3b,
     services/testing/external.py): the rig's `line` is then a RemoteLine,
     so every command below goes out as a latched HMI request and every
     controller field the scenario reads comes back from the published
-    status registers. Nothing else in this runner changes."""
+    status registers. Nothing else in this runner changes.
+
+    `status=False` withholds the controller's status (vocabulary.
+    StatusWithheld): the scenario is judged on field evidence alone, as
+    against a controller that publishes no status block -- deterministic,
+    in lockstep, for the suite and the review gate."""
     if external:
         from services.testing.external import build_external_rig  # protocols only when asked for
 
@@ -134,7 +146,9 @@ def run_scenario(scenario: Scenario, external: bool = False) -> ScenarioResult:
     else:
         rig = build_rig()
     try:
-        telemetry = _Telemetry(EventLog(rig.line), TagHistory(rig.io))
+        if not status:
+            rig.line = StatusWithheld(rig.line)
+        telemetry = _Telemetry(EventLog(rig.line, controller_state=status), TagHistory(rig.io))
         return execute(rig, scenario, lambda: _tick(rig, telemetry), Invariants(rig), telemetry)
     finally:
         if external:

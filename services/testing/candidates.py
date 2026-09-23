@@ -44,7 +44,7 @@ from services.testing.report import INTERLOCKS
 from services.testing.rig import DT
 from services.testing.runner import ScenarioResult, run_scenario
 from services.testing.scenario import Scenario, ScenarioLoadError
-from services.testing.vocabulary import APPLY_ACTIONS, READ_FIELDS
+from services.testing.vocabulary import APPLY_ACTIONS, CONTROLLER_FIELDS, READ_FIELDS
 
 ERROR, WARNING, JUDGMENT, OK = "error", "warning", "judgment", "ok"
 LINE_STATES = {"idle", "running"}
@@ -179,7 +179,34 @@ def review(path: Path, existing: list[Scenario]) -> Review:
             r.add("margin", WARNING, f"passes with only {margin:.2f} s to spare -- brittle to any timing change")
         else:
             r.add("margin", OK, f"{margin:.2f} s of margin under the {scenario.within_s:g} s limit")
+        _field_check(r, scenario)
     return r
+
+
+def _field_check(r: Review, scenario: Scenario) -> None:
+    """What the scenario proves from field evidence alone -- against a
+    controller that publishes no status block (runner status=False). Not
+    an error to prove nothing there (a refused command changes nothing in
+    the field), but a partly field-observable scenario must still depend
+    on its stimulus in field terms, or a status-less run would pass it
+    vacuously."""
+    blind = run_scenario(scenario, status=False)
+    stages = scenario.stages
+    total = sum(len(st.expect) for st in stages)
+    field = sum(1 for st in stages for k in st.expect if k not in CONTROLLER_FIELDS)
+    if blind.not_observable:
+        r.add("field", OK, f"{field}/{total} expectation(s) field-observable; without a status block it is "
+                           "not observable (a stage asserts only controller state)")
+        return
+    if not blind.passed:
+        r.add("field", WARNING, f"fails on field evidence alone, though it passes with the status block: {blind.detail}")
+        return
+    if scenario.when and run_scenario(dataclasses.replace(scenario, when={}), status=False).passed:
+        r.add("field", WARNING, "its field-observable expectations hold without the stimulus -- against a controller "
+                                "without a status block it would pass vacuously")
+    else:
+        r.add("field", OK, f"{field}/{total} expectation(s) field-observable, and on field evidence alone it still "
+                           "fails without its stimulus")
 
 
 def render_markdown(reviews: list[Review], root: Path | None = None) -> str:

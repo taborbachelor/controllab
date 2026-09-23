@@ -21,14 +21,14 @@ The controller ran free on its own clock against the plant paced at real time (1
 | ✅ PASS | Belt Slip Stops The Feeder And Faults The Line | 0.30 s | 0.50 s | 0.20 s | `faults/belt_slip_stops_feeder.yaml` |
 | ✅ PASS | Start Refused When Bin Low | 0.20 s | 0.30 s | 0.10 s | `faults/bin_low_blocks_start.yaml` |
 | ✅ PASS | Bin Low While Running Raises A Warning, Not A Trip | 0.30 s | 0.50 s | 0.20 s | `faults/bin_low_while_running_warns_only.yaml` |
-| ✅ PASS | Conveyor Fails To Prove Running | 1.20 s | 3.00 s | 1.80 s | `faults/conveyor_fail_to_start.yaml` |
+| ✅ PASS | Conveyor Fails To Prove Running | 0.20 s | 0.50 s | 0.30 s | `faults/conveyor_fail_to_start.yaml` |
 | ✅ PASS | Conveyor Trip While Running Faults The Line | 0.30 s | 0.50 s | 0.20 s | `faults/conveyor_trip_while_running.yaml` |
-| ✅ PASS | Feeder Fails To Prove Running | 2.60 s | 5.00 s | 2.40 s | `faults/feeder_fail_to_start.yaml` |
+| ✅ PASS | Feeder Fails To Prove Running | 1.60 s | 3.00 s | 1.40 s | `faults/feeder_fail_to_start.yaml` |
 | ✅ PASS | Feeder Jam Recovery -- Reset Refused Until The Jam Is Cleared | 0.70 s | 1.00 s | 0.30 s | `faults/feeder_jam_recovery.yaml` |
 | ✅ PASS | Feeder Jam Is Detected By The Plug Switch And Faults The Line | 0.10 s | 0.20 s | 0.10 s | `faults/feeder_jam_trips_running.yaml` |
 | ✅ PASS | Feeder Trip Recovery -- Reset Refused Until The Drive Is Reset | 0.30 s | 0.50 s | 0.20 s | `faults/feeder_trip_recovery.yaml` |
 | ✅ PASS | Feeder Trip While Running Faults The Line | 0.30 s | 0.50 s | 0.20 s | `faults/feeder_trip_while_running.yaml` |
-| ✅ PASS | Gate Fails To Prove Open | 2.50 s | 5.00 s | 2.50 s | `faults/gate_travel_timeout.yaml` |
+| ✅ PASS | Gate Fails To Prove Open | 0.50 s | 1.00 s | 0.50 s | `faults/gate_travel_timeout.yaml` |
 | ✅ PASS | Start Refused When Hopper High-High | 0.20 s | 0.30 s | 0.10 s | `faults/hopper_high_high_blocks_start.yaml` |
 | ✅ PASS | Hopper High-High Faults The Line While Running | 0.30 s | 0.50 s | 0.20 s | `faults/hopper_high_high_trips_running.yaml` |
 | ✅ PASS | Start Refused While The Hopper Weight Signal Is Failed | 0.20 s | 0.30 s | 0.10 s | `faults/hopper_weight_failure_blocks_start.yaml` |
@@ -39,7 +39,7 @@ The controller ran free on its own clock against the plant paced at real time (1
 | ✅ PASS | Start Blocked While E-stop Tripped | 0.20 s | 0.30 s | 0.10 s | `safety/estop_blocks_start.yaml` |
 | ✅ PASS | Conveyor Emergency Stop | 0.30 s | 0.50 s | 0.20 s | `safety/estop_from_running.yaml` |
 | ✅ PASS | Normal Stop Returns To Idle | 2.20 s | 3.00 s | 0.80 s | `shutdown/normal_stop.yaml` |
-| ✅ PASS | Normal Start Reaches Running | 1.90 s | 3.00 s | 1.10 s | `startup/normal_start.yaml` |
+| ✅ PASS | Normal Start Reaches Running | 2.00 s | 3.00 s | 1.00 s | `startup/normal_start.yaml` |
 
 ## Response time across 3 passes
 
@@ -48,14 +48,14 @@ The controller ran free on its own clock against the plant paced at real time (1
 | Belt Slip Stops The Feeder And Faults The Line | 3/3 | 0.30 s | 0.30 s | 0.30, 0.30, 0.30 |
 | Start Refused When Bin Low | 3/3 | 0.20 s | 0.20 s | 0.20, 0.20, 0.20 |
 | Bin Low While Running Raises A Warning, Not A Trip | 3/3 | 0.30 s | 0.30 s | 0.30, 0.30, 0.30 |
-| Conveyor Fails To Prove Running | 3/3 | 1.10 s | 1.20 s | 1.20, 1.20, 1.10 |
+| Conveyor Fails To Prove Running | 3/3 | 0.20 s | 0.20 s | 0.20, 0.20, 0.20 |
 | Conveyor Trip While Running Faults The Line | 3/3 | 0.30 s | 0.30 s | 0.30, 0.30, 0.30 |
-| Feeder Fails To Prove Running | 3/3 | 2.50 s | 2.60 s | 2.50, 2.60, 2.60 |
+| Feeder Fails To Prove Running | 3/3 | 1.60 s | 1.60 s | 1.60, 1.60, 1.60 |
 | Feeder Jam Recovery -- Reset Refused Until The Jam Is Cleared | 3/3 | 0.70 s | 0.70 s | 0.70, 0.70, 0.70 |
 | Feeder Jam Is Detected By The Plug Switch And Faults The Line | 3/3 | 0.10 s | 0.10 s | 0.10, 0.10, 0.10 |
 | Feeder Trip Recovery -- Reset Refused Until The Drive Is Reset | 3/3 | 0.30 s | 0.30 s | 0.30, 0.30, 0.30 |
 | Feeder Trip While Running Faults The Line | 3/3 | 0.30 s | 0.30 s | 0.30, 0.30, 0.30 |
-| Gate Fails To Prove Open | 3/3 | 2.50 s | 2.50 s | 2.50, 2.50, 2.50 |
+| Gate Fails To Prove Open | 3/3 | 0.50 s | 0.50 s | 0.50, 0.50, 0.50 |
 | Start Refused When Hopper High-High | 3/3 | 0.20 s | 0.20 s | 0.20, 0.20, 0.20 |
 | Hopper High-High Faults The Line While Running | 3/3 | 0.30 s | 0.30 s | 0.30, 0.30, 0.30 |
 | Start Refused While The Hopper Weight Signal Is Failed | 3/3 | 0.20 s | 0.20 s | 0.20, 0.20, 0.20 |
@@ -66,7 +66,7 @@ The controller ran free on its own clock against the plant paced at real time (1
 | Start Blocked While E-stop Tripped | 3/3 | 0.20 s | 0.20 s | 0.20, 0.20, 0.20 |
 | Conveyor Emergency Stop | 3/3 | 0.30 s | 0.30 s | 0.30, 0.30, 0.30 |
 | Normal Stop Returns To Idle | 3/3 | 2.20 s | 2.20 s | 2.20, 2.20, 2.20 |
-| Normal Start Reaches Running | 3/3 | 1.90 s | 1.90 s | 1.90, 1.90, 1.90 |
+| Normal Start Reaches Running | 3/3 | 1.90 s | 2.00 s | 1.90, 2.00, 1.90 |
 
 ## Interlock coverage (docs/CONTROL-LAB.md §6.3)
 
@@ -95,9 +95,9 @@ What each scenario actually did, from its telemetry record. **setup** events com
 |---:|---|---|
 | 1.40 | setup | Operator command: **start** |
 | 1.50 | setup | Line state idle → **starting** |
-| 3.30 | setup | Line state starting → **running** |
-| 4.10 | response | Line state running → **faulted** (conveyor lost confirmation) |
-| 4.10 | response | Alarm **ZSS-104.LOST** active — Conveyor motion loss (belt slip) · **first-out** |
+| 3.20 | setup | Line state starting → **running** |
+| 4.00 | response | Line state running → **faulted** (conveyor lost confirmation) |
+| 4.00 | response | Alarm **ZSS-104.LOST** active — Conveyor motion loss (belt slip) · **first-out** |
 
 ### Start Refused When Bin Low — PASS
 
@@ -123,6 +123,8 @@ What each scenario actually did, from its telemetry record. **setup** events com
 
 `faults/conveyor_fail_to_start.yaml`
 
+Stages: 1: 0.20 s / 0.50 s · 2: 1.00 s / 3.00 s
+
 | t (s) | Phase | Event |
 |---:|---|---|
 | 1.90 | response | Operator command: **start** |
@@ -138,13 +140,15 @@ What each scenario actually did, from its telemetry record. **setup** events com
 |---:|---|---|
 | 1.40 | setup | Operator command: **start** |
 | 1.50 | setup | Line state idle → **starting** |
-| 3.30 | setup | Line state starting → **running** |
-| 4.10 | response | Line state running → **faulted** (conveyor trip) |
-| 4.10 | response | Alarm **M-104.OL** active — Conveyor trip (overload) · **first-out** |
+| 3.20 | setup | Line state starting → **running** |
+| 4.00 | response | Line state running → **faulted** (conveyor trip) |
+| 4.00 | response | Alarm **M-104.OL** active — Conveyor trip (overload) · **first-out** |
 
 ### Feeder Fails To Prove Running — PASS
 
 `faults/feeder_fail_to_start.yaml`
+
+Stages: 1: 1.60 s / 3.00 s · 2: 1.00 s / 5.00 s
 
 | t (s) | Phase | Event |
 |---:|---|---|
@@ -157,7 +161,7 @@ What each scenario actually did, from its telemetry record. **setup** events com
 
 `faults/feeder_jam_recovery.yaml`
 
-Stages: 1: 0.70 s / 1.00 s · 2: 0.20 s / 1.00 s · 3: 0.40 s / 1.00 s · 4: 0.20 s / 1.00 s · 5: 1.90 s / 3.00 s
+Stages: 1: 0.70 s / 1.00 s · 2: 0.30 s / 1.00 s · 3: 0.30 s / 1.00 s · 4: 0.20 s / 1.00 s · 5: 2.00 s / 3.00 s
 
 | t (s) | Phase | Event |
 |---:|---|---|
@@ -168,13 +172,13 @@ Stages: 1: 0.70 s / 1.00 s · 2: 0.20 s / 1.00 s · 3: 0.40 s / 1.00 s · 4: 0.2
 | 4.50 | response | Alarm **LSH-103.JAM** active — Feeder jam (discharge chute plugged) · **first-out** |
 | 4.60 | response | Operator command: **acknowledge** |
 | 4.60 | response | Operator command: **reset** |
-| 4.70 | response | Alarm LSH-103.JAM acknowledged |
+| 4.80 | response | Alarm LSH-103.JAM acknowledged |
 | 5.10 | response | Alarm LSH-103.JAM cleared |
 | 5.20 | response | Operator command: **reset** |
 | 5.30 | response | Line state faulted → **idle** |
 | 5.40 | response | Operator command: **start** |
 | 5.50 | response | Line state idle → **starting** |
-| 7.20 | response | Line state starting → **running** |
+| 7.30 | response | Line state starting → **running** |
 
 ### Feeder Jam Is Detected By The Plug Switch And Faults The Line — PASS
 
@@ -194,7 +198,7 @@ Stages: 1: 0.10 s / 0.20 s · 2: 0.60 s / 1.00 s
 
 `faults/feeder_trip_recovery.yaml`
 
-Stages: 1: 0.30 s / 0.50 s · 2: 0.20 s / 1.00 s · 3: 0.40 s / 1.00 s · 4: 0.20 s / 1.00 s · 5: 2.00 s / 3.00 s
+Stages: 1: 0.30 s / 0.50 s · 2: 0.20 s / 1.00 s · 3: 0.20 s / 1.00 s · 4: 0.30 s / 1.00 s · 5: 1.90 s / 3.00 s
 
 | t (s) | Phase | Event |
 |---:|---|---|
@@ -206,12 +210,12 @@ Stages: 1: 0.30 s / 0.50 s · 2: 0.20 s / 1.00 s · 3: 0.40 s / 1.00 s · 4: 0.2
 | 4.10 | response | Operator command: **acknowledge** |
 | 4.10 | response | Operator command: **reset** |
 | 4.20 | response | Alarm M-103.FAULT acknowledged |
-| 4.60 | response | Alarm M-103.FAULT cleared |
-| 4.70 | response | Operator command: **reset** |
-| 4.80 | response | Line state faulted → **idle** |
-| 4.90 | response | Operator command: **start** |
-| 5.00 | response | Line state idle → **starting** |
-| 6.80 | response | Line state starting → **running** |
+| 4.40 | response | Alarm M-103.FAULT cleared |
+| 4.50 | response | Operator command: **reset** |
+| 4.70 | response | Line state faulted → **idle** |
+| 4.80 | response | Operator command: **start** |
+| 4.90 | response | Line state idle → **starting** |
+| 6.60 | response | Line state starting → **running** |
 
 ### Feeder Trip While Running Faults The Line — PASS
 
@@ -229,12 +233,14 @@ Stages: 1: 0.30 s / 0.50 s · 2: 0.20 s / 1.00 s · 3: 0.40 s / 1.00 s · 4: 0.2
 
 `faults/gate_travel_timeout.yaml`
 
+Stages: 1: 0.50 s / 1.00 s · 2: 1.90 s / 5.00 s
+
 | t (s) | Phase | Event |
 |---:|---|---|
 | 1.90 | response | Operator command: **start** |
 | 2.00 | response | Line state idle → **starting** |
-| 4.30 | response | Line state starting → **faulted** (gate failed to prove open) |
-| 4.30 | response | Alarm **XV-102.TRAVEL_FAULT** active — Gate travel fault · **first-out** |
+| 4.20 | response | Line state starting → **faulted** (gate failed to prove open) |
+| 4.20 | response | Alarm **XV-102.TRAVEL_FAULT** active — Gate travel fault · **first-out** |
 
 ### Start Refused When Hopper High-High — PASS
 
@@ -270,7 +276,7 @@ Stages: 1: 0.30 s / 0.50 s · 2: 0.20 s / 1.00 s · 3: 0.40 s / 1.00 s · 4: 0.2
 
 `faults/hopper_weight_failure_recovery.yaml`
 
-Stages: 1: 0.30 s / 0.50 s · 2: 0.20 s / 1.00 s · 3: 0.30 s / 1.00 s · 4: 0.20 s / 1.00 s · 5: 1.90 s / 3.00 s
+Stages: 1: 0.30 s / 0.50 s · 2: 0.20 s / 1.00 s · 3: 0.30 s / 1.00 s · 4: 0.20 s / 1.00 s · 5: 2.00 s / 3.00 s
 
 | t (s) | Phase | Event |
 |---:|---|---|
@@ -286,8 +292,8 @@ Stages: 1: 0.30 s / 0.50 s · 2: 0.20 s / 1.00 s · 3: 0.30 s / 1.00 s · 4: 0.2
 | 4.70 | response | Operator command: **reset** |
 | 4.80 | response | Line state faulted → **idle** |
 | 4.90 | response | Operator command: **start** |
-| 5.00 | response | Line state idle → **starting** |
-| 6.70 | response | Line state starting → **running** |
+| 5.10 | response | Line state idle → **starting** |
+| 6.80 | response | Line state starting → **running** |
 
 ### Hopper Weight Transmitter Failure Trips A Running Line — PASS
 
@@ -297,9 +303,9 @@ Stages: 1: 0.30 s / 0.50 s · 2: 0.20 s / 1.00 s · 3: 0.30 s / 1.00 s · 4: 0.2
 |---:|---|---|
 | 1.40 | setup | Operator command: **start** |
 | 1.50 | setup | Line state idle → **starting** |
-| 3.30 | setup | Line state starting → **running** |
-| 4.10 | response | Line state running → **faulted** (hopper weight signal failed) |
-| 4.10 | response | Alarm **WT-105.FAIL** active — Hopper weight transmitter failed · **first-out** |
+| 3.20 | setup | Line state starting → **running** |
+| 4.00 | response | Line state running → **faulted** (hopper weight signal failed) |
+| 4.00 | response | Alarm **WT-105.FAIL** active — Hopper weight transmitter failed · **first-out** |
 
 ### Stuck Hopper Weight Transmitter -- The Independent High-High Switch Still Trips — PASS
 
@@ -340,9 +346,9 @@ Stages: 1: 0.30 s / 0.50 s · 2: 0.20 s / 1.00 s · 3: 0.30 s / 1.00 s · 4: 0.2
 |---:|---|---|
 | 1.40 | setup | Operator command: **start** |
 | 1.50 | setup | Line state idle → **starting** |
-| 3.30 | setup | Line state starting → **running** |
-| 4.10 | response | Line state running → **estopped** (e-stop) |
-| 4.10 | response | Alarm **ES-001.TRIP** active — E-stop tripped · **first-out** |
+| 3.20 | setup | Line state starting → **running** |
+| 4.00 | response | Line state running → **estopped** (e-stop) |
+| 4.00 | response | Alarm **ES-001.TRIP** active — E-stop tripped · **first-out** |
 
 ### Normal Stop Returns To Idle — PASS
 
@@ -365,4 +371,4 @@ Stages: 1: 0.30 s / 0.50 s · 2: 0.20 s / 1.00 s · 3: 0.30 s / 1.00 s · 4: 0.2
 |---:|---|---|
 | 1.90 | response | Operator command: **start** |
 | 2.00 | response | Line state idle → **starting** |
-| 3.70 | response | Line state starting → **running** |
+| 3.80 | response | Line state starting → **running** |

@@ -31,6 +31,37 @@ class ScenarioError(Exception):
     runtime error partway through a run."""
 
 
+class StatusWithheld:
+    """A controller seen WITHOUT its status block: commands and scans pass
+    through, every state read raises NotObservable. What
+    run_scenario(status=False) runs, so the suite and the review gate can
+    ask, deterministically, what a scenario proves from field evidence
+    alone -- the same view the real-time runner has of a controller that
+    publishes no status (Phase 9 step 3)."""
+
+    def __init__(self, line) -> None:
+        self._line = line
+
+    def __getattr__(self, name):  # start/stop/reset/acknowledge/scan
+        return getattr(self._line, name)
+
+    @property
+    def command_sink(self):
+        return self._line.command_sink
+
+    @command_sink.setter
+    def command_sink(self, sink) -> None:
+        self._line.command_sink = sink
+
+    def _withheld(self):
+        raise NotObservable("the controller's status block is withheld")
+
+    state = property(_withheld)
+    fault_reason = property(_withheld)
+    alarms = property(_withheld)
+    start_inhibit = property(_withheld)
+
+
 class NotObservable(Exception):
     """The field exists, but this controller doesn't publish it (Phase 9
     step 3): an external controller without ControlLab's status block
@@ -179,6 +210,14 @@ READ_FIELDS: dict[str, Callable[[Rig], object]] = {
     "fault_reason": lambda rig: rig.line.fault_reason,
     "conveyor_running": lambda rig: rig.plant.conveyor.motor.running,
     "feeder_running": lambda rig: rig.plant.feeder.motor.running,
+    # What the controller is COMMANDING the field to do: its output coils,
+    # which ControlLab sees whether or not the controller publishes any
+    # status. The command, not the device's response -- a trip drops the
+    # command in the same scan, while the gate takes its travel time to
+    # close -- so these show a controller's decision in field terms.
+    "feeder_run_commanded": lambda rig: rig.io.read("M-103.RUN"),
+    "conveyor_run_commanded": lambda rig: rig.io.read("M-104.RUN"),
+    "gate_open_commanded": lambda rig: rig.io.read("XV-102.CMD_OPEN"),
     # Material actually leaving the feeder (field truth). With feeder_running
     # it tells a jam (running, not flowing) apart from a stopped feeder.
     "feeder_flowing": lambda rig: rig.plant.feeder.current_rate_kg_s() > 0,

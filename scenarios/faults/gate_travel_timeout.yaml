@@ -1,5 +1,9 @@
 name: Gate Fails To Prove Open
 
+# Two stages, because the field evidence of this fault is a sequence: the start sequence reaches the gate (conveyor proven) and commands it open,
+# then -- once it never proves -- every output is dropped. The final field
+# state alone (everything off) would look exactly like a start never pressed.
+
 given:
   line_state: idle
 
@@ -8,10 +12,19 @@ when:
   start: true
 
 expect:
-  line_state: faulted
-  fault_reason: "gate failed to prove open"
+  gate_open_commanded: true
 
 within:
-  seconds: 5.0
+  seconds: 1.0
+
+then:
+  - expect:
+      line_state: faulted
+      fault_reason: "gate failed to prove open"
+      feeder_run_commanded: false
+      conveyor_run_commanded: false
+      gate_open_commanded: false
+    within:
+      seconds: 5.0
 
 interlock: "Gate travel timeout"

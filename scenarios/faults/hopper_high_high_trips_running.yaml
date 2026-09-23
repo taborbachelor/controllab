@@ -11,6 +11,9 @@ expect:
   fault_reason: "hopper high-high"
   feeder_running: false
   gate_open: false
+  feeder_run_commanded: false
+  conveyor_run_commanded: false
+  gate_open_commanded: false
 
 within:
   seconds: 0.5
