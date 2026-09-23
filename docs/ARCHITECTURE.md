@@ -338,8 +338,9 @@ issue and propose the change"):
   observes a moment that exists only in this function's call order, not
   one the real system passes through. Found by the first scenario ever
   run against this code, not designed in up front. The second subtlety,
-  found by the first Phase 3 *step 2* scenario: `given` gets one settle
-  tick before `when` is applied; `when` doesn't get one before the
+  found by the first Phase 3 *step 2* scenario: `given` gets settle
+  ticks before `when` is applied (one originally, two since the Phase 5
+  fix below: `runner.SETTLE_TICKS`); `when` doesn't get one before the
   polling loop starts. A precondition belongs in `given` for exactly
   this reason — see `scenario.py`'s docstring for the full given-vs-when
   contract, and `Invariants.rebaseline()` for the matching conservation
@@ -598,14 +599,17 @@ issue and propose the change"):
   of behavior change, and the git commit is its provenance.
   Events are labeled *setup* (at or before `when_applied_t`) or
   *response* (after it).
-- **Known quirk the report makes visible:** a `given` precondition is
-  published to the I/O image by the settle tick, but Control only scans
-  it on the next tick, which is the tick that consumes `when`. So
-  precondition alarms appear as *response* events. Every scenario still
-  proves what it claims (alarms are scanned before the state machine
-  within one scan). Changing it means changing tested runner timing,
-  so it's recorded in `CONTROL-LAB.md` §10 as an open decision, not
-  changed.
+- **`runner.SETTLE_TICKS = 2`** — fixed after the report exposed it.
+  Inside `tick()`, Control scans *before* the plant publishes inputs.
+  So a `given` precondition written into the plant is published to the
+  I/O image on settle tick 1, and Control scans it on tick 2. With one
+  settle tick, `given` was settled in the I/O image but not in
+  Control's own state, and precondition alarms first activated on the
+  scan that consumed `when`, which put them in the report as
+  *response* events. Two ticks is derived from that scan order, not
+  tuned. Response times are unchanged because they're measured from
+  `when`. Pinned by
+  `test_a_given_precondition_is_seen_by_control_before_when_is_applied`.
 
 ## Roadmap (current phase status)
 

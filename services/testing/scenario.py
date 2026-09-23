@@ -21,8 +21,8 @@ this scenario covers, for the coverage report.
 
 **`given` is preconditions, `when` is the triggering stimulus — this
 distinction is load-bearing, not stylistic.** The runner (runner.py)
-gives `given`'s effects one full tick to settle and publish through the
-I/O image before `when` is ever applied; `when`'s effects get no such
+settles `given` (runner.SETTLE_TICKS: published through the I/O image
+and then scanned by Control) before `when` is ever applied; `when`'s effects get no such
 grace before the polling loop begins checking `expect`. A field like
 `hopper_level_pct` used to model "the hopper is already high before the
 operator does anything" belongs in `given`; used to model "the level

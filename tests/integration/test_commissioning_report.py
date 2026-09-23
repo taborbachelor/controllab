@@ -43,3 +43,17 @@ def test_the_report_covers_every_scenario_and_passes_today():
     assert "**Overall: PASS**" in md
     for scenario, _ in results:
         assert f"### {scenario.name} — PASS" in md
+
+
+def test_a_given_precondition_is_seen_by_control_before_when_is_applied():
+    """runner.SETTLE_TICKS: a precondition must be in Control's own state
+    (here, a latched alarm) during setup, not first appear on the same
+    scan that consumes `when`. With a single settle tick this alarm was
+    logged as a response event at the tick of the start command."""
+    scenario = Scenario.load(SCENARIOS_DIR / "faults" / "hopper_high_high_blocks_start.yaml")
+    result = run_scenario(scenario)
+    assert result.passed
+
+    activated = [e for e in result.events if e.type == "alarm_activated"]
+    assert [e.data["alarm_id"] for e in activated] == ["WT-105.HIGH_HIGH"]
+    assert activated[0].t <= result.when_applied_t

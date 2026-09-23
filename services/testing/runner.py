@@ -27,7 +27,7 @@ against the pristine starting mass would flag every such scenario as
 
 Every run also records telemetry (Phase 5 step 4): an EventLog with the
 line's command sink attached, sampled after every tick this runner
-drives -- given's run-up, the settle tick, and the polling loop alike.
+drives -- given's run-up, the settle ticks, and the polling loop alike.
 Always on, not opt-in: it's in-memory, cheap, and changes nothing about
 the run (tests/integration/test_event_log.py proves the sink leaves
 Control's behavior identical). The commissioning report reads exactly
@@ -51,6 +51,17 @@ from services.testing.vocabulary import ScenarioError, apply_field, read_field, 
 # a healthy line can't reach RUNNING this fast, the rig itself is
 # misconfigured; this is not a timing assertion under test.
 MAX_GIVEN_RUNUP_S = 30.0
+
+# Ticks given's effects get before `when` is applied. Two, not one,
+# because of the scan order inside tick() (rig.py): Control scans FIRST,
+# then the plant publishes its inputs. A precondition written into the
+# plant (e.g. hopper_level_pct) is published to the I/O image by tick 1,
+# but Control only scans that published value on tick 2. With one tick,
+# `given` was settled in the I/O image but not in Control's own state:
+# a precondition alarm first activated on the same scan that consumed
+# `when` (found via the Phase 5 commissioning report -- see
+# docs/CONTROL-LAB.md §10).
+SETTLE_TICKS = 2
 
 
 @dataclass
@@ -87,15 +98,16 @@ def _tick(rig: Rig, event_log: EventLog) -> None:
 
 def _run_from_given(rig: Rig, scenario: Scenario, invariants: Invariants, event_log: EventLog) -> ScenarioResult:
 
-    # Settle: one tick so given's effects (e.g. a direct level write)
-    # are fully published through the I/O image before `when` is
-    # applied and before anything polls for it -- same reasoning as the
-    # tick-before-check rule below, one level up.
-    _tick(rig, event_log)
-    try:
-        invariants.check()
-    except InvariantViolation as e:
-        return ScenarioResult(scenario, False, DT, f"invariant violated settling given: {e}")
+    # Settle: SETTLE_TICKS so given's effects (e.g. a direct level
+    # write) are published through the I/O image AND scanned by Control
+    # before `when` is applied -- same reasoning as the tick-before-check
+    # rule below, one level up.
+    for i in range(1, SETTLE_TICKS + 1):
+        _tick(rig, event_log)
+        try:
+            invariants.check()
+        except InvariantViolation as e:
+            return ScenarioResult(scenario, False, i * DT, f"invariant violated settling given: {e}")
 
     try:
         _apply_when(rig, scenario)
