@@ -57,8 +57,15 @@ class Invariants:
         appeared from nowhere." The runner calls this once after each
         setup phase (given, then when) completes, so conservation is
         checked against "as configured for this scenario," not "as
-        originally built" -- see runner.py."""
-        self.starting_mass_kg = self.rig.plant.total_mass_kg()
+        originally built" -- see runner.py.
+
+        The baseline is the ACCOUNTED total (in the system plus spilled plus
+        discharged), the same quantity check() compares against. It was once
+        total_mass_kg() alone, which silently dropped anything already
+        spilled: found on OpenPLC, where real I/O latency lets the feeder
+        spill a scan's worth onto a just-tripped belt before a later stage's
+        rebaseline (tests/unit/test_invariants.py)."""
+        self.starting_mass_kg = self.rig.plant.accounted_mass_kg()
 
     def check(self) -> None:
         self._check_material_conserved()

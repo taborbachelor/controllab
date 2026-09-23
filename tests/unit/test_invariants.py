@@ -126,3 +126,23 @@ def test_feeder_unconfirmed_grace_is_configurable_for_real_io_latency():
         inv.check()  # ticks 1-3: inside the allowance
     with pytest.raises(InvariantViolation, match="more than 3 scans"):
         inv.check()
+
+
+def test_rebaselining_after_a_spill_keeps_the_spill_accounted_for():
+    """Found running the conveyor-trip recovery scenario on OpenPLC: after the
+    trip, the feeder ran one more real-time scan and spilled 0.5 kg onto the
+    stopped belt (physically genuine, inside the stated latency allowance).
+    The next stage's rebaseline then set the baseline to the material still
+    IN the system, while the check counts material that has left it too, so
+    the already-spilled 0.5 kg read as a conservation failure. The baseline
+    must be the accounted total."""
+    from services.testing.invariants import Invariants
+    from services.testing.rig import build_rig
+
+    rig = build_rig()
+    inv = Invariants(rig)
+    rig.plant.bin.level_kg -= 0.5  # half a kilogram leaves the bin...
+    rig.plant.spilled_kg += 0.5  # ...and lands on the floor
+    inv.check()  # conserved: it's accounted as spilled
+    inv.rebaseline()  # a later stage's setup
+    inv.check()  # still conserved: the spill didn't vanish from the books
