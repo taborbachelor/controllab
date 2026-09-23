@@ -43,7 +43,7 @@ list then enables it, and *Compare runtimes* includes it. Start the dashboard
 
 Point at the three layers of the page:
 
-- **The header** says what it is.
+- **The three numbered boxes** at the top say what it is, in three steps.
 - **The picture** is the plant: bin → gate → feeder → conveyor → hopper,
   with its switches and weigh-scale. Hover anything to see what it is.
 - **Scenarios** (on the right) are the tests. **Engineer tools** (collapsed)
@@ -141,7 +141,7 @@ From a terminal, run `controllab test --runtime openplc feeder_jam_recovery`.
 
 ## 6. A regression gets caught (2 minutes)
 
-Pick **Controller build → Deliberate regression: Reset is accepted while the
+Pick **Controller code → Deliberately broken: Reset is accepted while the
 discharge chute is still plugged**. On **Feeder jam recovery**, click
 **Run & verify**.
 
@@ -167,7 +167,7 @@ controllab test --list-regressions
 controllab test                          # production build: everything passes
 ```
 
-Set *Controller build* back to *Correct build* and rerun: PASS.
+Set *Controller code* back to *Production controller* and rerun: PASS.
 
 The regressions are testing fixtures
 ([`services/testing/regressions.py`](../services/testing/regressions.py)).

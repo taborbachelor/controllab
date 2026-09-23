@@ -19,13 +19,18 @@
 <div id="violation" class="banner" role="alert"></div>
 <header class="page-intro">
   <div class="titlebar"><h1>ControlLab</h1>
-  <span class="meta">Virtual Commissioning &amp; Controls Validation</span></div>
-  <p class="intro">Validate industrial control logic against a deterministic virtual plant. Run repeatable
-    scenarios, inject faults, and verify safe recovery. The same scenario files run against the Python controller,
-    the same controller over Modbus, and a real PLC runtime (OpenPLC). The question it answers:
-    <strong>can we change this control software without breaking the machine?</strong></p>
+  <span class="meta">Automated commissioning tests for industrial control logic, against a simulated line.
+    The question it answers: <strong>can we change control software without breaking the machine?</strong></span></div>
+  <ol class="orient" aria-label="What you're looking at">
+    <li><strong>The line</strong> (left) is simulated: bin → gate → feeder → conveyor → hopper, with the motors,
+      switches and weigh-scale a real one has. Its control program sees only that I/O, as a PLC would.</li>
+    <li><strong>Scenarios</strong> (right) are the tests. Press <em>Run &amp; verify</em>: the test operates the line,
+      injects its fault, and checks the controller's response stage by stage against time limits.</li>
+    <li><strong>Or drive it yourself:</strong> Start/Stop below, a guided walkthrough, or <em>Engineer tools</em> to
+      break it on purpose. The status card always says what's happening, and why.</li>
+  </ol>
   <details class="intro-more">
-    <summary>What am I looking at?</summary>
+    <summary>Guide to every panel</summary>
     <ul>
       <li><strong>The plant</strong> (the picture) is a simulated bulk-material line: a storage bin, a gate, a feeder, a
         conveyor and a hopper, with the motors, limit switches, level switches and weigh-scale a real one has. A control
@@ -37,7 +42,7 @@
       <li><strong>Control runtime</strong> picks what runs the plant: the Python controller, the same controller as
         a separate program reached only over Modbus, or OpenPLC running a Structured Text port. The scenario never
         changes. <em>Compare runtimes</em> runs one scenario on each and says how they compared.</li>
-      <li><strong>Controller build</strong> can swap in a deliberately broken controller (a testing fixture, never the
+      <li><strong>Controller code</strong> can swap in a deliberately broken controller (a testing fixture, never the
         production code) to show a regression being caught.</li>
       <li><strong>What's happening</strong> narrates the line in plain words. <strong>Guided walkthroughs</strong> let
         you operate it by hand, step by step. <strong>Engineer tools</strong> break the plant manually.</li>
@@ -86,7 +91,7 @@
       <div id="latest"></div>
       <div class="scen-opts">
         <label for="runtime">Control runtime</label><select id="runtime"></select>
-        <label for="build">Controller build</label><select id="build"></select>
+        <label for="build">Controller code</label><select id="build"></select>
       </div>
       <p class="note" id="runtime-note"></p>
       <div id="scenarios"></div>
@@ -201,8 +206,8 @@ $("scenarios").innerHTML = CFG.showcase.map((c) =>
   "</div></div>").join("");
 $("all-note").innerHTML = `These are ${CFG.showcase.length} of the ${CFG.scenario_count} scenarios; all of them run from the ` +
   "command line with <code>controllab test</code>.";
-$("build").innerHTML = '<option value="">Correct build (production controller)</option>' + CFG.regressions.map((r) =>
-  `<option value="${r.name}">Deliberate regression: ${esc(r.change)}</option>`).join("");
+$("build").innerHTML = '<option value="">Production controller</option>' + CFG.regressions.map((r) =>
+  `<option value="${r.name}">Deliberately broken: ${esc(r.change)}</option>`).join("");
 $("runtime").addEventListener("change", updateOpts);
 $("build").addEventListener("change", updateOpts);
 function updateOpts() {
@@ -210,7 +215,7 @@ function updateOpts() {
   if (rt !== "python" && $("build").value) $("build").value = "";
   $("build").disabled = rt !== "python";
   const r = CFG.regressions.find((x) => x.name === $("build").value);
-  $("runtime-note").textContent = (RT_NOTE[rt] || "") + (r ? ` Controller build: a deliberately broken testing fixture ` +
+  $("runtime-note").textContent = (RT_NOTE[rt] || "") + (r ? ` Controller code: a deliberately broken testing fixture ` +
     `(services/testing/regressions.py), never the production code. Try it on ${r.demo_scenario}.` : "");
 }
 let runtimesKey = "";

@@ -95,6 +95,14 @@
   header.page-intro { display: block; }
   header.page-intro .titlebar { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; margin-bottom: 6px; }
   header.page-intro .intro-more { margin-top: 6px; }
+  .orient { list-style: none; counter-reset: o; margin: 8px 0 0; padding: 0; display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  @media (max-width: 1000px) { .orient { grid-template-columns: minmax(0, 1fr); } }
+  .orient li { counter-increment: o; position: relative; padding: 8px 10px 8px 40px; font-size: 13px; line-height: 1.45;
+               background: var(--hollow); border: 1px solid var(--grid); border-radius: 6px; }
+  .orient li::before { content: counter(o); position: absolute; left: 10px; top: 8px; width: 22px; height: 22px;
+                       border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; font-size: 12px;
+                       display: grid; place-items: center; }
   #tour-panel { border-color: var(--accent); }
   .tour-pick { display: block; width: 100%; text-align: left; font: inherit; padding: 8px 10px; margin-top: 6px;
                border: 1px solid var(--grid); border-radius: 6px; background: var(--hollow); cursor: pointer; }
