@@ -304,6 +304,32 @@ def summarize(
     )
 
 
+def plan(scenario: Scenario, root=None) -> dict:
+    """The test before it runs: setup, then each stage's actions, what it
+    expects, and its time limit -- the skeleton a live view fills in as the
+    run proceeds (summarize() is the same shape with the outcomes)."""
+    path = scenario.path
+    try:
+        file = path.relative_to(root).as_posix() if root else path.as_posix()
+    except ValueError:
+        file = path.as_posix()
+    return {
+        "scenario": scenario.name,
+        "file": file,
+        "description": scenario.description,
+        "setup_text": describe_setup(scenario.given),
+        "stages": [
+            {
+                "n": n, "title": stage.title, "within_s": stage.within_s,
+                "actions": [{"key": k, "value": v, "kind": classify(k, v), "text": describe_action(k, v)}
+                            for k, v in stage.when.items()],
+                "checks": [{"key": k, "label": LABELS.get(k, k), "expected": v} for k, v in stage.expect.items()],
+            }
+            for n, stage in enumerate(scenario.stages, start=1)
+        ],
+    }
+
+
 def event_signature(result: ScenarioResult) -> list[tuple]:
     """The run's event log as comparable tuples: two lockstep runs of the same
     scenario on different runtimes are identical exactly when these are."""

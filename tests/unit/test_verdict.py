@@ -116,3 +116,30 @@ def test_stage_titles_load_and_unknown_stage_keys_are_still_refused(tmp_path):
     p.write_text(p.read_text(encoding="utf-8").replace("  - title: second", "  - titel: second"), encoding="utf-8")
     with pytest.raises(ScenarioLoadError):
         Scenario.load(p)
+
+
+def test_the_plan_is_the_summary_without_outcomes_and_progress_only_observes():
+    """A live view renders plan() before the run and follows execute()'s
+    progress; neither may change the run."""
+    from services.testing.invariants import Invariants
+    from services.testing.rig import build_rig
+    from services.testing.runner import _Telemetry, _tick, execute
+    from services.telemetry.events import EventLog
+    from services.telemetry.tag_history import TagHistory
+    from services.testing.verdict import plan
+
+    scenario = Scenario.load(JAM)
+    p = plan(scenario, root=SCENARIOS)
+    s = summarize(scenario, run_scenario(scenario), "Python controller", root=SCENARIOS)
+    assert p["file"] == s.file and p["setup_text"] == s.setup_text
+    assert [(st["title"], st["actions"], st["within_s"]) for st in p["stages"]] == [
+        (st.title, st.actions, st.within_s) for st in s.stages]
+    assert [[c["label"] for c in st["checks"]] for st in p["stages"]] == [[c.label for c in st.checks] for st in s.stages]
+
+    rig = build_rig()
+    telemetry = _Telemetry(EventLog(rig.line), TagHistory(rig.io))
+    seen = []
+    result = execute(rig, scenario, lambda: _tick(rig, telemetry), Invariants(rig), telemetry, progress=seen.append)
+    assert [(e["event"], e["n"]) for e in seen] == [(ev, n) for n in range(1, 7) for ev in ("stage", "passed")]
+    assert [e["applied_t"] for e in seen if e["event"] == "stage"] == [st.applied_t for st in s.stages]
+    assert event_signature(result) == event_signature(run_scenario(scenario))

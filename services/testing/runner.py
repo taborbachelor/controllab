@@ -168,15 +168,22 @@ def execute(
     telemetry: "_Telemetry",
     settle_ticks: int = SETTLE_TICKS,
     tolerance_s: float = 0.0,
+    progress: Callable[[dict], None] | None = None,
 ) -> ScenarioResult:
     """Runs one scenario on an already-built rig. `step()` must advance
     the plant by exactly one DT and sample `telemetry`; see the module
-    docstring for what differs between the modes that call this."""
+    docstring for what differs between the modes that call this.
+
+    `progress`, if given, is told as each stage is applied
+    ({"event": "stage", "n", "applied_t"}) and as each one passes
+    ({"event": "passed", "n", "elapsed"}), so a live view can follow the
+    run. It only observes: the run and its result are identical without it."""
     rig.line.command_sink = telemetry.events.record_command
     telemetry.sample(rig.plant.time_s)
 
     setup_failure = _apply_given(rig, scenario, invariants, step)
-    result = setup_failure or _run_from_given(rig, scenario, invariants, step, settle_ticks, tolerance_s)
+    result = setup_failure or _run_from_given(rig, scenario, invariants, step, settle_ticks, tolerance_s,
+                                              progress or (lambda _: None))
     result.events = telemetry.events.events
     result.tags = telemetry.tags
     return result
@@ -207,6 +214,7 @@ def _run_from_given(
     step: Callable[[], None],
     settle_ticks: int,
     tolerance_s: float,
+    progress: Callable[[dict], None],
 ) -> ScenarioResult:
 
     # Settle: settle_ticks (SETTLE_TICKS in lockstep) so given's effects (e.g. a direct level
@@ -237,6 +245,7 @@ def _run_from_given(
             when_applied_t = rig.plant.time_s
 
         stage_applied_t = rig.plant.time_s
+        progress({"event": "stage", "n": n, "applied_t": stage_applied_t})
         outcome = _poll_stage(rig, scenario, stage, invariants, step, tolerance_s)
         for key in outcome.not_observed:
             if key not in not_observed_all:
@@ -256,6 +265,7 @@ def _run_from_given(
                 unmet=outcome.unmet, stage_elapsed=tuple(elapsed_by_stage), **common,
             )
         elapsed_by_stage.append(outcome.elapsed)
+        progress({"event": "passed", "n": n, "elapsed": outcome.elapsed})
         within_tolerance = within_tolerance or outcome.within_tolerance
 
     met = "all observable expectations met" if not_observed_all else "all expectations met"
