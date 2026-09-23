@@ -7,7 +7,7 @@ feeder → conveyor → hopper — so deterministic control logic can be run
 against it and tested: startup, shutdown, interlocks, fault injection, and
 recovery, before any physical equipment exists.
 
-**Status:** all ten roadmap phases (0-9) complete; 583 tests passing.
+**Status:** all ten roadmap phases (0-9) complete; 597 tests passing.
 
 What's in it:
 
@@ -21,14 +21,18 @@ What's in it:
   simulated equipment (enforced by a test).
 - **Commissioning scenarios** — a declarative `given`/`when`/`expect`
   YAML format (multi-stage with `then:`, so a whole recovery procedure is
-  one scenario). 23 scenarios cover all 10 interlocks; the coverage
-  matrix (`python scripts/scenario_report.py`) reports 10/10, 0 gaps.
+  one scenario). 25 scenarios cover all 11 interlock rows; the coverage
+  matrix (`python scripts/scenario_report.py`) reports 11/11, 0 gaps.
 - **Fault injection and alarms** — motor fail-to-start and trips, belt
   slip, stuck gates, E-stop, a feeder jam (the drive keeps running; a
   discharge-chute plug switch catches it), and instrument failure (stuck,
   or failed with an input-channel diagnostic that tells "0 kg" from
   "unknown"). Alarms latch, report first-out, need acknowledging, and a
-  reset is refused while its cause remains.
+  reset is refused while its cause remains. The hopper's overfill
+  protection is built the way it would be on a real line: fail-safe
+  level switches (a broken wire trips), a 1oo2 high-high vote between the
+  switch and the weight transmitter (a switch seized in the healthy
+  position can't remove the trip), and an alarm when the two disagree.
 - **Telemetry and reports** — sampled tag history (CSV), a state/alarm
   event log (JSONL), operator-command capture, and a generated Markdown
   commissioning report: pass/fail, response time against each limit, and

@@ -77,6 +77,7 @@ INTERLOCKS: list[InterlockRow] = [
         "unreachable_through_control",
     ),
     InterlockRow("Hopper high-high", "Trip"),
+    InterlockRow("Hopper level instruments agree", "Alarm"),
     InterlockRow("Any motor fail-to-start / trip", "Trip"),
     InterlockRow("Gate travel timeout", "Trip"),
     InterlockRow("Feeder jam", "Trip"),

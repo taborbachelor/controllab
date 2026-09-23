@@ -1,0 +1,38 @@
+name: High-High Switch Stuck Healthy -- WT-105 Still Trips (1oo2) And The Disagreement Is Alarmed
+
+# A seized float or welded contact leaves LSHH-105 reading "below high-high"
+# whatever the level: fail-safe polarity only catches a broken wire, not this.
+# The high-high trip is 1oo2, so WT-105 at or above 95 % trips the line on its
+# own (stage 1, first-out WT-105.HIGH_HIGH). The switch and the transmitter
+# now disagree, and once that has lasted 1 s the cross-check names the switch
+# (stage 2). Before the 1oo2 vote, this hopper overfilled with no trip at all.
+# (Stuck is applied first, so the switch freezes before the level moves.)
+
+given:
+  line_state: running
+
+when:
+  sensor_stuck: "LSHH-105"
+  hopper_level_pct: 99.0
+
+trigger: hopper_level_pct
+
+expect:
+  line_state: faulted
+  fault_reason: "hopper high-high"
+  first_out: "WT-105.HIGH_HIGH"
+  feeder_run_commanded: false
+  conveyor_run_commanded: false
+  gate_open_commanded: false
+
+within:
+  seconds: 0.5
+
+then:
+  - expect:
+      latched_alarm_ids: ["LSHH-105.DISAGREE", "WT-105.HIGH_HIGH"]
+      line_state: faulted
+    within:
+      seconds: 1.5
+
+interlock: "Hopper high-high"

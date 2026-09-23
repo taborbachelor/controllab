@@ -74,6 +74,8 @@ ALARMS: tuple[tuple[str, str, bool], ...] = (
     ("WT-105.HIGH_HIGH", "Hopper high-high", False),                  # bit 8
     ("LSH-103.JAM", "Feeder jam (discharge chute plugged)", False),   # bit 9  (Phase 4 completion)
     ("WT-105.FAIL", "Hopper weight transmitter failed", False),       # bit 10 (Phase 4 completion)
+    ("LSH-105.DISAGREE", "Hopper high switch disagrees with WT-105", True),         # bit 11 (level cross-check)
+    ("LSHH-105.DISAGREE", "Hopper high-high switch disagrees with WT-105", False),  # bit 12 (level cross-check)
 )
 _ALARM_INDEX = {alarm_id: i for i, (alarm_id, _, _) in enumerate(ALARMS)}
 

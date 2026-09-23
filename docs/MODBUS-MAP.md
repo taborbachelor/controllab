@@ -132,6 +132,8 @@ Kept apart from field I/O and outside the controller view: writing 1 issues the 
 | 8 | `WT-105.HIGH_HIGH` | Hopper high-high | trip |
 | 9 | `LSH-103.JAM` | Feeder jam (discharge chute plugged) | trip |
 | 10 | `WT-105.FAIL` | Hopper weight transmitter failed | trip |
+| 11 | `LSH-105.DISAGREE` | Hopper high switch disagrees with WT-105 | warning |
+| 12 | `LSHH-105.DISAGREE` | Hopper high-high switch disagrees with WT-105 | trip |
 
 ### `start_inhibit` bits (why the most recent start request was refused; 0 = NONE)
 

@@ -34,6 +34,7 @@ from services.control.alarms import AlarmManager
 from services.control.gate_control import GateControl
 from services.control.hopper_hysteresis import HopperHysteresis
 from services.control.interlocks import Interlocks
+from services.control.level_check import HopperLevelChecks
 from services.control.line_state import LineState, StartInhibit, StartStep
 from services.control.motor_control import MotorControl
 from services.simulation.engine.io_image import IOImage
@@ -51,17 +52,24 @@ class LineController:
         restart_below_pct: float = 60.0,
         conveyor_proof_timeout_s: float = 3.0,
         purge_time_s: float = 15.0,
+        hopper_high_pct: float = 80.0,
+        hopper_high_high_pct: float = 95.0,
     ) -> None:
         self.io = io
         self.feeder_ctrl = feeder_ctrl
         self.conveyor_ctrl = conveyor_ctrl
         self.gate_ctrl = gate_ctrl
-        self.interlocks = Interlocks(io, feeder_ctrl, conveyor_ctrl, gate_ctrl, hopper_capacity_kg)
+        self.interlocks = Interlocks(
+            io, feeder_ctrl, conveyor_ctrl, gate_ctrl, hopper_capacity_kg, hopper_high_high_pct=hopper_high_high_pct
+        )
         self.hysteresis = HopperHysteresis(restart_below_pct)
+        # The switch-vs-transmitter cross-checks, set to the switches'
+        # commissioned points (docs/CONTROL-LAB.md §5.3).
+        self.level_checks = HopperLevelChecks(hopper_high_pct, hopper_high_high_pct)
         # Built here, not injected, same as self.hysteresis -- AlarmManager
         # hardcodes this line's 9 alarms the same way Interlocks hardcodes
         # this line's tags, so it's not something a caller configures.
-        self.alarms = AlarmManager(self.interlocks)
+        self.alarms = AlarmManager(self.interlocks, self.level_checks)
 
         self.feed_speed_pct = feed_speed_pct
         self.conveyor_proof_timeout_s = conveyor_proof_timeout_s
@@ -127,6 +135,7 @@ class LineController:
         self.feeder_ctrl.scan(dt)
         self.conveyor_ctrl.scan(dt)
         self.gate_ctrl.scan(dt)
+        self.level_checks.scan(self.interlocks, dt)
         self.alarms.scan()
 
         if self._acknowledge_requested:

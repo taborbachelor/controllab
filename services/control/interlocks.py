@@ -33,12 +33,16 @@ class Interlocks:
         conveyor_ctrl: MotorControl,
         gate_ctrl: GateControl,
         hopper_capacity_kg: float,
+        hopper_high_high_pct: float = 95.0,
     ) -> None:
         self.io = io
         self.feeder_ctrl = feeder_ctrl
         self.conveyor_ctrl = conveyor_ctrl
         self.gate_ctrl = gate_ctrl
         self.hopper_capacity_kg = hopper_capacity_kg
+        # The analog high-high setpoint on WT-105, commissioned to match
+        # LSHH-105's switch point -- a configured constant, like the capacity.
+        self.hopper_high_high_pct = hopper_high_high_pct
 
     @property
     def estop_healthy(self) -> bool:
@@ -71,12 +75,28 @@ class Interlocks:
         return not self.io.read("LSH-105")
 
     @property
-    def hopper_high_high(self) -> bool:
+    def hopper_high_high_switch(self) -> bool:
         """LSHH-105 open. Fail-safe polarity (1 = below the switch point), so
         a broken wire trips the line rather than silently removing the
         overfill trip (docs/CONTROL-LAB.md §8: loss of signal is the unsafe
         condition)."""
         return not self.io.read("LSHH-105")
+
+    @property
+    def hopper_high_high_weight(self) -> bool:
+        """WT-105 at or above the high-high setpoint. No vote while its
+        channel has failed: a failed reading is 0.0, which would always vote
+        "not high-high" (and the failure trips the line on its own)."""
+        return not self.hopper_weight_failed and self.hopper_level_pct >= self.hopper_high_high_pct
+
+    @property
+    def hopper_high_high(self) -> bool:
+        """1oo2: high-high if EITHER independent measurement says so -- the
+        switch or the transmitter. Every trip, permissive and reset check
+        reads this, so a switch seized in the healthy position (which
+        fail-safe polarity can't catch) no longer removes the overfill trip.
+        Which instrument disagrees is LevelSwitchCheck's job, not this one's."""
+        return self.hopper_high_high_switch or self.hopper_high_high_weight
 
     @property
     def hopper_level_pct(self) -> float:

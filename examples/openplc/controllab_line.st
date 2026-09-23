@@ -95,15 +95,21 @@ PROGRAM controllab_line
     gate_travel_fault : BOOL := FALSE;
 
     (* alarms, in controller_status.ALARMS bit order *)
-    alarm_cond : ARRAY[0..10] OF BOOL;
-    alarm_active : ARRAY[0..10] OF BOOL;
-    alarm_unacked : ARRAY[0..10] OF BOOL;
+    alarm_cond : ARRAY[0..12] OF BOOL;
+    alarm_active : ARRAY[0..12] OF BOOL;
+    alarm_unacked : ARRAY[0..12] OF BOOL;
     first_out_holder : INT := 0;      (* 1-based, 0 = none *)
     was_active : BOOL;
     unacked_trip : BOOL;
     conveyor_confirmed : BOOL;
     hopper_high : BOOL;               (* LSH-105 open *)
-    hopper_high_high : BOOL;          (* LSHH-105 open *)
+    hopper_hh_switch : BOOL;          (* LSHH-105 open *)
+    hopper_hh_weight : BOOL;          (* WT-105 at or above the high-high setpoint, channel healthy *)
+    hopper_high_high : BOOL;          (* 1oo2: either of the two *)
+    lsh_mismatch_scans : INT := 0;    (* LevelSwitchCheck delay counters *)
+    lshh_mismatch_scans : INT := 0;
+    lsh_disagree : BOOL;
+    lshh_disagree : BOOL;
     trip : INT;
     i : INT;
     bit : WORD;
@@ -116,6 +122,10 @@ PROGRAM controllab_line
     LIM_PURGE : INT := 20;          (* 2.0 s belt purge on stop *)
     LIM_RESTART_RAW : INT := 12000; (* 60 % of 2000 kg, in WT-105 raw (kg x10) *)
     LIM_FEED_SPEED : INT := 10000;    (* 100.00 % *)
+    LIM_HIGH_RAW : INT := 16000;      (* LSH-105's point, 80 % of 2000 kg, in WT-105 raw *)
+    LIM_HIGH_HIGH_RAW : INT := 19000; (* the analog high-high setpoint, 95 % of 2000 kg *)
+    LIM_BAND_RAW : INT := 400;        (* cross-check deadband, 2 % of span = 40 kg *)
+    LIM_DISAGREE : INT := 10;         (* cross-check delay, 1.0 s *)
   END_VAR
 
   (* ================= HMI request/acknowledge (4-phase) ================= *)
@@ -161,7 +171,27 @@ PROGRAM controllab_line
   conveyor_confirmed := M104_RUNNING AND ZSS_104;
   (* the level switches are fail-safe (1 = below the switch point): a broken wire reads high *)
   hopper_high := NOT LSH_105;
-  hopper_high_high := NOT LSHH_105;
+  hopper_hh_switch := NOT LSHH_105;
+  (* the high-high trip is 1oo2: the switch OR WT-105 (no vote while its channel has failed) *)
+  hopper_hh_weight := NOT WT105_FLT AND WT_105 >= LIM_HIGH_HIGH_RAW;
+  hopper_high_high := hopper_hh_switch OR hopper_hh_weight;
+
+  (* switch vs transmitter cross-check (LevelSwitchCheck): a gap wider than the
+     deadband, lasting LIM_DISAGREE scans; not judged while WT-105 has failed *)
+  IF NOT WT105_FLT AND ((hopper_high AND WT_105 < LIM_HIGH_RAW - LIM_BAND_RAW)
+                        OR (NOT hopper_high AND WT_105 >= LIM_HIGH_RAW + LIM_BAND_RAW)) THEN
+    IF lsh_mismatch_scans < LIM_DISAGREE THEN lsh_mismatch_scans := lsh_mismatch_scans + 1; END_IF;
+  ELSE
+    lsh_mismatch_scans := 0;
+  END_IF;
+  lsh_disagree := lsh_mismatch_scans >= LIM_DISAGREE;
+  IF NOT WT105_FLT AND ((hopper_hh_switch AND WT_105 < LIM_HIGH_HIGH_RAW - LIM_BAND_RAW)
+                        OR (NOT hopper_hh_switch AND WT_105 >= LIM_HIGH_HIGH_RAW + LIM_BAND_RAW)) THEN
+    IF lshh_mismatch_scans < LIM_DISAGREE THEN lshh_mismatch_scans := lshh_mismatch_scans + 1; END_IF;
+  ELSE
+    lshh_mismatch_scans := 0;
+  END_IF;
+  lshh_disagree := lshh_mismatch_scans >= LIM_DISAGREE;
 
   (* ================= alarms (AlarmManager.scan / acknowledge) ================= *)
   alarm_cond[0] := NOT ES_001;                  (* ES-001.TRIP *)
@@ -175,8 +205,10 @@ PROGRAM controllab_line
   alarm_cond[8] := hopper_high_high;            (* WT-105.HIGH_HIGH *)
   alarm_cond[9] := LSH_103;                     (* LSH-103.JAM *)
   alarm_cond[10] := WT105_FLT;                 (* WT-105.FAIL *)
+  alarm_cond[11] := lsh_disagree;              (* LSH-105.DISAGREE (warning) *)
+  alarm_cond[12] := lshh_disagree;             (* LSHH-105.DISAGREE *)
 
-  FOR i := 0 TO 10 DO
+  FOR i := 0 TO 12 DO
     was_active := alarm_active[i];
     alarm_active[i] := alarm_cond[i];
     IF alarm_active[i] AND NOT was_active THEN
@@ -187,15 +219,15 @@ PROGRAM controllab_line
   END_FOR;
 
   IF ack_req THEN
-    FOR i := 0 TO 10 DO
+    FOR i := 0 TO 12 DO
       alarm_unacked[i] := FALSE;
       IF NOT alarm_active[i] AND first_out_holder = i + 1 THEN first_out_holder := 0; END_IF;
     END_FOR;
   END_IF;
 
   unacked_trip := FALSE;
-  FOR i := 0 TO 10 DO
-    IF i <> 1 AND alarm_unacked[i] THEN unacked_trip := TRUE; END_IF;   (* bit 1 is the only warning *)
+  FOR i := 0 TO 12 DO
+    IF i <> 1 AND i <> 11 AND alarm_unacked[i] THEN unacked_trip := TRUE; END_IF;   (* bits 1 and 11 are the warnings *)
   END_FOR;
 
   (* ================= e-stop overrides every state ================= *)
@@ -320,7 +352,7 @@ PROGRAM controllab_line
   ST_FAULT_REASON := fault_reason;
   ST_ALARMS_ACTIVE := 16#0000;
   ST_ALARMS_UNACKED := 16#0000;
-  FOR i := 0 TO 10 DO
+  FOR i := 0 TO 12 DO
     bit := SHL(IN := WORD#1, N := i);
     IF alarm_active[i] THEN ST_ALARMS_ACTIVE := ST_ALARMS_ACTIVE OR bit; END_IF;
     IF alarm_unacked[i] THEN ST_ALARMS_UNACKED := ST_ALARMS_UNACKED OR bit; END_IF;

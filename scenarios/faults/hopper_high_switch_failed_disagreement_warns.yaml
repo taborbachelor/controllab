@@ -1,0 +1,34 @@
+name: Hopper High Switch Failed -- Feeding Stops And The Disagreement Warns
+
+# LSH-105 is the control switch the feed stops at. A broken wire reads open
+# (fail-safe), so the feeder stops even though the hopper is nearly empty:
+# safe, but the line is now starving its hopper for no visible reason.
+# WT-105 says the level is far below 80 %, so after 1 s the cross-check names
+# the switch as a warning. The line keeps running: nothing unsafe is
+# happening, and the high-high protection is untouched.
+
+given:
+  line_state: running
+
+when:
+  sensor_failed: "LSH-105"
+
+trigger: sensor_failed
+
+expect:
+  line_state: running
+  feeder_run_commanded: false
+  conveyor_run_commanded: true
+
+within:
+  seconds: 0.5
+
+then:
+  - expect:
+      line_state: running
+      latched_alarm_ids: ["LSH-105.DISAGREE"]
+      feeder_run_commanded: false
+    within:
+      seconds: 1.5
+
+interlock: "Hopper level instruments agree"

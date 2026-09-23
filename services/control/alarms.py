@@ -60,6 +60,7 @@ from typing import Callable
 
 from services.control.errors import ControlError
 from services.control.interlocks import Interlocks
+from services.control.level_check import HopperLevelChecks
 
 AlarmCondition = Callable[[], bool]
 
@@ -86,8 +87,12 @@ class AlarmManager:
     have), so every condition below reads this tick's fresh state, not
     last tick's stale one."""
 
-    def __init__(self, interlocks: Interlocks) -> None:
+    def __init__(self, interlocks: Interlocks, level_checks: HopperLevelChecks | None = None) -> None:
+        """`level_checks`: the hopper switch cross-checks, scanned by whoever
+        owns the scan cycle (LineController). A manager built without them
+        gets an unscanned set whose two alarms never go active."""
         self._il = interlocks
+        self._level = level_checks if level_checks is not None else HopperLevelChecks()
         self._entries: list[tuple[Alarm, AlarmCondition]] = []
         self._by_id: dict[str, Alarm] = {}
         self._first_out_holder: str | None = None
@@ -120,6 +125,20 @@ class AlarmManager:
         # plug_detect_s of the feeder running jammed to make.
         self._register("LSH-103.JAM", "Feeder jam (discharge chute plugged)", lambda: self._il.feeder_plugged)
         self._register("WT-105.FAIL", "Hopper weight transmitter failed", lambda: self._il.hopper_weight_failed)
+        # The level switch cross-checks (services/control/level_check.py),
+        # appended for the same reason. LSH-105 is a control switch, so its
+        # disagreement is a warning; LSHH-105's means the overfill
+        # protection is down to one measurement, so it must be acknowledged
+        # before a restart, like any trip-class alarm.
+        self._register(
+            "LSH-105.DISAGREE", "Hopper high switch disagrees with WT-105", lambda: self._level.lsh.disagree,
+            is_warning=True,
+        )
+        self._register(
+            "LSHH-105.DISAGREE",
+            "Hopper high-high switch disagrees with WT-105",
+            lambda: self._level.lshh.disagree,
+        )
 
     def _register(self, alarm_id: str, description: str, condition: AlarmCondition, is_warning: bool = False) -> None:
         alarm = Alarm(id=alarm_id, description=description, is_warning=is_warning)

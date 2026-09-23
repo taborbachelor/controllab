@@ -1032,6 +1032,17 @@ issue and propose the change"):
 - **`Instruments.fail()`** — also takes a switch (reads 0, no diagnostic);
   `channel_fault()` only on a channel that has a diagnostic.
 
+## Module responsibilities (level switches: 1oo2 + cross-check)
+
+- **`Interlocks.hopper_high_high`** — 1oo2: `hopper_high_high_switch`
+  (LSHH-105 open) or `hopper_high_high_weight` (WT-105 ≥ the configured
+  high-high setpoint, channel healthy).
+- **`services/control/level_check.py`** — `LevelSwitchCheck` (one
+  switch vs WT-105: deadband, delay, not judged while WT-105 has failed)
+  and `HopperLevelChecks` (both switches), owned and scanned by
+  `LineController` before the alarm scan; `AlarmManager` reads them for
+  `LSH-105.DISAGREE` (warning) and `LSHH-105.DISAGREE` (trip-class).
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |

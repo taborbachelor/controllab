@@ -68,3 +68,23 @@ def test_no_identifiers_collide_case_insensitively():
     names = re.findall(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:AT\s+%\S+\s*)?:\s*(?:ARRAY|BOOL|INT|WORD)", ST, re.M)
     lowered = [n.lower() for n in names]
     assert len(lowered) == len(set(lowered)), sorted(n for n in names if lowered.count(n.lower()) > 1)
+
+
+def test_alarm_table_matches_the_published_alarm_bits():
+    """The alarm arrays, every alarm loop, the alarm_cond assignments and the
+    warning exclusions all follow controller_status.ALARMS. Appending an alarm
+    to the Python and not the program would otherwise go unnoticed until a
+    PLC run: the loops would never publish the new bit."""
+    from services.protocols.controller_status import ALARMS
+
+    last = len(ALARMS) - 1
+    assert set(re.findall(r"alarm_\w+ : ARRAY\[0\.\.(\d+)\] OF BOOL", ST)) == {str(last)}
+    loops = re.findall(r"FOR i := 0 TO (\d+) DO", ST)
+    assert loops.count(str(last)) == 4 and set(loops) <= {"3", str(last)}  # 3 is the HMI request loop
+    assigned = sorted(int(i) for i in re.findall(r"^\s*alarm_cond\[(\d+)\] :=", ST, re.M))
+    assert assigned == list(range(len(ALARMS)))
+    for i, (alarm_id, _, _) in enumerate(ALARMS):
+        assert re.search(rf"alarm_cond\[{i}\] :=.*\(\* {re.escape(alarm_id)}", ST), alarm_id
+    warnings = {i for i, (_, _, is_warning) in enumerate(ALARMS) if is_warning}
+    line = next(l for l in ST.splitlines() if "unacked_trip := TRUE" in l)
+    assert {int(i) for i in re.findall(r"i <> (\d+)", line)} == warnings
