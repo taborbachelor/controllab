@@ -879,7 +879,7 @@ issue and propose the change"):
 | 6 | Visualization | done — tag history in every scenario run; HTML replay viewer; live localhost dashboard with operator commands, fault injection, and replay download |
 | 7 | Protocols | done — Modbus server + client; register map (five PLC-master ranges); external-controller mode with the full scenario suite passing across Modbus; OpenPLC running a Structured Text port of the controller against the plant |
 | 8 | AI engineering assistance | done — deterministic candidate review gate; start inhibit; optional AI (provider abstraction, Anthropic first): gated scenario generation, bounded failed-run analysis |
-| 9 | Virtual commissioning | not started |
+| 9 | Virtual commissioning | in progress — scoped (`CONTROL-LAB.md` §10) |
 
 Full detail and "done when" criteria per phase: `CONTROL-LAB.md` §10.
 
