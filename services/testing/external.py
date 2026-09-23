@@ -4,7 +4,7 @@ CONTROL-LAB.md §10, Phase 7 step 3b).
 build_external_rig() returns an ordinary Rig whose plant has no built-in
 controller. Its `line` is a RemoteLine: an object that looks like a
 LineController from the outside -- start/stop/reset/acknowledge,
-`state`, `fault_reason`, `alarms`, `scan()`, `command_sink` -- but owns
+`state`, `fault_reason`, `start_inhibit`, `alarms`, `scan()`, `command_sink` -- but owns
 none of the logic. Behind it:
 
 - the plant's I/O image served over Modbus TCP on localhost, outputs
@@ -90,6 +90,10 @@ class RemoteLine:
     @property
     def fault_reason(self) -> str | None:
         return self._status.fault_reason
+
+    @property
+    def start_inhibit(self):
+        return self._status.start_inhibit
 
     @property
     def alarms(self) -> "_AlarmView":

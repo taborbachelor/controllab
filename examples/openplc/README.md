@@ -67,7 +67,7 @@ inside the container** (see findings), port 5020, and the five ranges from the m
 | Coils (%QX100.0) | 0 | 3 | `%QX100.0`–`%QX100.2` |
 | Input Registers (%IW100) | 0 | 2 | `%IW100`–`%IW101` |
 | Holding Registers - Read (%IW100) | 100 | 1 | `%IW102` (after the input registers) |
-| Holding Registers - Write (%QW100) | 0 | 7 | `%QW100`–`%QW106` |
+| Holding Registers - Write (%QW100) | 0 | 8 | `%QW100`–`%QW107` |
 
 Then *Dashboard → Start PLC*.
 

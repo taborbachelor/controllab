@@ -17,6 +17,8 @@ RegisterMap.validate()). The generated document is docs/MODBUS-MAP.md.
 """
 from __future__ import annotations
 
+import dataclasses
+
 from services.protocols.register_map import (
     COIL,
     DISCRETE_INPUT,
@@ -72,4 +74,11 @@ LINE_REGISTER_MAP = RegisterMap(
     ),
     hmi_ack=6,
     hmi_request=100,
+)
+# Phase 8: the start-inhibit status register, APPENDED at 7 -- after the HMI
+# ack word, so no address a PLC program already uses moved.
+LINE_REGISTER_MAP = dataclasses.replace(
+    LINE_REGISTER_MAP,
+    status_registers=LINE_REGISTER_MAP.status_registers
+    + (StatusRegister("start_inhibit", 7, "Why the most recent start request was refused (bits; 0 = none)"),),
 )

@@ -175,7 +175,7 @@ def test_committed_map_document_matches_the_served_map():
 def test_the_line_map_is_five_contiguous_plc_master_ranges():
     r = LINE_REGISTER_MAP.controller_ranges()
     assert (r.discrete_inputs, r.input_registers, r.holding_read, r.coils, r.holding_write) == (
-        (0, 11), (0, 2), (100, 1), (0, 3), (0, 7),
+        (0, 11), (0, 2), (100, 1), (0, 3), (0, 8),  # 7 = start_inhibit, appended in Phase 8
     )
 
 
@@ -261,11 +261,11 @@ def test_a_scan_polls_exactly_like_a_plc_master():
     sync = ModbusIOSync(Recorder(), LINE_REGISTER_MAP, io)
     sync.pull_inputs()
     sync.take_commands()
-    sync.push_outputs(status=[0] * 5)
+    sync.push_outputs(status=[0] * 6)
     assert calls == [
         ("read_discrete_inputs", 0, 11),
         ("read_input_registers", 0, 2),
         ("read_holding_registers", 100, 1),
         ("write_coils", 0, 3),
-        ("write_registers", 0, 7),
+        ("write_registers", 0, 8),
     ]

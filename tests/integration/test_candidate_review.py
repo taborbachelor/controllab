@@ -90,22 +90,16 @@ def test_a_copy_of_an_existing_scenario_is_flagged_as_a_duplicate(tmp_path):
     assert levels(r)["duplicate"] == "warning"
 
 
-def test_finding_four_existing_permissive_scenarios_are_vacuous():
-    """The gate's first run over the existing suite: these four pass with
-    their `start` removed, so they can't distinguish a refused start from a
-    start never pressed. Recorded in docs/CONTROL-LAB.md (Phase 8 step 1);
-    strengthening them needs a "start refused" observable -- when that
-    lands, this list should shrink to empty."""
+def test_no_existing_scenario_is_vacuous():
+    """The gate's first run over the suite found four start-blocked
+    scenarios that still passed with `start` removed -- they couldn't tell a
+    refused start from no start. Fixed by the StartInhibit observable
+    (start_inhibit in the vocabulary); this keeps the whole suite honest."""
     flagged = sorted(
         s.path.name for s in EXISTING
         if levels(review(s.path, [o for o in EXISTING if o.path != s.path])).get("vacuous") == "error"
     )
-    assert flagged == [
-        "bin_low_blocks_start.yaml",
-        "estop_blocks_start.yaml",
-        "hopper_high_high_blocks_start.yaml",
-        "unacknowledged_alarm_blocks_start.yaml",
-    ]
+    assert flagged == []
 
 
 def test_report_is_deterministic_and_relative(tmp_path):

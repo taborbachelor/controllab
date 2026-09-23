@@ -14,7 +14,7 @@ Everything a controller needs is five contiguous ranges, one per table — exact
 | Input registers (FC 04) | read | 0 | 2 | analog sensors |
 | Holding registers (FC 03) | read | 100 | 1 | HMI request word |
 | Coils (FC 15) | write | 0 | 3 | field outputs |
-| Holding registers (FC 16) | write | 0 | 7 | analog outputs, controller status, HMI ack word |
+| Holding registers (FC 16) | write | 0 | 8 | analog outputs, controller status, HMI ack word |
 
 ## Discrete inputs (FC 02, read-only)
 
@@ -60,6 +60,7 @@ Written by the controller in external-controller mode (FC 16); read-only with th
 | 4 | 40005 | `alarms_unacked` | Bit per alarm: not yet acknowledged (latched = active or unacked) | | |
 | 5 | 40006 | `first_out` | 1 + bit number of the first-out alarm (0 = none) | | |
 | 6 | 40007 | `hmi_ack` | HMI acknowledge word (controller → ControlLab) | | |
+| 7 | 40008 | `start_inhibit` | Why the most recent start request was refused (bits; 0 = none) | | |
 | 100 | 40101 | `hmi_request` | HMI request word (ControlLab → controller; read-only to clients) | | |
 
 ## HMI commands to an external controller — request/acknowledge
@@ -125,5 +126,18 @@ Kept apart from field I/O and outside the controller view: writing 1 issues the 
 | 6 | `ZSS-104.LOST` | Conveyor motion loss (belt slip) | trip |
 | 7 | `M-104.START_PROOF` | Conveyor failed to prove running | trip |
 | 8 | `WT-105.HIGH_HIGH` | Hopper high-high | trip |
+
+### `start_inhibit` bits (why the most recent start request was refused; 0 = NONE)
+
+| Bit value | Reason |
+|---:|---|
+| 1 | BIN_LOW |
+| 2 | HOPPER_HIGH_HIGH |
+| 4 | UNACKNOWLEDGED_ALARM |
+| 8 | ESTOP_ACTIVE |
+| 16 | LINE_FAULTED |
+
+Set only when a start command is evaluated: NONE after an accepted start, unchanged when no start is requested -- so it proves a start was actually issued.
+
 
 A value this table doesn't know is published as 65535 rather than guessed.

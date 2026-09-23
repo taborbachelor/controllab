@@ -598,8 +598,13 @@ class ModbusIOSync:
             self.client.write_registers(start, values)
 
     def read_status(self) -> list[int]:
-        """The status block as currently published -- the observer side."""
+        """The status block as currently published -- the observer side.
+        One read spanning the block, then picked out by address: the status
+        registers needn't be adjacent (start_inhibit was appended after the
+        HMI ack word), only inside the contiguous holding write range."""
         addresses = [r.address for r in self.map.status_registers]
         if not addresses:
             return []
-        return self.client.read_holding_registers(min(addresses), len(addresses))
+        lo = min(addresses)
+        values = self.client.read_holding_registers(lo, max(addresses) - lo + 1)
+        return [values[a - lo] for a in addresses]

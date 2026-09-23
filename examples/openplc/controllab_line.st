@@ -17,7 +17,7 @@
       Coils                start 0    size 3    -> %QX100.0 .. %QX100.2
       Input registers      start 0    size 2    -> %IW100 .. %IW101
       Holding - read       start 100  size 1    -> %IW102 (after the input registers)
-      Holding - write      start 0    size 7    -> %QW100 .. %QW106
+      Holding - write      start 0    size 8    -> %QW100 .. %QW107
 
   Timings match ControlLab's test rig (services/testing/rig.py), so this
   program and the reference controller answer the same scenarios alike:
@@ -58,6 +58,8 @@ PROGRAM controllab_line
     ST_ALARMS_UNACKED AT %QW104 : WORD;
     ST_FIRST_OUT AT %QW105 : INT;     (* 1 + alarm bit, 0 = none *)
     HMI_ACK AT %QW106 : WORD;
+    ST_START_INHIBIT AT %QW107 : WORD; (* why the last start was refused: 1 bin low, 2 hopper HH,
+                                          4 unacked alarm, 8 e-stop, 16 faulted; 0 = none *)
   END_VAR
 
   (* IEC 61131-3: a VAR block holds either located variables or ordinary
@@ -77,6 +79,7 @@ PROGRAM controllab_line
     reset_req : BOOL;
     ack_req : BOOL;
     ack_bits : WORD := 16#0000;
+    start_inhibit : WORD := 16#0000;   (* outcome of the most recent start request -- StartInhibit *)
 
     (* device supervision -- MotorControl / GateControl *)
     conv_last_cmd : BOOL := FALSE;
@@ -196,9 +199,15 @@ PROGRAM controllab_line
   CASE state OF
     0: (* IDLE -- off, continuously enforced *)
       M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE;
-      IF start_req AND NOT LSHH_105 AND NOT LSL_101 AND NOT unacked_trip THEN
-        state := 1; start_step := 0; step_scans := 0;
-        M104_RUN := TRUE;                                          (* downstream first *)
+      IF start_req THEN
+        start_inhibit := 16#0000;
+        IF LSHH_105 THEN start_inhibit := start_inhibit OR 16#0002; END_IF;
+        IF LSL_101 THEN start_inhibit := start_inhibit OR 16#0001; END_IF;
+        IF unacked_trip THEN start_inhibit := start_inhibit OR 16#0004; END_IF;
+        IF start_inhibit = 0 THEN
+          state := 1; start_step := 0; step_scans := 0;
+          M104_RUN := TRUE;                                        (* downstream first *)
+        END_IF;
       END_IF;
 
     1: (* STARTING *)
@@ -272,6 +281,7 @@ PROGRAM controllab_line
 
     4: (* FAULTED -- off; reset only once the pass-through causes have cleared *)
       M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE;
+      IF start_req THEN start_inhibit := 16#0010; END_IF;          (* refused, as always; now reported *)
       IF reset_req AND NOT LSHH_105 AND NOT M104_OL AND NOT M103_FAULT THEN
         conv_proof_fault := FALSE; conv_proof_scans := 0;
         feed_proof_fault := FALSE; feed_proof_scans := 0;
@@ -281,6 +291,7 @@ PROGRAM controllab_line
 
     5: (* ESTOPPED -- off; reset once the e-stop is healthy again *)
       M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE;
+      IF start_req THEN start_inhibit := 16#0008; END_IF;          (* refused, as always; now reported *)
       IF ES_001 AND reset_req THEN
         conv_proof_fault := FALSE; conv_proof_scans := 0;
         feed_proof_fault := FALSE; feed_proof_scans := 0;
@@ -301,6 +312,7 @@ PROGRAM controllab_line
   END_FOR;
   ST_FIRST_OUT := first_out_holder;
   HMI_ACK := ack_bits;
+  ST_START_INHIBIT := start_inhibit;
 END_PROGRAM
 
 

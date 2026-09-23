@@ -7,10 +7,18 @@ given:
 when:
   start: true
 
+# start_inhibit is set only when a start request is evaluated and refused
+# (StartInhibit, services/control/line_state.py): it proves START was
+# actually issued, and why it was refused. Without it this scenario passed
+# even with `when: start` removed (found by the Phase 8 review gate).
 expect:
   line_state: idle
   any_unacknowledged_trip: true
   latched_alarm_ids: ["WT-105.HIGH_HIGH"]
+  # high-high is still present in `given`, so it refuses too; UNACKNOWLEDGED_ALARM
+  # being reported is this scenario's row. The isolated case (condition cleared,
+  # alarm still unacknowledged) is proven at the pytest level -- see report.py.
+  start_inhibit: ["HOPPER_HIGH_HIGH", "UNACKNOWLEDGED_ALARM"]
 
 within:
   seconds: 0.3

@@ -34,7 +34,7 @@ from services.control.alarms import AlarmManager
 from services.control.gate_control import GateControl
 from services.control.hopper_hysteresis import HopperHysteresis
 from services.control.interlocks import Interlocks
-from services.control.line_state import LineState, StartStep
+from services.control.line_state import LineState, StartInhibit, StartStep
 from services.control.motor_control import MotorControl
 from services.simulation.engine.io_image import IOImage
 
@@ -70,6 +70,9 @@ class LineController:
         self.state = LineState.IDLE
         self.fault_reason: str | None = None
         self.last_start_refusal: list[str] = []
+        # Machine-readable outcome of the most recent start request -- see
+        # StartInhibit. Reporting only: nothing in this class reads it back.
+        self.start_inhibit = StartInhibit.NONE
         self.start_step: StartStep | None = None
 
         self._step_elapsed_s = 0.0
@@ -173,6 +176,14 @@ class LineController:
         if unacked_trips:
             reasons.append(f"unacknowledged alarm: {', '.join(unacked_trips)}")
         self.last_start_refusal = reasons
+        inhibit = StartInhibit.NONE
+        if self.interlocks.hopper_high_high:  # the same reads start_permissives_ok() just made
+            inhibit |= StartInhibit.HOPPER_HIGH_HIGH
+        if self.interlocks.bin_low:
+            inhibit |= StartInhibit.BIN_LOW
+        if unacked_trips:
+            inhibit |= StartInhibit.UNACKNOWLEDGED_ALARM
+        self.start_inhibit = inhibit
         if not reasons:
             self._begin_start_sequence()
 
@@ -336,6 +347,10 @@ class LineController:
         self.feeder_ctrl.command_run(False)
         self.conveyor_ctrl.command_run(False)
         self.gate_ctrl.command_open(False)
+        if self._start_requested:
+            # Refused exactly as before (FAULTED never acts on start); only
+            # the reporting is new.
+            self.start_inhibit = StartInhibit.LINE_FAULTED
 
         if not self._reset_requested:
             return
@@ -387,6 +402,10 @@ class LineController:
         self.conveyor_ctrl.command_run(False)
         self.gate_ctrl.command_open(False)
 
+        if self._start_requested:
+            # Refused exactly as before (ESTOPPED never acts on start); only
+            # the reporting is new.
+            self.start_inhibit = StartInhibit.ESTOP_ACTIVE
         if self.interlocks.estop_healthy and self._reset_requested:
             self._clear_all_device_faults()
             self.state = LineState.IDLE

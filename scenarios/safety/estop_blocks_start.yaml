@@ -7,8 +7,13 @@ given:
 when:
   start: true
 
+# start_inhibit is set only when a start request is evaluated and refused
+# (StartInhibit, services/control/line_state.py): it proves START was
+# actually issued, and why it was refused. Without it this scenario passed
+# even with `when: start` removed (found by the Phase 8 review gate).
 expect:
   line_state: estopped
+  start_inhibit: ["ESTOP_ACTIVE"]
 
 within:
   seconds: 0.3

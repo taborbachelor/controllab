@@ -20,6 +20,7 @@ import math
 from typing import Callable
 
 from services.control.errors import ControlError
+from services.control.line_state import inhibit_names
 from services.testing.rig import Rig
 
 
@@ -149,6 +150,10 @@ READ_FIELDS: dict[str, Callable[[Rig], object]] = {
     "hopper_level_kg": lambda rig: rig.plant.hopper.level_kg,
     "any_unacknowledged_trip": lambda rig: rig.line.alarms.any_unacknowledged_trip(),
     "latched_alarm_ids": lambda rig: sorted(a.id for a in rig.line.alarms.latched_alarms),
+    # Why the most recent start request was refused: sorted reason names, or
+    # ["NONE"]. Set only when a start is evaluated, so asserting it proves a
+    # start was issued -- see StartInhibit (services/control/line_state.py).
+    "start_inhibit": lambda rig: inhibit_names(rig.line.start_inhibit),
 }
 
 

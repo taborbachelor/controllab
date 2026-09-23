@@ -825,6 +825,18 @@ issue and propose the change"):
   check reruns with `when` removed via `dataclasses.replace`. No AI, no
   network. Any future generator feeds this gate, never `scenarios/`.
 
+## Module responsibilities (Phase 8 step 1b)
+
+- **`StartInhibit`** (`services/control/line_state.py`) and
+  **`LineController.start_inhibit`**: the machine-readable outcome of
+  the most recent start request (NONE, BIN_LOW, HOPPER_HIGH_HIGH,
+  UNACKNOWLEDGED_ALARM, ESTOP_ACTIVE, LINE_FAULTED; a flag, since
+  reasons co-occur). It's reporting only and is set only when a start
+  is evaluated, which is what lets a scenario prove START was issued.
+  It flows through the vocabulary (`start_inhibit`), status register
+  HR 7 (appended after the HMI ack word), `controller_status`,
+  `RemoteLine`, and the OpenPLC program's `%QW107`.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |

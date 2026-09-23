@@ -15,6 +15,9 @@ controller every scan (see line_map.py for the addresses):
     alarms_active   bit i = ALARMS[i] active
     alarms_unacked  bit i = ALARMS[i] unacknowledged
     first_out       1 + index into ALARMS of the first-out alarm (0 = none)
+    start_inhibit   StartInhibit bits: why the most recent start was refused
+                    (added in Phase 8, appended after the HMI ack word so no
+                    existing address moved)
 
 Active + unacknowledged per alarm (rather than one "latched" mask) is what
 lets the far side rebuild the full alarm board -- latched is just
@@ -32,7 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from services.control.alarms import Alarm
-from services.control.line_state import LineState
+from services.control.line_state import LineState, StartInhibit
 
 LINE_STATES: tuple[LineState, ...] = (
     LineState.IDLE,      # 0
@@ -70,7 +73,7 @@ ALARMS: tuple[tuple[str, str, bool], ...] = (
 )
 _ALARM_INDEX = {alarm_id: i for i, (alarm_id, _, _) in enumerate(ALARMS)}
 
-REGISTER_NAMES = ("line_state", "fault_reason", "alarms_active", "alarms_unacked", "first_out")
+REGISTER_NAMES = ("line_state", "fault_reason", "alarms_active", "alarms_unacked", "first_out", "start_inhibit")
 UNKNOWN = 0xFFFF  # a reason/state this table doesn't know -- published rather than guessed
 
 
@@ -88,7 +91,7 @@ def encode(line) -> list[int]:
             first_out = _ALARM_INDEX[alarm.id] + 1
     state = LINE_STATES.index(line.state) if line.state in LINE_STATES else UNKNOWN
     reason = FAULT_REASONS.index(line.fault_reason) if line.fault_reason in FAULT_REASONS else UNKNOWN
-    return [state, reason, active, unacked, first_out]
+    return [state, reason, active, unacked, first_out, int(line.start_inhibit)]
 
 
 @dataclass
@@ -96,6 +99,7 @@ class ControllerStatus:
     state: LineState | None  # None: a code this table doesn't know
     fault_reason: str | None
     alarms: list[Alarm]
+    start_inhibit: StartInhibit = StartInhibit.NONE
 
     @property
     def latched_alarms(self) -> list[Alarm]:
@@ -106,7 +110,7 @@ class ControllerStatus:
 
 
 def decode(registers: list[int]) -> ControllerStatus:
-    state_code, reason_code, active, unacked, first_out = registers
+    state_code, reason_code, active, unacked, first_out, inhibit = registers
     state = LINE_STATES[state_code] if state_code < len(LINE_STATES) else None
     reason = FAULT_REASONS[reason_code] if reason_code < len(FAULT_REASONS) else f"unknown reason code {reason_code}"
     alarms = [
@@ -120,7 +124,12 @@ def decode(registers: list[int]) -> ControllerStatus:
         )
         for i, (alarm_id, description, is_warning) in enumerate(ALARMS)
     ]
-    return ControllerStatus(state, reason, alarms)
+    # Unknown bits are dropped rather than guessed, like an unknown reason code.
+    known = StartInhibit(0)
+    for member in StartInhibit:
+        if member and inhibit & member:
+            known |= member
+    return ControllerStatus(state, reason, alarms, known)
 
 
 def render_markdown() -> str:
@@ -132,5 +141,10 @@ def render_markdown() -> str:
     lines += ["", "### Alarm bits (`alarms_active`, `alarms_unacked`; `first_out` = bit + 1)", "",
               "| Bit | Alarm | Description | Class |", "|---:|---|---|---|"]
     lines += [f"| {i} | `{a}` | {d} | {'warning' if w else 'trip'} |" for i, (a, d, w) in enumerate(ALARMS)]
+    lines += ["", "### `start_inhibit` bits (why the most recent start request was refused; 0 = NONE)", "",
+              "| Bit value | Reason |", "|---:|---|"]
+    lines += [f"| {int(m)} | {m.name} |" for m in StartInhibit if m]
+    lines += ["", "Set only when a start command is evaluated: NONE after an accepted start, unchanged when no "
+              "start is requested -- so it proves a start was actually issued.", ""]
     lines += ["", f"A value this table doesn't know is published as {UNKNOWN} rather than guessed.", ""]
     return "\n".join(lines)

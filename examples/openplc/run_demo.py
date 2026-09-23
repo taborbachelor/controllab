@@ -110,10 +110,21 @@ def main() -> int:
         d.command("reset")
     d.expect("PLC reports IDLE, no latched alarms", lambda s, p: s.state.name == "IDLE" and not s.latched_alarms)
 
+    d.log("-- start refused at bin low: the inhibit reports why")
+    d.stimulus("bin_level_pct", 5.0)
+    time.sleep(0.5)
+    d.command("start")
+    d.expect("stays IDLE, start_inhibit = BIN_LOW",
+             lambda s, p: s.state.name == "IDLE" and s.start_inhibit.name == "BIN_LOW" and not p["M-104.RUN"])
+    d.stimulus("bin_level_pct", 20.0)
+    d.command("acknowledge")  # bin low also latched its warning alarm; warnings never block a start, but clear the board
+    d.expect("bin restored, warning acknowledged", lambda s, p: s.state.name == "IDLE" and not s.latched_alarms)
+
     d.log("-- normal start (downstream first: conveyor, prove, gate, feeder)")
     d.command("start")
     d.expect("line RUNNING, conveyor + gate + feeder energized", running)
     d.expect("material reaching the hopper", lambda s, p: p["WT-105"] > 0)
+    d.expect("the accepted start cleared the inhibit to NONE", lambda s, p: s.start_inhibit.value == 0)
 
     d.log("-- feeder trip while running")
     d.stimulus("feeder_trip", True)
@@ -141,6 +152,9 @@ def main() -> int:
     d.stimulus("estop", "tripped")
     d.expect("ESTOPPED, reason 'e-stop', motors off",
              lambda s, p: s.state.name == "ESTOPPED" and s.fault_reason == "e-stop" and not p["M-104.RUNNING"])
+    d.command("start")
+    d.expect("start refused while e-stopped, reported as ESTOP_ACTIVE",
+             lambda s, p: s.state.name == "ESTOPPED" and s.start_inhibit.name == "ESTOP_ACTIVE")
     d.stimulus("estop", "healthy")
     time.sleep(0.5)
     d.command("acknowledge")

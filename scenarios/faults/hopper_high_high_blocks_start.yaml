@@ -7,8 +7,14 @@ given:
 when:
   start: true
 
+# start_inhibit is set only when a start request is evaluated and refused
+# (StartInhibit, services/control/line_state.py): it proves START was
+# actually issued, and why it was refused. Without it this scenario passed
+# even with `when: start` removed (found by the Phase 8 review gate).
 expect:
   line_state: idle
+  # the high-high condition also latches its own alarm, so both reasons hold
+  start_inhibit: ["HOPPER_HIGH_HIGH", "UNACKNOWLEDGED_ALARM"]
 
 within:
   seconds: 0.3
