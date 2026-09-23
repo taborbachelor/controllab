@@ -32,8 +32,11 @@ commands, a separate fault-injection panel, and one-click download of
 the session as a replay. Phase 7 (Protocols) in progress: a
 stdlib Modbus TCP server, tested against the Modbus spec's own examples
 and against `pymodbus`'s client, serving the line's I/O over a documented
-register map ([`docs/MODBUS-MAP.md`](docs/MODBUS-MAP.md)); external-controller
-mode comes next.
+register map ([`docs/MODBUS-MAP.md`](docs/MODBUS-MAP.md)), and an
+external-controller mode where the plant runs with no built-in controller
+and ControlLab's own controller, unmodified, drives it from a separate
+process over Modbus, with a comm-loss watchdog that stops the plant if
+the controller dies.
 
 ## Documentation
 
@@ -87,6 +90,16 @@ beyond the standard library. Add `--modbus-port 5020` to also expose the
 line to any Modbus TCP client (a SCADA package, Modbus Poll, a PLC):
 sensors and outputs readable, operator commands on HMI coils 100-103.
 
+To run the controller as a separate program that only talks Modbus:
+
+```bash
+python scripts/dashboard.py --external        # terminal 1: the plant, no controller
+python scripts/external_controller.py         # terminal 2: the controller, over Modbus TCP
+```
+
+Press Start on the dashboard; kill the controller mid-run and the
+watchdog stops the plant within a second.
+
 ## Roadmap
 
 | Phase | Focus | Status |
@@ -98,7 +111,7 @@ sensors and outputs readable, operator commands on HMI coils 100-103.
 | 4 | Fault injection, alarms | done (feeder jam / sensor failure hooks deferred) |
 | 5 | Telemetry | done |
 | 6 | Visualization | done |
-| 7 | Protocols (Modbus + external controller mode) | in progress (steps 1-2 of 4 done: Modbus TCP server; register map) |
+| 7 | Protocols (Modbus + external controller mode) | in progress (steps 1, 2, 3a done: Modbus server/client; register map; external-controller mode) |
 | 8 | AI engineering assistance | not started |
 | 9 | Virtual commissioning | not started |
 

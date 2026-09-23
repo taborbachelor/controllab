@@ -99,7 +99,9 @@ def _apply(event: Event, state: str, board: dict[str, AlarmView]) -> str:
     return state
 
 
-def build_replay(title: str, events: list[Event], tags: TagHistory, plant: dict, meta: dict | None = None) -> dict:
+def build_replay(
+    title: str, events: list[Event], tags: TagHistory, plant: dict, meta: dict | None = None, initial_state: str = "idle"
+) -> dict:
     """Everything the page needs, as one JSON-serializable dict. `plant`
     carries the physical constants the mimic needs to draw levels
     (hopper capacity and switch setpoints -- WT-105 is in kg, not %).
@@ -114,7 +116,7 @@ def build_replay(title: str, events: list[Event], tags: TagHistory, plant: dict,
             for n in tags.io.names()
         ],
         "events": [{"t": e.t, "type": e.type, **e.data} for e in events],
-        "frames": build_frames(events, tags),
+        "frames": build_frames(events, tags, initial_state),
     }
 
 

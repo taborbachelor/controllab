@@ -5,6 +5,8 @@ the simulated line running in real time, served on localhost.
     python scripts/dashboard.py              # http://127.0.0.1:8000
     python scripts/dashboard.py --port 8080 --speed 2
     python scripts/dashboard.py --modbus-port 5020   # also serve the I/O image over Modbus TCP
+    python scripts/dashboard.py --external           # no built-in controller: an external one
+                                                     # drives the plant over Modbus (default port 5020)
 
 Localhost only, no authentication -- a local engineering tool, not a
 network service. All the logic lives in services/visualization/live.py.
@@ -29,16 +31,32 @@ def main() -> int:
         "--modbus-port", type=int, default=None,
         help="also serve the I/O image over Modbus TCP on 127.0.0.1 (read-only outputs; HMI coils 100-103)",
     )
+    parser.add_argument(
+        "--external", action="store_true",
+        help="run the plant with NO built-in controller; an external controller owns the outputs over Modbus "
+        "(see scripts/external_controller.py). Implies --modbus-port 5020 unless one is given.",
+    )
     args = parser.parse_args()
+    if args.external and args.modbus_port is None:
+        args.modbus_port = 5020
 
-    session = LiveSession()
+    session = LiveSession(external=args.external)
     pacer = Pacer(session, speed=args.speed)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(session, pacer))
     modbus = None
     if args.modbus_port is not None:
-        # Built-in controller mode: outputs stay read-only over Modbus (the
-        # LineController owns them); HMI coils issue operator commands.
-        store = IOImageDataStore(LINE_REGISTER_MAP, lambda: session.io, on_command=session.command)
+        if args.external:
+            # External-controller mode: the remote controller owns the outputs,
+            # HMI coils are latched requests it acknowledges, and every output
+            # write feeds the comm-loss watchdog.
+            store = IOImageDataStore(
+                LINE_REGISTER_MAP, lambda: session.io, outputs_writable=True,
+                hmi_latches=session.latches, on_output_write=session.note_controller_write,
+            )
+        else:
+            # Built-in controller mode: outputs stay read-only over Modbus (the
+            # LineController owns them); HMI coils issue operator commands.
+            store = IOImageDataStore(LINE_REGISTER_MAP, lambda: session.io, on_command=session.command)
         modbus = ModbusServer(store, port=args.modbus_port, lock=session.lock)
         threading.Thread(target=modbus.serve_forever, daemon=True, name="controllab-modbus").start()
         print(f"Modbus TCP: 127.0.0.1:{modbus.server_address[1]}  (map: docs/MODBUS-MAP.md)")

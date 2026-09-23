@@ -70,7 +70,11 @@ class Invariants:
 
     def _check_feeder_not_running_unconfirmed(self) -> None:
         feeder_running = self.rig.plant.feeder.motor.running
-        conveyor_confirmed = self.rig.line.interlocks.conveyor_confirmed_running
+        # Read from the I/O image, not rig.line.interlocks: identical to
+        # Interlocks.conveyor_confirmed_running (M-104.RUNNING and ZSS-104),
+        # but it also holds in external-controller mode, where there is no
+        # built-in controller to ask (Phase 7 step 3).
+        conveyor_confirmed = bool(self.rig.io.read("M-104.RUNNING") and self.rig.io.read("ZSS-104"))
         if feeder_running and not conveyor_confirmed:
             self._feeder_unconfirmed_ticks += 1
         else:

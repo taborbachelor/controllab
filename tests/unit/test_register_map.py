@@ -14,9 +14,11 @@ from services.protocols.register_map import (
     HOLDING_REGISTER,
     INPUT_REGISTER,
     HmiCoil,
+    HmiLatches,
     IOImageDataStore,
     Point,
     RegisterMap,
+    contiguous_runs,
     to_raw,
 )
 from services.simulation.engine.io_image import IOImage, TagType
@@ -165,3 +167,40 @@ def test_committed_map_document_matches_the_served_map():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     assert (REPO / "docs" / "MODBUS-MAP.md").read_text(encoding="utf-8") == module.render()
+
+
+# ---- external-controller mode (Phase 7 step 3) ---------------------------------
+
+def test_latched_hmi_is_a_request_acknowledge_handshake():
+    latches = HmiLatches(["start"])
+    io = small_io()
+    s = IOImageDataStore(small_map(), lambda: io, hmi_latches=latches)
+    assert handle_pdu(s, bytes.fromhex("01000A0001")) == bytes.fromhex("010100")  # nothing requested
+    latches.request("start")  # ControlLab side
+    assert handle_pdu(s, bytes.fromhex("01000A0001")) == bytes.fromhex("010101")  # stays set until taken...
+    assert handle_pdu(s, bytes.fromhex("01000A0001")) == bytes.fromhex("010101")  # ...across any number of reads
+    handle_pdu(s, bytes.fromhex("05000A0000"))  # controller acknowledges by writing 0
+    assert latches.requested["start"] is False
+
+
+def test_unknown_hmi_request_is_rejected():
+    with pytest.raises(ValueError):
+        HmiLatches(["start"]).request("launch")
+
+
+def test_output_writes_feed_the_heartbeat_but_hmi_writes_do_not():
+    beats = []
+    io = small_io()
+    s = IOImageDataStore(small_map(), lambda: io, outputs_writable=True, hmi_latches=HmiLatches(["start"]),
+                         on_output_write=lambda: beats.append(1))
+    handle_pdu(s, bytes.fromhex("05000A0000"))  # HMI acknowledge
+    assert beats == []
+    handle_pdu(s, bytes.fromhex("050000FF00"))  # a coil output
+    handle_pdu(s, bytes.fromhex("0600000064"))  # a holding-register output
+    assert beats == [1, 1]
+
+
+def test_contiguous_runs_never_span_a_hole():
+    assert contiguous_runs([0, 1, 2, 5, 6, 100]) == [(0, 3), (5, 2), (100, 1)]
+    assert contiguous_runs([3, 1, 2]) == [(1, 3)]
+    assert contiguous_runs([]) == []

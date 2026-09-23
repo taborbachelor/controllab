@@ -286,3 +286,86 @@ class ModbusServer(socketserver.ThreadingTCPServer):
         self.store = store
         self.lock = lock or threading.Lock()
         super().__init__((host, port), _Handler)
+
+
+# ---- the TCP client ----------------------------------------------------------
+
+
+class ModbusClient:
+    """A minimal blocking Modbus TCP client (Phase 7 step 3) -- the other
+    half of the same protocol subset, so the reference external controller
+    needs no runtime dependency either. One request at a time on one
+    connection; each response's transaction ID must echo the request's.
+    An exception response raises ModbusError with its code; a dropped or
+    garbled connection raises ConnectionError.
+
+    Its framing is checked against the server above, whose parsing is
+    itself pinned to the spec's worked examples and to pymodbus's client
+    (tests/unit/test_modbus.py, tests/integration/test_modbus_interop.py),
+    so a client frame the server accepts is a spec-conformant frame."""
+
+    def __init__(self, host: str = "127.0.0.1", port: int = 5020, timeout: float = 2.0, unit: int = 1) -> None:
+        import socket
+
+        self._sock = socket.create_connection((host, port), timeout=timeout)
+        self._sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self.unit = unit
+        self._transaction = 0
+
+    def close(self) -> None:
+        self._sock.close()
+
+    def __enter__(self) -> "ModbusClient":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    def _request(self, pdu: bytes) -> bytes:
+        self._transaction = (self._transaction + 1) & 0xFFFF
+        self._sock.sendall(struct.pack(">HHHB", self._transaction, 0, len(pdu) + 1, self.unit) + pdu)
+        header = _recv_exact(self._sock, MBAP_HEADER_LEN)
+        if header is None:
+            raise ConnectionError("server closed the connection")
+        transaction, protocol, length, _unit = struct.unpack(">HHHB", header)
+        body = _recv_exact(self._sock, length - 1) if length >= 2 else None
+        if body is None or transaction != self._transaction or protocol != 0:
+            raise ConnectionError("malformed or mismatched Modbus response")
+        if body[0] & 0x80:
+            raise ModbusError(body[1], f"function {pdu[0]:#04x} failed with exception {body[1]:#04x}")
+        if body[0] != pdu[0]:
+            raise ConnectionError(f"response to function {body[0]:#04x}, expected {pdu[0]:#04x}")
+        return body
+
+    def _read_bits(self, function: int, address: int, count: int) -> list[bool]:
+        body = self._request(struct.pack(">BHH", function, address, count))
+        return unpack_bits(body[2 : 2 + body[1]], count)
+
+    def _read_registers(self, function: int, address: int, count: int) -> list[int]:
+        body = self._request(struct.pack(">BHH", function, address, count))
+        return list(struct.unpack(f">{count}H", body[2 : 2 + 2 * count]))
+
+    def read_coils(self, address: int, count: int) -> list[bool]:
+        return self._read_bits(0x01, address, count)
+
+    def read_discrete_inputs(self, address: int, count: int) -> list[bool]:
+        return self._read_bits(0x02, address, count)
+
+    def read_holding_registers(self, address: int, count: int) -> list[int]:
+        return self._read_registers(0x03, address, count)
+
+    def read_input_registers(self, address: int, count: int) -> list[int]:
+        return self._read_registers(0x04, address, count)
+
+    def write_coil(self, address: int, value: bool) -> None:
+        self._request(struct.pack(">BHH", 0x05, address, 0xFF00 if value else 0x0000))
+
+    def write_register(self, address: int, value: int) -> None:
+        self._request(struct.pack(">BHH", 0x06, address, value))
+
+    def write_coils(self, address: int, values: list[bool]) -> None:
+        data = pack_bits(values)
+        self._request(struct.pack(">BHHB", 0x0F, address, len(values), len(data)) + data)
+
+    def write_registers(self, address: int, values: list[int]) -> None:
+        self._request(struct.pack(f">BHHB{len(values)}H", 0x10, address, len(values), 2 * len(values), *values))

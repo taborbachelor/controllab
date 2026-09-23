@@ -100,7 +100,9 @@ ControlLab/
 │   │   │                              pure PDU/ADU handling, ModbusServer (Phase 7 step 1)
 │   │   ├── register_map.py           generic: Point/HmiCoil/RegisterMap.validate(),
 │   │   │                              IOImageDataStore, render_markdown() (step 2)
-│   │   └── line_map.py               this line's hand-written addresses (step 2)
+│   │   ├── line_map.py               this line's hand-written addresses (step 2)
+│   │   └── external_controller.py    the reference external controller: our LineController
+│   │                                  over ModbusIOSync (step 3a)
 │   └── visualization/
 │       ├── replay.py                 build_frames()/build_replay()/render_html() --
 │       │                             replay reconstructed from telemetry (Phase 6 step 2)
@@ -133,7 +135,9 @@ ControlLab/
 │   │                                  HTML replay of it
 │   ├── dashboard.py                  starts the live dashboard on 127.0.0.1
 │   │                                  (--modbus-port also serves the I/O image)
-│   └── register_map.py               writes docs/MODBUS-MAP.md from line_map.py
+│   ├── register_map.py               writes docs/MODBUS-MAP.md from line_map.py
+│   └── external_controller.py        runs the reference external controller against
+│                                      dashboard.py --external
 ├── tests/
 │   ├── unit/                        one test module per equipment/engine/control/
 │   │                                 testing/telemetry class, plus test_control_boundary.py
@@ -737,6 +741,37 @@ issue and propose the change"):
   because an HMI coil write re-enters `session.command()` while the
   server already holds it.
 
+## Module responsibilities (Phase 7 step 3a)
+
+- **`build_rig(with_controller=False)`** — a plant-only rig
+  (`rig.line is None`, so `tick()` only advances the plant).
+  `build_line_controller()` was split out so the external controller
+  builds *exactly* the stack every scenario uses.
+- **`ModbusClient`** (`modbus.py`) — stdlib client for the same eight
+  function codes; transaction IDs checked; exception responses raise
+  `ModbusError`. Interop-tested against `pymodbus`'s server.
+- **`HmiLatches` + `IOImageDataStore(hmi_latches=...)`** — latched HMI
+  mode: request bits set by ControlLab, acknowledged (written 0) by the
+  controller. `on_output_write` gives the plant a heartbeat.
+- **`ModbusIOSync`** (`register_map.py`) — the controller side of the
+  map: `pull_inputs()` (via `write_input`, so the mirror keeps
+  `IOImage`'s direction rules), `take_commands()` (read + acknowledge),
+  `push_outputs()`. Requests are grouped by `contiguous_runs()` and
+  never span an unmapped hole.
+- **`ExternalController`** (`external_controller.py`) — mirror
+  `IOImage` + `build_line_controller()` + `ModbusIOSync`.
+  `scan_once()` for deterministic lockstep tests; `run()` free-runs on
+  its own clock.
+- **`LiveSession(external=True)`** — no controller, latched HMI,
+  directly recorded command/watchdog events, and the **comm-loss
+  watchdog** (`WATCHDOG_S = 1.0`: no output write for 1 s of plant time
+  while a discrete output is on → all outputs off).
+- **`Invariants`** — the feeder-unconfirmed check reads
+  `M-104.RUNNING`/`ZSS-104` from the I/O image instead of asking
+  `rig.line.interlocks`. The semantics are identical, and it works with
+  no controller.
+- **`services/control/`: unchanged.** That's the point of the step.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |
@@ -748,7 +783,7 @@ issue and propose the change"):
 | 4 | Fault injection, alarms | done (steps 1-3: alarm core; wired into `LineController`; surfaced through Testing, 8/8 interlocks covered). Step 4 (feeder jam + sensor failure hooks) deliberately deferred — see `CONTROL-LAB.md` §10 |
 | 5 | Telemetry | done — generic sampled tag history; state/alarm diffing observer; optional command sink; generated Markdown commissioning report |
 | 6 | Visualization | done — tag history in every scenario run; HTML replay viewer; live localhost dashboard with operator commands, fault injection, and replay download |
-| 7 | Protocols | in progress — steps 1-2 done (stdlib Modbus TCP server; the line's register map, served live) |
+| 7 | Protocols | in progress — steps 1, 2, 3a done (Modbus server + client; register map; external-controller mode) |
 | 8 | AI engineering assistance | not started |
 | 9 | Virtual commissioning | not started |
 

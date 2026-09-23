@@ -21,10 +21,18 @@ Mapping rules (confirmed at Phase 7 scoping):
   validate() requires each analog point's full-scale value to fit in
   0..65535. A reading outside that range at runtime is clamped (a real
   transmitter saturates at its range limits too) rather than wrapped.
-- HMI command coils are momentary pushbuttons: writing 1 issues the
-  command (through a callback -- this module never touches Control),
-  writing 0 does nothing, and they always read back 0. Kept in their own
-  address block, apart from field I/O, as §3.2 has always specified.
+- HMI command coils live in their own address block, apart from field
+  I/O, as §3.2 has always specified, in one of two modes depending on
+  who runs Control:
+  * **momentary** (built-in controller, step 2): writing 1 issues the
+    command through a callback -- this module never touches Control --
+    writing 0 does nothing, and they always read back 0.
+  * **latched** (external controller, step 3): an `HmiLatches` object
+    holds a request bit per command. ControlLab (the dashboard, a
+    scenario) sets it; the external controller reads it, acts on it,
+    and writes 0 to clear it -- the standard HMI-to-PLC request/
+    acknowledge handshake, so a request is neither lost between two
+    controller scans nor acted on twice.
 
 Outputs (the DO coils and AO holding registers) are writable only when
 `outputs_writable` is set. With ControlLab's built-in LineController in
@@ -122,6 +130,20 @@ class RegisterMap:
         return {p.address: p for p in self.points if p.table == table}
 
 
+class HmiLatches:
+    """Request bits for the latched HMI handshake (see the module
+    docstring). Not thread-safe on its own -- it's only touched under the
+    same lock the Modbus server holds."""
+
+    def __init__(self, commands: list[str]) -> None:
+        self.requested = {c: False for c in commands}
+
+    def request(self, command: str) -> None:
+        if command not in self.requested:
+            raise ValueError(f"unknown HMI command {command!r}")
+        self.requested[command] = True
+
+
 def to_raw(value: float, scale: float) -> int:
     return max(0, min(UINT16_MAX, round(value * scale)))
 
@@ -140,8 +162,15 @@ class IOImageDataStore:
         get_io: Callable[[], IOImage],
         on_command: Callable[[str], None] | None = None,
         outputs_writable: bool = False,
+        hmi_latches: HmiLatches | None = None,
+        on_output_write: Callable[[], None] | None = None,
     ) -> None:
+        """Pass `hmi_latches` for the latched handshake (external
+        controller); otherwise HMI coils are momentary and call
+        `on_command`."""
         register_map.validate(get_io())
+        self.hmi_latches = hmi_latches
+        self.on_output_write = on_output_write  # e.g. a comm-loss watchdog heartbeat
         self.map = register_map
         self.get_io = get_io
         self.on_command = on_command
@@ -164,7 +193,10 @@ class IOImageDataStore:
     def read_coils(self, address: int, count: int) -> list[bool]:
         io = self.get_io()
         table = {**self._coils, **self._hmi}
-        return [False if isinstance(p, HmiCoil) else bool(io.read(p.tag)) for p in self._points(table, address, count, "coil")]
+        return [self._read_hmi(p) if isinstance(p, HmiCoil) else bool(io.read(p.tag)) for p in self._points(table, address, count, "coil")]
+
+    def _read_hmi(self, coil: HmiCoil) -> bool:
+        return self.hmi_latches.requested[coil.command] if self.hmi_latches is not None else False
 
     def read_discrete_inputs(self, address: int, count: int) -> list[bool]:
         io = self.get_io()
@@ -190,10 +222,14 @@ class IOImageDataStore:
         io = self.get_io()
         for target, value in zip(targets, values):
             if isinstance(target, HmiCoil):
-                if value and self.on_command is not None:
+                if self.hmi_latches is not None:
+                    self.hmi_latches.requested[target.command] = bool(value)  # 1 = request, 0 = acknowledge
+                elif value and self.on_command is not None:
                     self.on_command(target.command)
             else:
                 io.write_output(target.tag, bool(value))
+        if self.on_output_write is not None and any(isinstance(t, Point) for t in targets):
+            self.on_output_write()
 
     def write_holding_registers(self, address: int, values: list[int]) -> None:
         targets = self._points(self._holding, address, len(values), "holding register")
@@ -202,6 +238,8 @@ class IOImageDataStore:
         io = self.get_io()
         for p, raw in zip(targets, values):
             io.write_output(p.tag, raw / p.scale)
+        if self.on_output_write is not None:
+            self.on_output_write()
 
 
 def render_markdown(register_map: RegisterMap, io: IOImage, title: str) -> str:
@@ -253,3 +291,73 @@ def render_markdown(register_map: RegisterMap, io: IOImage, title: str) -> str:
             lines.append(f"| {h.address} | {h.address + 1:05d} | `{h.command}` | {h.description} |")
         lines.append("")
     return "\n".join(lines)
+
+
+def contiguous_runs(addresses: list[int]) -> list[tuple[int, int]]:
+    """[(start, count), ...] covering sorted `addresses` in as few Modbus
+    requests as possible without ever spanning an unmapped hole (which
+    IOImageDataStore refuses, and a strict PLC would too)."""
+    runs: list[tuple[int, int]] = []
+    for a in sorted(addresses):
+        if runs and runs[-1][0] + runs[-1][1] == a:
+            runs[-1] = (runs[-1][0], runs[-1][1] + 1)
+        else:
+            runs.append((a, 1))
+    return runs
+
+
+class ModbusIOSync:
+    """The controller side of the register map (Phase 7 step 3): keeps a
+    *local* IOImage in step with a remote one over Modbus, so a controller
+    written against IOImage -- LineController, unchanged -- can run in a
+    different process from the plant.
+
+    Each controller scan is: pull_inputs() (sensors in), take_commands()
+    (latched HMI requests in, and acknowledged), the controller's own
+    scan, push_outputs() (outputs out). Inputs are written into the local
+    image with write_input() and outputs read from it, so IOImage's own
+    direction rules still hold on this side of the wire too.
+
+    `client` is anything with ModbusClient's methods (services/protocols/
+    modbus.py)."""
+
+    def __init__(self, client, register_map: RegisterMap, io: IOImage) -> None:
+        register_map.validate(io)
+        self.client = client
+        self.io = io
+        self.map = register_map
+        self._runs = {
+            table: [(start, count, register_map.by_table(table)) for start, count in contiguous_runs(list(register_map.by_table(table)))]
+            for table in (DISCRETE_INPUT, INPUT_REGISTER, COIL, HOLDING_REGISTER)
+        }
+        self._hmi = sorted(register_map.hmi_coils, key=lambda h: h.address)
+
+    def pull_inputs(self) -> None:
+        for start, count, points in self._runs[DISCRETE_INPUT]:
+            for offset, value in enumerate(self.client.read_discrete_inputs(start, count)):
+                self.io.write_input(points[start + offset].tag, bool(value))
+        for start, count, points in self._runs[INPUT_REGISTER]:
+            for offset, raw in enumerate(self.client.read_input_registers(start, count)):
+                p = points[start + offset]
+                self.io.write_input(p.tag, raw / p.scale)
+
+    def take_commands(self) -> list[str]:
+        """The HMI requests currently latched, in address order --
+        acknowledged (written back to 0) before returning, so each
+        request is acted on exactly once."""
+        taken: list[str] = []
+        for start, count in contiguous_runs([h.address for h in self._hmi]):
+            bits = self.client.read_coils(start, count)
+            by_address = {h.address: h for h in self._hmi}
+            for offset, bit in enumerate(bits):
+                if bit:
+                    coil = by_address[start + offset]
+                    self.client.write_coil(coil.address, False)
+                    taken.append(coil.command)
+        return taken
+
+    def push_outputs(self) -> None:
+        for start, count, points in self._runs[COIL]:
+            self.client.write_coils(start, [bool(self.io.read(points[a].tag)) for a in range(start, start + count)])
+        for start, count, points in self._runs[HOLDING_REGISTER]:
+            self.client.write_registers(start, [to_raw(self.io.read(points[a].tag), points[a].scale) for a in range(start, start + count)])

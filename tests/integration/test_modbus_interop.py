@@ -105,3 +105,65 @@ def test_binds_localhost_by_default():
         assert server.server_address[0] == "127.0.0.1"
     finally:
         server.server_close()
+
+
+# ---- the other direction: our client against pymodbus's server ----------------
+
+
+@pytest.fixture
+def pymodbus_server():
+    """pymodbus's own TCP server in a thread, so our ModbusClient is
+    checked against an independent implementation too -- not only against
+    our server."""
+    server_mod = pytest.importorskip("pymodbus.server")
+    datastore = pytest.importorskip("pymodbus.datastore")
+    probe = socket.socket()
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+    # pymodbus data blocks are 1-based internally (they store at address - 1);
+    # starting them at 1 is its documented idiom -- nothing to do with the wire.
+    device = datastore.ModbusDeviceContext(
+        co=datastore.ModbusSequentialDataBlock(1, [False] * 100),
+        di=datastore.ModbusSequentialDataBlock(1, [False] * 100),
+        hr=datastore.ModbusSequentialDataBlock(1, [0] * 100),
+        ir=datastore.ModbusSequentialDataBlock(1, [0] * 100),
+    )
+    context = datastore.ModbusServerContext(devices=device, single=True)
+    thread = threading.Thread(
+        target=server_mod.StartTcpServer, kwargs={"context": context, "address": ("127.0.0.1", port)}, daemon=True
+    )
+    thread.start()
+    for _ in range(100):
+        try:
+            socket.create_connection(("127.0.0.1", port), timeout=0.1).close()
+            break
+        except OSError:
+            threading.Event().wait(0.05)
+    yield port
+    server_mod.ServerStop()
+    thread.join(timeout=5)
+
+
+def test_our_client_round_trips_through_a_pymodbus_server(pymodbus_server):
+    from services.protocols.modbus import ModbusClient
+
+    with ModbusClient(port=pymodbus_server) as c:
+        c.write_coils(3, [True, False, True, True])
+        assert c.read_coils(3, 4) == [True, False, True, True]
+        c.write_coil(40, True)
+        assert c.read_coils(40, 1) == [True]
+        c.write_registers(10, [1, 0xBEEF, 65535])
+        assert c.read_holding_registers(10, 3) == [1, 0xBEEF, 65535]
+        c.write_register(0, 42)
+        assert c.read_holding_registers(0, 1) == [42]
+        assert c.read_discrete_inputs(0, 9) == [False] * 9
+        assert c.read_input_registers(0, 2) == [0, 0]
+
+
+def test_our_client_surfaces_a_pymodbus_exception_response(pymodbus_server):
+    from services.protocols.modbus import ModbusClient, ModbusError
+
+    with ModbusClient(port=pymodbus_server) as c, pytest.raises(ModbusError) as e:
+        c.read_holding_registers(99, 5)  # runs off the 100-register block
+    assert e.value.code == 0x02

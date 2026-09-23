@@ -141,7 +141,12 @@ async function poll() {
     renderMimic(s.values, running);
     renderTags(CFG.tags, s.values, prev);
     prev = s.values;
-    renderAlarms(s.alarms);
+    if (s.mode === "external") {
+      $("alarms").innerHTML = '<p class="empty">External-controller mode: alarms live in the external controller.' +
+        (s.pending_hmi.length ? ` Waiting for it to take: ${s.pending_hmi.join(", ")}.` : "") + "</p>";
+    } else {
+      renderAlarms(s.alarms);
+    }
     renderEvents(s.events);
     document.querySelectorAll("[data-fault]").forEach((b) => {
       const on = b.dataset.fault === "estop" ? injected.estop === "tripped" : injected[b.dataset.fault];

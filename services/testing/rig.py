@@ -58,10 +58,15 @@ DEFAULT_GATE_TRAVEL_TIMEOUT_S = 2.0
 class Rig:
     plant: Plant
     io: IOImage
-    line: LineController
+    # None in external-controller mode (Phase 7 step 3): the plant runs
+    # with no built-in controller and something outside ControlLab writes
+    # the outputs over Modbus. tick() then only advances the plant.
+    line: LineController | None
 
 
-def build_rig(plant_overrides: dict | None = None, line_overrides: dict | None = None) -> Rig:
+def build_rig(
+    plant_overrides: dict | None = None, line_overrides: dict | None = None, with_controller: bool = True
+) -> Rig:
     plant_cfg = dict(DEFAULT_PLANT_CONFIG)
     plant_cfg.update(plant_overrides or {})
     cfg = PlantConfig(**plant_cfg)
@@ -70,6 +75,17 @@ def build_rig(plant_overrides: dict | None = None, line_overrides: dict | None =
     io = build_line_io_image()
     publish_plant_inputs(plant, io)
 
+    line = build_line_controller(io, cfg.hopper_capacity_kg, line_overrides) if with_controller else None
+    return Rig(plant=plant, io=io, line=line)
+
+
+def build_line_controller(io: IOImage, hopper_capacity_kg: float, line_overrides: dict | None = None) -> LineController:
+    """The canonical controller stack (three device-control modules + the
+    line state machine) on a given I/O image -- split out of build_rig()
+    so the reference external controller (services/protocols/
+    external_controller.py) runs *exactly* the controller every scenario
+    and test runs, just against an I/O image mirrored over Modbus instead
+    of one shared with a Plant."""
     feeder_ctrl = MotorControl(
         io,
         "M-103.RUN",
@@ -85,20 +101,19 @@ def build_rig(plant_overrides: dict | None = None, line_overrides: dict | None =
 
     line_cfg = dict(DEFAULT_LINE_CONFIG)
     line_cfg.update(line_overrides or {})
-    line = LineController(
+    return LineController(
         io,
         feeder_ctrl,
         conveyor_ctrl,
         gate_ctrl,
-        hopper_capacity_kg=cfg.hopper_capacity_kg,
+        hopper_capacity_kg=hopper_capacity_kg,
         **line_cfg,
     )
 
-    return Rig(plant=plant, io=io, line=line)
-
 
 def tick(rig: Rig, dt: float = DT) -> None:
-    rig.line.scan(dt)
+    if rig.line is not None:
+        rig.line.scan(dt)
     plant_scan(rig.plant, rig.io, dt)
 
 

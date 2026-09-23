@@ -113,6 +113,7 @@ function describe(e) {
     case "alarm_activated": return `${e.is_warning ? "Warning" : "Alarm"} <strong>${esc(e.alarm_id)}</strong> active${e.first_out ? " · first out" : ""}`;
     case "alarm_cleared": return `Alarm ${esc(e.alarm_id)} cleared`;
     case "alarm_acknowledged": return `Alarm ${esc(e.alarm_id)} acknowledged`;
+    case "controller_watchdog": return `<strong>Controller watchdog</strong>: no output write for ${e.timeout_s} s, outputs forced off`;
     default: return esc(e.type);
   }
 }

@@ -49,7 +49,8 @@ from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
-from services.telemetry.events import EventLog
+from services.protocols.register_map import HmiLatches
+from services.telemetry.events import Event, EventLog
 from services.telemetry.tag_history import TagHistory
 from services.testing.invariants import InvariantViolation, Invariants
 from services.testing.rig import DEFAULT_PLANT_CONFIG, DT, build_rig, tick
@@ -81,6 +82,13 @@ STIMULI: dict[str, str] = {
 # the scenario runner does for given/when (see Invariants.rebaseline()).
 LEVEL_STIMULI = {"hopper_level_pct", "bin_level_pct"}
 
+# External-controller mode (Phase 7 step 3): if no controller output
+# write arrives for this long (simulated seconds), every output is forced
+# off -- the comm-loss fault action real remote I/O is configured with, so
+# a crashed or disconnected external controller cannot leave a conveyor
+# running forever.
+WATCHDOG_S = 1.0
+
 PLANT = {
     key: DEFAULT_PLANT_CONFIG[key]
     for key in ("hopper_capacity_kg", "hopper_high_pct", "hopper_high_high_pct", "bin_capacity_kg")
@@ -88,12 +96,23 @@ PLANT = {
 
 
 class LiveSession:
-    def __init__(self) -> None:
+    """`external=True` runs the plant with NO built-in controller (Phase 7
+    step 3): an external controller owns the outputs over Modbus, operator
+    commands become latched HMI requests (`self.latches`) for it to pick
+    up, line state and alarms live in that controller (so the snapshot
+    reports state "external" and no alarms), and a comm-loss watchdog
+    de-energizes every output if the controller stops writing."""
+
+    def __init__(self, external: bool = False) -> None:
         # Re-entrant because the Modbus server (Phase 7 step 2) holds this
         # same lock while serving a request, and an HMI coil write calls
         # back into command() from inside that request -- a plain Lock
         # would deadlock there.
         self._lock = threading.RLock()
+        self.external = external
+        # Created once, not per session: the Modbus data store holds this
+        # object, so restart() clears its bits instead of replacing it.
+        self.latches = HmiLatches(list(COMMANDS))
         self._fresh()
 
     @property
@@ -109,15 +128,35 @@ class LiveSession:
         return self.rig.io
 
     def _fresh(self) -> None:
-        self.rig = build_rig()
+        self.rig = build_rig(with_controller=not self.external)
         self.invariants = Invariants(self.rig)
-        self.events = EventLog(self.rig.line)
-        self.rig.line.command_sink = self.events.record_command
         self.tags = TagHistory(self.rig.io)
-        self.events.sample(self.rig.plant.time_s)
         self.tags.record(self.rig.plant.time_s)
+        if self.external:
+            # No LineController to diff, so EventLog cannot run; commands
+            # and watchdog trips are recorded directly as the same Event type.
+            self.events = None
+            self._external_events: list[Event] = []
+            for command in self.latches.requested:
+                self.latches.requested[command] = False
+        else:
+            self.events = EventLog(self.rig.line)
+            self.rig.line.command_sink = self.events.record_command
+            self.events.sample(self.rig.plant.time_s)
         self.violation: str | None = None
         self._pending: list[tuple[str, Callable[[], None]]] = []
+        self._last_controller_write_t = 0.0
+        self._watchdog_tripped = False
+
+    def _event_list(self) -> list[Event]:
+        return self._external_events if self.external else self.events.events
+
+    def note_controller_write(self) -> None:
+        """Called by the Modbus data store whenever the external controller
+        writes an output -- the watchdog heartbeat."""
+        with self._lock:
+            self._last_controller_write_t = self.rig.plant.time_s
+            self._watchdog_tripped = False
 
     # ---- inputs (validated immediately, applied at the next tick) ------
 
@@ -125,7 +164,10 @@ class LiveSession:
         if name not in COMMANDS:
             raise ValueError(f"unknown command {name!r} (known: {', '.join(COMMANDS)})")
         with self._lock:
-            self._pending.append((name, getattr(self.rig.line, name)))
+            if self.external:
+                self._pending.append((name, lambda: self.latches.request(name)))
+            else:
+                self._pending.append((name, getattr(self.rig.line, name)))
 
     def stimulus(self, key: str, value: object) -> None:
         kind = STIMULI.get(key)
@@ -160,15 +202,38 @@ class LiveSession:
                 apply()
             if any(key in LEVEL_STIMULI for key, _ in pending):
                 self.invariants.rebaseline()
+            if self.external:
+                self._watchdog()
             tick(self.rig, DT)
             t = self.rig.plant.time_s
-            self.events.sample(t)
+            if self.external:
+                for key, _ in pending:
+                    if key in COMMANDS:
+                        self._external_events.append(Event(t, "command_issued", {"command": key}))
+            else:
+                self.events.sample(t)
             self.tags.record(t)
             if self.violation is None:
                 try:
                     self.invariants.check()
                 except InvariantViolation as e:
                     self.violation = f"t={t:.2f}s: {e}"
+
+    def _watchdog(self) -> None:
+        io = self.rig.io
+        outputs = [n for n in io.names() if not io.tag(n).type.is_input]
+        # Only the discrete run/open commands count as "energized": a speed
+        # reference left at 100 % with the run command off drives nothing,
+        # and counting it made the watchdog trip on an already-stopped line.
+        energized = any(io.read(n) for n in outputs if io.tag(n).type.is_discrete)
+        if energized and self.rig.plant.time_s - self._last_controller_write_t > WATCHDOG_S:
+            for n in outputs:
+                io.write_output(n, False if io.tag(n).type.is_discrete else 0.0)
+            if not self._watchdog_tripped:
+                self._watchdog_tripped = True
+                self._external_events.append(
+                    Event(self.rig.plant.time_s, "controller_watchdog", {"timeout_s": WATCHDOG_S})
+                )
 
     # ---- outputs -------------------------------------------------------
 
@@ -178,26 +243,38 @@ class LiveSession:
         after index `since` so the browser only fetches what's new."""
         with self._lock:
             line, plant = self.rig.line, self.rig.plant
+            events = self._event_list()
+            if self.external:
+                controller = {
+                    "mode": "external", "state": "external", "fault_reason": None,
+                    "last_start_refusal": [], "alarms": [],
+                }
+            else:
+                controller = {
+                    "mode": "builtin",
+                    "state": line.state.name.lower(),
+                    "fault_reason": line.fault_reason,
+                    "last_start_refusal": list(line.last_start_refusal),
+                    "alarms": [
+                        {
+                            "id": a.id,
+                            "description": a.description,
+                            "is_warning": a.is_warning,
+                            "active": a.active,
+                            "acknowledged": a.acknowledged,
+                            "first_out": a.first_out,
+                        }
+                        for a in sorted(line.alarms.all_alarms, key=lambda a: a.id)
+                        if a.latched
+                    ],
+                }
             return {
+                **controller,
                 "t": plant.time_s,
-                "state": line.state.name.lower(),
-                "fault_reason": line.fault_reason,
-                "last_start_refusal": list(line.last_start_refusal),
                 "values": self.tags.samples[-1].values,
-                "alarms": [
-                    {
-                        "id": a.id,
-                        "description": a.description,
-                        "is_warning": a.is_warning,
-                        "active": a.active,
-                        "acknowledged": a.acknowledged,
-                        "first_out": a.first_out,
-                    }
-                    for a in sorted(line.alarms.all_alarms, key=lambda a: a.id)
-                    if a.latched
-                ],
-                "events": [{"t": e.t, "type": e.type, **e.data} for e in self.events.events[since:]],
-                "event_count": len(self.events.events),
+                "events": [{"t": e.t, "type": e.type, **e.data} for e in events[since:]],
+                "event_count": len(events),
+                "pending_hmi": [c for c, on in self.latches.requested.items() if on] if self.external else [],
                 "injected": {
                     "estop": "tripped" if plant.estop.tripped else "healthy",
                     "conveyor_trip": plant.conveyor.motor.trip_now,
@@ -226,8 +303,11 @@ class LiveSession:
     def replay_html(self) -> str:
         with self._lock:
             detail = f"invariant violated {self.violation}" if self.violation else "recorded from the live dashboard"
+            title = "Live session (external controller)" if self.external else "Live session"
             replay = build_replay(
-                "Live session", list(self.events.events), self.tags, PLANT, meta={"file": "live dashboard", "detail": detail}
+                title, list(self._event_list()), self.tags, PLANT,
+                meta={"file": "live dashboard", "detail": detail},
+                initial_state="external" if self.external else "idle",
             )
         return render_html(replay)
 
