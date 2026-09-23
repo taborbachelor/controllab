@@ -51,3 +51,59 @@ Pushbuttons, kept apart from field I/O: writing 1 issues the command once; writi
 | 101 | 00102 | `stop` | Normal stop -- upstream first, then purge |
 | 102 | 00103 | `reset` | Reset a FAULTED/ESTOPPED line once the cause is cleared |
 | 103 | 00104 | `acknowledge` | Acknowledge all latched alarms |
+
+In external-controller mode these are **latched requests** instead: ControlLab sets the bit, the controller acts on it and writes 0 to acknowledge.
+
+## Holding registers — controller status (FC 03 read; written by the controller)
+
+The controller's internal state, published every scan like a PLC's HMI status words. With the built-in controller they are computed on read and read-only; in external-controller mode the external controller writes them (FC 16).
+
+| Address | Ref | Name | Description |
+|---:|---:|---|---|
+| 200 | 40201 | `line_state` | Line state code |
+| 201 | 40202 | `fault_reason` | Fault reason code (0 = none) |
+| 202 | 40203 | `alarms_active` | Bit per alarm: condition active |
+| 203 | 40204 | `alarms_unacked` | Bit per alarm: not yet acknowledged (latched = active or unacked) |
+| 204 | 40205 | `first_out` | 1 + bit number of the first-out alarm (0 = none) |
+
+### `line_state` codes
+
+| Code | State |
+|---:|---|
+| 0 | IDLE |
+| 1 | STARTING |
+| 2 | RUNNING |
+| 3 | STOPPING |
+| 4 | FAULTED |
+| 5 | ESTOPPED |
+
+### `fault_reason` codes
+
+| Code | Reason |
+|---:|---|
+| 0 | (none) |
+| 1 | e-stop |
+| 2 | hopper high-high |
+| 3 | feeder trip |
+| 4 | conveyor trip |
+| 5 | feeder failed to prove running |
+| 6 | conveyor failed to prove running |
+| 7 | gate failed to prove open |
+| 8 | conveyor lost confirmation |
+| 9 | gate travel fault |
+
+### Alarm bits (`alarms_active`, `alarms_unacked`; `first_out` = bit + 1)
+
+| Bit | Alarm | Description | Class |
+|---:|---|---|---|
+| 0 | `ES-001.TRIP` | E-stop tripped | trip |
+| 1 | `LSL-101.LOW` | Bin low | warning |
+| 2 | `XV-102.TRAVEL_FAULT` | Gate travel fault | trip |
+| 3 | `M-103.FAULT` | Feeder trip (VFD fault/overload) | trip |
+| 4 | `M-103.START_PROOF` | Feeder failed to prove running | trip |
+| 5 | `M-104.OL` | Conveyor trip (overload) | trip |
+| 6 | `ZSS-104.LOST` | Conveyor motion loss (belt slip) | trip |
+| 7 | `M-104.START_PROOF` | Conveyor failed to prove running | trip |
+| 8 | `WT-105.HIGH_HIGH` | Hopper high-high | trip |
+
+A value this table doesn't know is published as 65535 rather than guessed.

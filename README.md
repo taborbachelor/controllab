@@ -36,7 +36,10 @@ register map ([`docs/MODBUS-MAP.md`](docs/MODBUS-MAP.md)), and an
 external-controller mode where the plant runs with no built-in controller
 and ControlLab's own controller, unmodified, drives it from a separate
 process over Modbus, with a comm-loss watchdog that stops the plant if
-the controller dies.
+the controller dies. The full scenario suite passes against that external
+controller (`python scripts/scenario_report.py --external`), observing it
+only through status registers it publishes, with event logs identical to
+the built-in run.
 
 ## Documentation
 
@@ -111,7 +114,7 @@ watchdog stops the plant within a second.
 | 4 | Fault injection, alarms | done (feeder jam / sensor failure hooks deferred) |
 | 5 | Telemetry | done |
 | 6 | Visualization | done |
-| 7 | Protocols (Modbus + external controller mode) | in progress (steps 1, 2, 3a done: Modbus server/client; register map; external-controller mode) |
+| 7 | Protocols (Modbus + external controller mode) | in progress (steps 1-3 of 4 done; OpenPLC demo next) |
 | 8 | AI engineering assistance | not started |
 | 9 | Virtual commissioning | not started |
 

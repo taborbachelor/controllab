@@ -6,6 +6,7 @@ report: pass/fail per scenario, then the interlock coverage matrix
     python scripts/scenario_report.py
     python scripts/scenario_report.py --out coverage_report.txt
     python scripts/scenario_report.py --markdown commissioning_report.md
+    python scripts/scenario_report.py --external    # same suite, controller across Modbus
 
 --out saves the console text below. --markdown writes the full
 commissioning report (services/testing/commissioning_report.py): the same
@@ -94,6 +95,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=None, help="also write the console report to this file")
     parser.add_argument(
+        "--external", action="store_true",
+        help="run every scenario against the reference external controller across Modbus (Phase 7 step 3b)",
+    )
+    parser.add_argument(
         "--markdown", type=Path, default=None, help="also write the full Markdown commissioning report to this file"
     )
     args = parser.parse_args()
@@ -102,7 +107,7 @@ def main() -> int:
     results: list[tuple[Scenario, object]] = []
     for scenario in scenarios:
         try:
-            result = run_scenario(scenario)
+            result = run_scenario(scenario, external=args.external)
         except ScenarioLoadError as e:
             print(f"FATAL: {e}", file=sys.stderr)
             return 2
@@ -117,7 +122,8 @@ def main() -> int:
         print(f"\nWrote {args.out}")
 
     if args.markdown is not None:
-        args.markdown.write_text(render_markdown(report, SCENARIOS_DIR), encoding="utf-8")
+        controller = "reference external controller over Modbus TCP (`--external`)" if args.external else ""
+        args.markdown.write_text(render_markdown(report, SCENARIOS_DIR, controller), encoding="utf-8")
         print(f"\nWrote {args.markdown}")
 
     return 0 if report.gap_count == 0 and report.passed_count == len(results) else 1

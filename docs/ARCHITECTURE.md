@@ -87,6 +87,8 @@ ControlLab/
 │   │   ├── runner.py                 run_scenario() -- executes one Scenario,
 │   │   │                             always recording its telemetry events
 │   │   ├── report.py                 the interlock coverage matrix (pure logic)
+│   │   ├── external.py               RemoteLine + build_external_rig(): the suite
+│   │   │                             against the external controller (Phase 7 step 3b)
 │   │   └── commissioning_report.py   render_markdown() -- the Markdown
 │   │                                 commissioning report (pure logic, Phase 5 step 4)
 │   └── telemetry/
@@ -101,8 +103,9 @@ ControlLab/
 │   │   ├── register_map.py           generic: Point/HmiCoil/RegisterMap.validate(),
 │   │   │                              IOImageDataStore, render_markdown() (step 2)
 │   │   ├── line_map.py               this line's hand-written addresses (step 2)
-│   │   └── external_controller.py    the reference external controller: our LineController
-│   │                                  over ModbusIOSync (step 3a)
+│   │   ├── external_controller.py    the reference external controller: our LineController
+│   │   │                              over ModbusIOSync (step 3a)
+│   │   └── controller_status.py      status block codec + code tables (step 3b)
 │   └── visualization/
 │       ├── replay.py                 build_frames()/build_replay()/render_html() --
 │       │                             replay reconstructed from telemetry (Phase 6 step 2)
@@ -772,6 +775,24 @@ issue and propose the change"):
   no controller.
 - **`services/control/`: unchanged.** That's the point of the step.
 
+## Module responsibilities (Phase 7 step 3b)
+
+- **`controller_status.py`** — the controller's internal state as five
+  holding registers (200-204): `encode(line)` / `decode(registers)`,
+  plus code tables for states, fault reasons, and alarm bits.
+  Active + unacknowledged masks (not one "latched" mask) let the far
+  side rebuild the whole alarm board as real `Alarm` objects. Three
+  drift tests tie the tables to Control.
+- **`IOImageDataStore(status_source=...)`** — built-in mode computes
+  the block on read (read-only); external mode stores what the
+  controller writes. `ModbusIOSync.push_status()` / `read_status()`.
+- **`RemoteLine` / `build_external_rig()`** (`services/testing/external.py`)
+  — a `LineController`-shaped adapter whose commands are latched HMI
+  requests and whose state comes from the status registers, read on
+  an observer connection separate from the controller's. The runner,
+  vocabulary, invariants, `EventLog`, and scenario files are untouched;
+  `run_scenario(..., external=True)` selects it.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |
@@ -783,7 +804,7 @@ issue and propose the change"):
 | 4 | Fault injection, alarms | done (steps 1-3: alarm core; wired into `LineController`; surfaced through Testing, 8/8 interlocks covered). Step 4 (feeder jam + sensor failure hooks) deliberately deferred — see `CONTROL-LAB.md` §10 |
 | 5 | Telemetry | done — generic sampled tag history; state/alarm diffing observer; optional command sink; generated Markdown commissioning report |
 | 6 | Visualization | done — tag history in every scenario run; HTML replay viewer; live localhost dashboard with operator commands, fault injection, and replay download |
-| 7 | Protocols | in progress — steps 1, 2, 3a done (Modbus server + client; register map; external-controller mode) |
+| 7 | Protocols | in progress — steps 1-3 done (Modbus server + client; register map; external-controller mode, full scenario suite passing across Modbus) |
 | 8 | AI engineering assistance | not started |
 | 9 | Virtual commissioning | not started |
 

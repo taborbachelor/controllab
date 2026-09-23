@@ -12,8 +12,10 @@ break. Nothing in services/control/ changed for this step.
 
 Each scan, in PLC order: read the field inputs, take any latched HMI
 requests (and acknowledge them), run the controller's scan, write the
-outputs. `scan_once()` does exactly one, so tests can interleave plant
-and controller deterministically; `run()` paces scans in real time, on
+outputs, then publish the controller status block (step 3b) so the plant
+side -- an HMI, or the scenario runner -- can see what it decided.
+`scan_once()` does exactly one, so tests can interleave plant and
+controller deterministically; `run()` paces scans in real time, on
 the controller's own clock, like a PLC with a fixed scan time
 (free-running, the timing model chosen at Phase 7 scoping).
 
@@ -28,6 +30,7 @@ import threading
 import time
 
 from services.control.line_controller import LineController
+from services.protocols import controller_status
 from services.protocols.line_map import LINE_REGISTER_MAP
 from services.protocols.modbus import ModbusClient
 from services.protocols.register_map import ModbusIOSync
@@ -58,6 +61,7 @@ class ExternalController:
             COMMANDS[command](self.line)
         self.line.scan(dt)
         self.sync.push_outputs()
+        self.sync.push_status(controller_status.encode(self.line))
         self.scans += 1
 
 

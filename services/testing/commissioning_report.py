@@ -39,9 +39,11 @@ STATUS_LABEL = {
 }
 
 
-def render_markdown(report: CoverageReport, scenarios_root: Path) -> str:
+def render_markdown(report: CoverageReport, scenarios_root: Path, controller: str = "") -> str:
     """`scenarios_root` only relativizes scenario file paths for display,
-    so the output never contains a machine-specific absolute path."""
+    so the output never contains a machine-specific absolute path.
+    `controller` names what was tested when it isn't the built-in one
+    (Phase 7 step 3b); omitted, the output is exactly as before."""
     lines: list[str] = []
     total = len(report.results)
     failed = total - report.passed_count
@@ -50,6 +52,7 @@ def render_markdown(report: CoverageReport, scenarios_root: Path) -> str:
     lines += [
         "# ControlLab — Commissioning Report",
         "",
+        *([f"**Controller under test:** {controller}", ""] if controller else []),
         f"**Overall: {verdict}** — {report.passed_count}/{total} scenarios passed; "
         f"{report.covered_count}/{len(report.rows)} interlocks covered "
         f"({report.not_applicable_count} not yet applicable, {report.gap_count} gap(s)).",

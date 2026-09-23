@@ -17,6 +17,7 @@ import argparse
 import threading
 from http.server import ThreadingHTTPServer
 
+from services.protocols import controller_status
 from services.protocols.line_map import LINE_REGISTER_MAP
 from services.protocols.modbus import ModbusServer
 from services.protocols.register_map import IOImageDataStore
@@ -56,7 +57,10 @@ def main() -> int:
         else:
             # Built-in controller mode: outputs stay read-only over Modbus (the
             # LineController owns them); HMI coils issue operator commands.
-            store = IOImageDataStore(LINE_REGISTER_MAP, lambda: session.io, on_command=session.command)
+            store = IOImageDataStore(
+                LINE_REGISTER_MAP, lambda: session.io, on_command=session.command,
+                status_source=lambda: controller_status.encode(session.rig.line),
+            )
         modbus = ModbusServer(store, port=args.modbus_port, lock=session.lock)
         threading.Thread(target=modbus.serve_forever, daemon=True, name="controllab-modbus").start()
         print(f"Modbus TCP: 127.0.0.1:{modbus.server_address[1]}  (map: docs/MODBUS-MAP.md)")

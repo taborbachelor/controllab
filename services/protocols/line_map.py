@@ -20,6 +20,7 @@ from services.protocols.register_map import (
     HmiCoil,
     Point,
     RegisterMap,
+    StatusRegister,
 )
 
 LINE_REGISTER_MAP = RegisterMap(
@@ -53,5 +54,13 @@ LINE_REGISTER_MAP = RegisterMap(
         HmiCoil("stop", 101, "Normal stop -- upstream first, then purge"),
         HmiCoil("reset", 102, "Reset a FAULTED/ESTOPPED line once the cause is cleared"),
         HmiCoil("acknowledge", 103, "Acknowledge all latched alarms"),
+    ),
+    # Controller status (Phase 7 step 3b), codes in controller_status.py.
+    status_registers=(
+        StatusRegister("line_state", 200, "Line state code"),
+        StatusRegister("fault_reason", 201, "Fault reason code (0 = none)"),
+        StatusRegister("alarms_active", 202, "Bit per alarm: condition active"),
+        StatusRegister("alarms_unacked", 203, "Bit per alarm: not yet acknowledged (latched = active or unacked)"),
+        StatusRegister("first_out", 204, "1 + bit number of the first-out alarm (0 = none)"),
     ),
 )

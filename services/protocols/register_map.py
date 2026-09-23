@@ -41,6 +41,13 @@ just fight it; refusing the write (ILLEGAL_DATA_ADDRESS, the usual answer
 for a read-only point) is honest. External-controller mode (Phase 7 step
 3) turns it on, because then the remote controller owns the outputs.
 
+Controller status registers (Phase 7 step 3b) are a small block of
+holding registers that are NOT I/O-image tags: the controller publishes
+its internal state there (line state, fault reason, alarm board -- see
+services/protocols/controller_status.py). With the built-in controller
+they're computed on read (`status_source`) and read-only; in
+external-controller mode the remote controller writes them.
+
 Reads that span an unmapped address are refused whole with
 ILLEGAL_DATA_ADDRESS rather than padded with zeros -- a PLC reading
 "0" from a hole in the map would be a silent wrong value.
@@ -85,9 +92,17 @@ class HmiCoil:
 
 
 @dataclass(frozen=True)
+class StatusRegister:
+    name: str
+    address: int  # a holding register
+    description: str = ""
+
+
+@dataclass(frozen=True)
 class RegisterMap:
     points: tuple[Point, ...]
     hmi_coils: tuple[HmiCoil, ...] = ()
+    status_registers: tuple[StatusRegister, ...] = ()
 
     def validate(self, io: IOImage) -> None:
         """Raises ValueError listing every problem at once."""
@@ -120,6 +135,12 @@ class RegisterMap:
             if key in taken:
                 problems.append(f"HMI {h.command}: coil {h.address} already used by {taken[key]}")
             taken[key] = f"HMI {h.command}"
+
+        for r in self.status_registers:
+            key = (HOLDING_REGISTER, r.address)
+            if key in taken:
+                problems.append(f"status {r.name}: holding register {r.address} already used by {taken[key]}")
+            taken[key] = f"status {r.name}"
 
         problems += [f"{tag}: mapped {n} times" for tag, n in seen_tags.items() if n > 1]
         problems += [f"{name}: in the I/O image but not mapped" for name in io.names() if name not in seen_tags]
@@ -164,6 +185,7 @@ class IOImageDataStore:
         outputs_writable: bool = False,
         hmi_latches: HmiLatches | None = None,
         on_output_write: Callable[[], None] | None = None,
+        status_source: Callable[[], list[int]] | None = None,
     ) -> None:
         """Pass `hmi_latches` for the latched handshake (external
         controller); otherwise HMI coils are momentary and call
@@ -171,6 +193,11 @@ class IOImageDataStore:
         register_map.validate(get_io())
         self.hmi_latches = hmi_latches
         self.on_output_write = on_output_write  # e.g. a comm-loss watchdog heartbeat
+        # Status registers: computed by `status_source` (built-in controller,
+        # read-only) or stored here as written by an external controller.
+        self.status_source = status_source
+        self._status_addr = {r.address: i for i, r in enumerate(register_map.status_registers)}
+        self.status_values = [0] * len(register_map.status_registers)
         self.map = register_map
         self.get_io = get_io
         self.on_command = on_command
@@ -208,7 +235,12 @@ class IOImageDataStore:
 
     def read_holding_registers(self, address: int, count: int) -> list[int]:
         io = self.get_io()
-        return [to_raw(io.read(p.tag), p.scale) for p in self._points(self._holding, address, count, "holding register")]
+        table = {**self._holding, **self._status_addr}
+        status = self.status_source() if self.status_source is not None else self.status_values
+        return [
+            status[p] if isinstance(p, int) else to_raw(io.read(p.tag), p.scale)
+            for p in self._points(table, address, count, "holding register")
+        ]
 
     # ---- writes --------------------------------------------------------------
     # Validate the whole request before applying any of it, so a refused
@@ -232,17 +264,20 @@ class IOImageDataStore:
             self.on_output_write()
 
     def write_holding_registers(self, address: int, values: list[int]) -> None:
-        targets = self._points(self._holding, address, len(values), "holding register")
-        if not self.outputs_writable:
+        targets = self._points({**self._holding, **self._status_addr}, address, len(values), "holding register")
+        if not self.outputs_writable or (self.status_source is not None and any(isinstance(t, int) for t in targets)):
             raise ModbusError(ILLEGAL_DATA_ADDRESS, "outputs are owned by the built-in controller")
         io = self.get_io()
-        for p, raw in zip(targets, values):
-            io.write_output(p.tag, raw / p.scale)
-        if self.on_output_write is not None:
+        for target, raw in zip(targets, values):
+            if isinstance(target, int):
+                self.status_values[target] = raw
+            else:
+                io.write_output(target.tag, raw / target.scale)
+        if self.on_output_write is not None and any(isinstance(t, Point) for t in targets):
             self.on_output_write()
 
 
-def render_markdown(register_map: RegisterMap, io: IOImage, title: str) -> str:
+def render_markdown(register_map: RegisterMap, io: IOImage, title: str, status_notes: str = "") -> str:
     """The register map as a commissioning document -- generated from the
     same RegisterMap the server uses, so the document can't drift from
     what's actually served (a test compares the committed copy)."""
@@ -290,6 +325,27 @@ def render_markdown(register_map: RegisterMap, io: IOImage, title: str) -> str:
         for h in sorted(register_map.hmi_coils, key=lambda h: h.address):
             lines.append(f"| {h.address} | {h.address + 1:05d} | `{h.command}` | {h.description} |")
         lines.append("")
+        lines += [
+            "In external-controller mode these are **latched requests** instead: ControlLab sets the bit, the "
+            "controller acts on it and writes 0 to acknowledge.",
+            "",
+        ]
+    if register_map.status_registers:
+        lines += [
+            "## Holding registers — controller status (FC 03 read; written by the controller)",
+            "",
+            "The controller's internal state, published every scan like a PLC's HMI status words. With the "
+            "built-in controller they are computed on read and read-only; in external-controller mode the "
+            "external controller writes them (FC 16).",
+            "",
+            "| Address | Ref | Name | Description |",
+            "|---:|---:|---|---|",
+        ]
+        for r in register_map.status_registers:
+            lines.append(f"| {r.address} | {MODBUS_REF[HOLDING_REGISTER] + r.address:05d} | `{r.name}` | {r.description} |")
+        lines.append("")
+        if status_notes:
+            lines.append(status_notes)
     return "\n".join(lines)
 
 
@@ -355,6 +411,19 @@ class ModbusIOSync:
                     self.client.write_coil(coil.address, False)
                     taken.append(coil.command)
         return taken
+
+    def push_status(self, values: list[int]) -> None:
+        """Publish the controller status block (controller_status.encode())."""
+        for start, count in contiguous_runs([r.address for r in self.map.status_registers]):
+            offset = [r.address for r in self.map.status_registers].index(start)
+            self.client.write_registers(start, values[offset : offset + count])
+
+    def read_status(self) -> list[int]:
+        """The status block as currently published -- the observer side."""
+        out: list[int] = []
+        for start, count in contiguous_runs([r.address for r in self.map.status_registers]):
+            out += self.client.read_holding_registers(start, count)
+        return out
 
     def push_outputs(self) -> None:
         for start, count, points in self._runs[COIL]:

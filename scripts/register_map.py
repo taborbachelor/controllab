@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from services.protocols import controller_status
 from services.protocols.line_map import LINE_REGISTER_MAP
 from services.protocols.register_map import render_markdown
 from services.simulation.engine.plant_io import build_line_io_image
@@ -25,7 +26,7 @@ TITLE = "ControlLab — Modbus Register Map (bulk-material line)"
 def render() -> str:
     io = build_line_io_image()
     LINE_REGISTER_MAP.validate(io)
-    return render_markdown(LINE_REGISTER_MAP, io, TITLE)
+    return render_markdown(LINE_REGISTER_MAP, io, TITLE, status_notes=controller_status.render_markdown())
 
 
 def main() -> int:

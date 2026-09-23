@@ -80,18 +80,33 @@ class ScenarioResult:
     when_applied_t: float | None = None  # None: never got past given
 
 
-def run_scenario(scenario: Scenario) -> ScenarioResult:
-    rig = build_rig()
-    invariants = Invariants(rig)
-    telemetry = _Telemetry(EventLog(rig.line), TagHistory(rig.io))
-    rig.line.command_sink = telemetry.events.record_command
-    telemetry.sample(rig.plant.time_s)
+def run_scenario(scenario: Scenario, external: bool = False) -> ScenarioResult:
+    """`external=True` runs the same scenario against the reference
+    external controller across Modbus (Phase 7 step 3b,
+    services/testing/external.py): the rig's `line` is then a RemoteLine,
+    so every command below goes out as a latched HMI request and every
+    controller field the scenario reads comes back from the published
+    status registers. Nothing else in this runner changes."""
+    if external:
+        from services.testing.external import build_external_rig  # protocols only when asked for
 
-    setup_failure = _apply_given(rig, scenario, invariants, telemetry)
-    result = setup_failure or _run_from_given(rig, scenario, invariants, telemetry)
-    result.events = telemetry.events.events
-    result.tags = telemetry.tags
-    return result
+        rig = build_external_rig()
+    else:
+        rig = build_rig()
+    try:
+        invariants = Invariants(rig)
+        telemetry = _Telemetry(EventLog(rig.line), TagHistory(rig.io))
+        rig.line.command_sink = telemetry.events.record_command
+        telemetry.sample(rig.plant.time_s)
+
+        setup_failure = _apply_given(rig, scenario, invariants, telemetry)
+        result = setup_failure or _run_from_given(rig, scenario, invariants, telemetry)
+        result.events = telemetry.events.events
+        result.tags = telemetry.tags
+        return result
+    finally:
+        if external:
+            rig.line.close()
 
 
 @dataclass
