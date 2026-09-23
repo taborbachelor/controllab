@@ -71,6 +71,7 @@ ControlLab/
 │   │   │   └── plant_io.py          the line's tags + Plant<->IOImage glue
 │   │   └── equipment/
 │   │       ├── motor.py             Motor + MotorState (shared by feeder/conveyor)
+│   │       ├── instruments.py       Instruments -- stuck / failed sensors (Phase 4)
 │   │       ├── gate.py              Gate + GateState (travel time, timeout fault)
 │   │       ├── vessel.py            MaterialBin, Hopper (passive mass accumulators)
 │   │       ├── feeder.py            Feeder (Motor + rate output)
@@ -1004,7 +1005,7 @@ issue and propose the change"):
 | 1 | Simulation core | done |
 | 2 | Control | done |
 | 3 | Testing / commissioning scenarios | done |
-| 4 | Fault injection, alarms | done (steps 1-3: alarm core; wired into `LineController`; surfaced through Testing, 8/8 interlocks covered). Step 4 (feeder jam + sensor failure hooks) deliberately deferred — see `CONTROL-LAB.md` §10 |
+| 4 | Fault injection, alarms | done — alarm core (latch, first-out, acknowledge); every §5.4 fault injectable, including the feeder jam (plug switch) and sensor failure (stuck / failed with channel diagnostic); multi-stage scenarios; 10/10 interlocks; verified on OpenPLC |
 | 5 | Telemetry | done — generic sampled tag history; state/alarm diffing observer; optional command sink; generated Markdown commissioning report |
 | 6 | Visualization | done — tag history in every scenario run; HTML replay viewer; live localhost dashboard with operator commands, fault injection, and replay download |
 | 7 | Protocols | done — Modbus server + client; register map (five PLC-master ranges); external-controller mode with the full scenario suite passing across Modbus; OpenPLC running a Structured Text port of the controller against the plant |

@@ -11,13 +11,15 @@ recovery, before any physical equipment exists.
 Control (the I/O image, device control modules, and the full
 `IDLE/STARTING/RUNNING/STOPPING/FAULTED/ESTOPPED` line state machine, all
 in Auto mode); Testing — a declarative `given`/`when`/`expect` scenario
-format, 15 scenarios covering all 8 interlocks, and an interlock
-coverage matrix (`python scripts/scenario_report.py`) reporting 8/8, 0
-gaps; and alarm management — latching, first-out, and acknowledge, wired
-into `LineController` so a start is refused while any trip-class alarm
-is latched and unacknowledged, independent of `reset()`. Two additional
-fault hooks from the original spec (feeder jam, sensor failure) are
-deliberately deferred — see the roadmap below. Phase 5 (Telemetry)
+format (multi-stage with `then:`, so a whole recovery procedure is one
+scenario), 22 scenarios covering all 10 interlocks, and an interlock
+coverage matrix (`python scripts/scenario_report.py`) reporting 10/10, 0
+gaps; and fault injection with alarm management: motor fail-to-start and
+trips, belt slip, stuck gates, E-stop, a feeder jam (the drive keeps
+running; a discharge-chute plug switch catches it) and sensor failure
+(a stuck instrument, or a failed one whose input-channel diagnostic tells
+"0 kg" from "unknown"), with latching, first-out, acknowledge, and resets
+refused while a cause remains. Phase 5 (Telemetry)
 complete: a generic, IOImage-only sampled tag-value recorder
 (`TagHistory` + `write_csv()`), a state/alarm diffing event log
 (`EventLog` + `write_jsonl()`), operator-command capture through an
@@ -164,7 +166,7 @@ passes: [`examples/openplc/COMMISSIONING-REPORT.md`](examples/openplc/COMMISSION
 | 1 | Simulation core | done |
 | 2 | Control (states, sequences, interlocks) | done |
 | 3 | Testing / commissioning scenarios | done |
-| 4 | Fault injection, alarms | done (feeder jam / sensor failure hooks deferred) |
+| 4 | Fault injection, alarms | done |
 | 5 | Telemetry | done |
 | 6 | Visualization | done |
 | 7 | Protocols (Modbus + external controller mode) | done |
