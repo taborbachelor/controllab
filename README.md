@@ -29,7 +29,10 @@ self-contained HTML replay viewer for any scenario run (line mimic,
 alarm board, event log, and I/O tags, scrubbable tick by tick) and a
 live localhost dashboard: the line running in real time, operator
 commands, a separate fault-injection panel, and one-click download of
-the session as a replay. No protocol support yet.
+the session as a replay. Phase 7 (Protocols) in progress: a
+stdlib Modbus TCP server, tested against the Modbus spec's own examples
+and against `pymodbus`'s client; the register map and external-controller
+mode come next.
 
 ## Documentation
 
@@ -92,7 +95,7 @@ beyond the standard library.
 | 4 | Fault injection, alarms | done (feeder jam / sensor failure hooks deferred) |
 | 5 | Telemetry | done |
 | 6 | Visualization | done |
-| 7 | Protocols (Modbus, OPC UA, MQTT) | not started |
+| 7 | Protocols (Modbus + external controller mode) | in progress (step 1 of 4 done: Modbus TCP server) |
 | 8 | AI engineering assistance | not started |
 | 9 | Virtual commissioning | not started |
 

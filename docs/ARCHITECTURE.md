@@ -95,6 +95,9 @@ ControlLab/
 │   │   └── events.py                 EventLog -- state/alarm diffing observer
 │   │                                  (Phase 5 step 2) + command capture (step 3);
 │   │                                  write_jsonl() exports it
+│   ├── protocols/
+│   │   └── modbus.py                 stdlib Modbus TCP server: DataStore interface,
+│   │                                  pure PDU/ADU handling, ModbusServer (Phase 7 step 1)
 │   └── visualization/
 │       ├── replay.py                 build_frames()/build_replay()/render_html() --
 │       │                             replay reconstructed from telemetry (Phase 6 step 2)
@@ -689,6 +692,24 @@ issue and propose the change"):
   vocabulary, invariants) because it *drives* the line, the runner's
   role; `replay.py` only observes and depends on Telemetry alone.
 
+## Module responsibilities (Phase 7 step 1)
+
+- **`services/protocols/modbus.py`** — a Modbus TCP server with zero
+  runtime dependencies, in three layers. `DataStore` is the four tables
+  as an interface, with no knowledge of ControlLab (`MemoryDataStore`
+  is the reference implementation; step 2 binds one to `IOImage`).
+  `handle_pdu()`/`handle_adu()` are pure and hold every protocol rule;
+  a malformed request becomes an exception response, never a Python
+  exception, and a store failure is `SERVER_DEVICE_FAILURE`, not blamed
+  on the client. `ModbusServer` handles each request under a
+  caller-supplied lock, so it can share the tick loop's lock and never
+  serve a half-applied scan. Localhost by default, port 5020.
+- **Why hand-rolled:** the needed subset is small (8 function codes),
+  and `pymodbus`'s 3.x API has broken repeatedly. The condition for
+  owning a protocol implementation is proving interoperability, so the
+  tests use the spec's own example bytes and drive the server with
+  `pymodbus`'s client, a **dev-only** dependency.
+
 ## Roadmap (current phase status)
 
 | Phase | Focus | Status |
@@ -700,7 +721,7 @@ issue and propose the change"):
 | 4 | Fault injection, alarms | done (steps 1-3: alarm core; wired into `LineController`; surfaced through Testing, 8/8 interlocks covered). Step 4 (feeder jam + sensor failure hooks) deliberately deferred — see `CONTROL-LAB.md` §10 |
 | 5 | Telemetry | done — generic sampled tag history; state/alarm diffing observer; optional command sink; generated Markdown commissioning report |
 | 6 | Visualization | done — tag history in every scenario run; HTML replay viewer; live localhost dashboard with operator commands, fault injection, and replay download |
-| 7 | Protocols | not started |
+| 7 | Protocols | in progress — step 1 done (stdlib Modbus TCP server) |
 | 8 | AI engineering assistance | not started |
 | 9 | Virtual commissioning | not started |
 
@@ -709,6 +730,8 @@ Full detail and "done when" criteria per phase: `CONTROL-LAB.md` §10.
 ## Technology stack
 
 - **Python 3.12+**, no framework. `pytest` for testing.
+- **`pymodbus`** (Phase 7 step 1) — **dev-only**, for interoperability
+  tests against our own stdlib Modbus server. Never imported at runtime.
 - **`pyyaml`** (Phase 3 step 1) — the first real dependency beyond
   pytest. Justified, not reflexive: it matches `CLAUDE.md` §10's own
   illustrative scenario format, and is meaningfully more readable than
