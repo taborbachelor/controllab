@@ -53,7 +53,6 @@
   .rp-lede { margin: 0 0 8px; font-size: 15px; max-width: 80ch; }
   .rp-what { margin: 0; font-size: 13px; color: var(--muted); max-width: 100ch; align-self: start; }
   .rp-note { margin: 6px 0 0; font-size: 13px; max-width: 100ch; }
-  .rp-bug { margin: 8px 0 0; padding: 8px 12px; border-left: 4px solid var(--trip); background: #fff5f5; font-size: 14px; max-width: 100ch; }
 
   .now { margin: 0 0 10px; padding: 10px 14px; border-radius: 6px; border-left: 6px solid var(--accent); background: var(--hollow); min-height: 68px; }
   .now.ok { border-left-color: var(--run); } .now.warn { border-left-color: var(--warn); } .now.trip { border-left-color: var(--trip); }
@@ -64,12 +63,6 @@
   body.explained main { grid-template-columns: minmax(0, 1fr) 440px; }
   @media (max-width: 1000px) { body.explained main { grid-template-columns: minmax(0, 1fr); } }
 
-  .final { margin-top: 12px; padding: 10px 14px; border-radius: 6px; border: 2px solid var(--run); background: var(--hollow); }
-  .final.fail { border-color: var(--trip); background: #fff5f5; }
-  .final-v { display: flex; gap: 12px; align-items: center; }
-  .final-v b { font-size: 20px; padding: 2px 10px; border-radius: 5px; color: #fff; background: var(--run); letter-spacing: .03em; }
-  .final.fail .final-v b { background: var(--trip); }
-  .final p { margin: 6px 0 0; font-size: 13px; }
 
   details.detail { margin: 0 20px 20px; }
   details.detail > summary { cursor: pointer; font-weight: 600; font-size: 14px; padding: 8px 0; }

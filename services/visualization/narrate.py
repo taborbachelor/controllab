@@ -130,7 +130,7 @@ def _alarm_notes(alarms: list[dict]) -> list[str]:
 
 def _verifying(s: dict, busy: dict) -> dict:
     live = s.get("verifying") is not None
-    where = ("The picture shows it live." if live else
+    where = ("The picture shows it live, and the test on the right ticks off each stage as it passes." if live else
              "It runs in the background against that runtime; the picture below is not part of this run.")
     step = f" (runtime {busy['step']} of {busy['of']})" if busy.get("of", 1) > 1 else ""
     return {

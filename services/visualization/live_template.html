@@ -15,7 +15,7 @@
 /*__HMI_CSS__*/
 </style>
 </head>
-<body>
+<body class="live">
 <div id="violation" class="banner" role="alert"></div>
 <header class="page-intro">
   <div class="titlebar"><h1>ControlLab</h1>
@@ -56,7 +56,6 @@
   <p class="story-detail" id="story-detail"></p>
   <ol class="story-steps" id="story-steps"></ol>
 </section>
-<section id="result" class="result" aria-live="polite" aria-label="Scenario result" hidden></section>
 <main>
   <div class="col">
     <section aria-label="Line mimic">
@@ -75,6 +74,11 @@
       </div>
       <p class="note" id="reason"></p>
     </section>
+    <section aria-label="Alarms">
+      <h2>Alarms</h2>
+      <div id="alarms"></div>
+      <p class="note">An alarm stays listed (latched) until its cause is gone <em>and</em> someone presses Acknowledge. FIRST OUT marks the one that started it.</p>
+    </section>
     <section aria-label="Operator commands">
       <h2>Operator</h2>
       <div class="buttons" id="commands"></div>
@@ -87,6 +91,17 @@
   </div>
   <div class="col">
     <section aria-label="Scenarios" id="scen-panel">
+      <div id="test-view" hidden>
+        <div class="tv-top"><button type="button" id="tv-back" class="linkish">← All scenarios</button>
+          <a id="tv-replay" href="/api/replay/latest" target="_blank" rel="noopener" hidden>Watch this run (replay)</a></div>
+        <p class="story-kicker" id="tv-kicker"></p>
+        <p class="tv-name" id="tv-name"></p>
+        <p class="res-meta" id="tv-meta"></p>
+        <p class="rp-bug" id="tv-bug" hidden></p>
+        <div class="final" id="tv-final" hidden></div>
+        <ol class="tst" id="tv-test"></ol>
+      </div>
+      <div id="scen-list">
       <h2>Scenarios: run and verify</h2>
       <div id="latest"></div>
       <div class="scen-opts">
@@ -96,6 +111,7 @@
       <p class="note" id="runtime-note"></p>
       <div id="scenarios"></div>
       <p class="note" id="all-note"></p>
+      </div>
     </section>
     <section aria-label="Guided walkthroughs" id="tour-panel">
       <details class="tools" id="tour-details">
@@ -125,11 +141,6 @@
       </div>
       <p class="note">These act on the simulated equipment, never on the control program: the program has to notice and react on its own. A highlighted button is a fault currently injected; click it again to clear it. A motor trip also needs its device reset (Field resets) before the line's Reset will take, the same two-step recovery a real line has.</p>
       </details>
-    </section>
-    <section aria-label="Alarms">
-      <h2>Alarms</h2>
-      <div id="alarms"></div>
-      <p class="note">An alarm stays listed (latched) until its cause is gone <em>and</em> someone presses Acknowledge. FIRST OUT marks the one that started it.</p>
     </section>
     <section aria-label="Tags">
       <details class="tools">
@@ -237,85 +248,114 @@ $("scenarios").addEventListener("click", (e) => {
            $("events").innerHTML = '<p class="empty">No events yet.</p>'; }
 });
 
-const MARK = { match: "MATCH", mismatch: "MISMATCH", not_reached: "NOT REACHED", not_run: "not run", not_observed: "not observed" };
-const KIND = { operator: "Operator", fault: "Fault injected", repair: "Field repair", process: "Process" };
-function val(v) {
-  if (v === null || v === undefined) return "—";
-  if (typeof v === "boolean") return v ? "yes" : "no";
-  if (Array.isArray(v)) return v.length ? v.join(", ") : "none";
-  return String(v);
-}
+const val = tpVal;
 function secs(x) { return x === null || x === undefined ? "—" : `${x.toFixed(2)} s`; }
-function runHead(r) {
-  const v = r.verdict + (r.qualifier ? ` (${r.qualifier})` : "");
-  return `<div class="res-head"><span class="res-verdict ${r.passed ? "pass" : "fail"}">${esc(v)}</span>` +
-    `<div><p class="res-name">${esc(r.scenario)}</p><p class="res-meta">${esc(r.runtime)}` +
-    (r.regression ? ` · <strong>controller build: deliberate regression '${esc(r.regression)}'</strong>` : "") + "</p></div></div>";
+
+// ---- the test view: the scenario under test, beside the line ----
+// Opens when a verification starts and fills in stage by stage as the runner
+// reports progress (the Python runtime runs on the picture); the result
+// then lands in the same place, so the line and the verdict are seen together.
+let tvRunId = null, tvResultId = null;
+function openTestView(on) { $("test-view").hidden = !on; $("scen-list").hidden = on; }
+$("tv-back").addEventListener("click", () => openTestView(false));
+$("latest").addEventListener("click", (e) => { if (e.target.closest("[data-open-result]") && lastVer) { showResult(lastVer.latest, true); } });
+
+function tvHead(kicker, kickerFail, name, meta, regression) {
+  $("tv-kicker").textContent = kicker;
+  $("tv-kicker").classList.toggle("fail", !!kickerFail);
+  $("tv-name").textContent = name;
+  $("tv-meta").textContent = meta;
+  const r = CFG.regressions.find((x) => x.name === regression);
+  $("tv-bug").hidden = !r;
+  if (r) $("tv-bug").innerHTML = `<strong>Deliberately broken controller:</strong> ${esc(r.change)} ` +
+    `(testing fixture <code>${esc(r.name)}</code>; the production controller is never modified)`;
 }
-function stagesHtml(r) {
-  return r.stages.map((st) =>
-    `<div class="res-stage ${st.status}"><p class="res-stage-h">Stage ${st.n}${st.title ? ": " + esc(st.title) : ""}` +
-    `<span class="res-stage-s">${st.status.replace("_", " ")}${st.response_s !== null ? ` · ${secs(st.response_s)} / limit ${st.within_s} s` : ` · limit ${st.within_s} s`}</span></p>` +
-    (st.actions.length ? `<p class="res-acts">${st.actions.map((a) => `<span class="act ${a.kind}">${KIND[a.kind]}: ${esc(a.key)}` +
-      (a.value === true ? "" : ` = ${esc(val(a.value))}`) + "</span>").join(" ")}</p>` : '<p class="res-acts"><span class="act">Keep watching (no action)</span></p>') +
-    "<table class=\"res-checks\"><tbody>" + st.checks.map((c) =>
-      `<tr class="${c.status}"><td class="mk">${MARK[c.status]}</td><td>${esc(c.label)}</td><td>expected ${esc(val(c.expected))}` +
-      (c.status === "mismatch" ? `, <strong>actual ${esc(val(c.actual))}</strong>` : "") + "</td></tr>").join("") +
-    "</tbody></table></div>").join("");
+
+function showBusy(B, t) {
+  if (tvRunId !== B.id) {
+    tvRunId = B.id;
+    buildTestPanel($("tv-test"), B.plan);
+    $("tv-final").hidden = true;
+    $("tv-replay").hidden = true;
+    openTestView(true);
+  }
+  const P = B.progress || {}, live = "stage" in P;
+  const where = B.runtime.split(" (")[0] + (B.of > 1 ? ` (runtime ${B.step} of ${B.of})` : "");
+  tvHead(`Running · ${where}`, false, B.plan.scenario, live ? "The scenario runner is operating the line on the picture."
+    : "Running in the background: the stages fill in when the result comes back.", B.regression);
+  setTestSetup($("tv-test"), live && P.stage != null ? "done" : "running");
+  B.plan.stages.forEach((st) => {
+    if (live && P.passed && P.passed[st.n] != null) setTestStage($("tv-test"), st, "passed", { response: P.passed[st.n] });
+    else if (live && P.stage === st.n) setTestStage($("tv-test"), st, "running", { elapsed: Math.max(0, t - P.applied_t) });
+    else setTestStage($("tv-test"), st, "pending");
+  });
 }
-let resultId = null;
-function renderResult(ver) {
-  const L = ver.latest;
+
+function showResult(L, open) {
+  tvResultId = L.id;
+  if (L.error) {
+    tvHead("Verification failed to run", true, "", L.error, null);
+    $("tv-test").innerHTML = "";
+    $("tv-final").hidden = true;
+    if (open) openTestView(true);
+    return;
+  }
+  const r = L.runs[0];
+  buildTestPanel($("tv-test"), r);
+  setTestSetup($("tv-test"), r.qualifier === "setup failed" ? "failed" : "done");
+  const deadline = !!(r.first_divergence && r.first_divergence.t != null);
+  r.stages.forEach((st) => setTestStage($("tv-test"), st, st.status, { response: st.response_s, checks: st.checks, deadline }));
+  const kicker = r.regression ? (r.passed ? "Regression NOT caught" : "Regression caught") : "Result";
+  tvHead(`${kicker} · ${L.comparison ? "compared on " + L.runs.length + " runtimes" : r.runtime.split(" (")[0]}`,
+         !r.passed, r.scenario, r.description, r.regression);
+  const d = r.first_divergence;
+  let html = `<div class="final-v"><b>${esc(r.verdict + (r.qualifier ? " (" + r.qualifier + ")" : ""))}</b>` +
+    `<span><strong>${r.checks_passed}/${r.checks_evaluated}</strong> checks matched` +
+    (r.checks_total !== r.checks_evaluated ? ` (${r.checks_total - r.checks_evaluated} not run or not observed)` : "") + "</span></div>";
+  if (d) html += `<p><strong>First divergence:</strong> ${d.stage ? "stage " + d.stage : "setup"}${d.t != null ? " at t = " + d.t.toFixed(2) + " s" : ""}` +
+    ` (${esc(d.kind)})${d.unmet.length ? ": " + d.unmet.map((u) => `${esc(u.label)} expected ${esc(val(u.expected))}, actual ${esc(val(u.actual))}`).join("; ") : ""}. ` +
+    '<span class="note">Where the run is known to have left the scenario; the cause may be earlier.</span></p>';
+  if (r.regression) html += `<p>${r.passed ? "The regression was NOT caught." : "<strong>Regression caught:</strong> this bad change would have been stopped before it reached the equipment."}</p>`;
+  html += `<p>First-out alarm: <strong>${esc(val(r.first_out))}</strong> · Invariants: ${esc(r.invariants)}` +
+    `${r.plant_time_s != null ? " · " + r.plant_time_s.toFixed(1) + " s plant time" : ""}</p>`;
+  if (L.comparison) {
+    html += '<p class="tv-sub">Same scenario, same plant, different control runtimes</p><ul class="tv-cmp">' +
+      L.comparison.rows.map((c) => `<li><strong>${esc(c.verdict)}</strong> ${esc(c.checks)} · ${esc(c.runtime.split(" (")[0])}` +
+        `<span>${esc(c.how)} · stages ${c.stage_response_s.map(secs).join(", ")}</span></li>`).join("") + "</ul>" +
+      `<p>${L.comparison.all_agree ? "Every runtime agrees." : "<strong>The runtimes DISAGREE</strong>: see above."}` +
+      (L.not_compared.length ? ` Not compared: ${esc(L.not_compared.join("; "))}.` : "") + "</p>";
+  }
+  $("tv-final").className = "final" + (r.passed ? "" : " fail");
+  $("tv-final").innerHTML = html;
+  $("tv-final").hidden = false;
+  $("tv-replay").hidden = false;
+  if (open) openTestView(true);
+}
+
+let lastVer = null;
+function renderVerification(ver, t) {
+  lastVer = ver;
+  const B = ver.busy, L = ver.latest;
+  const busy = !!B;
+  document.querySelectorAll("[data-verify],[data-compare]").forEach((b) => { b.disabled = busy; });
+  document.querySelectorAll("#commands button, #faults button, #field-resets button, #instruments button, [data-level], #restart")
+    .forEach((b) => { b.disabled = busy; });
+  if (B) {
+    $("latest").innerHTML = `<p class="latest busy"><span>RUNNING</span> ${esc(B.scenario)} on ${esc(B.runtime.split(" (")[0])}` +
+      (B.of > 1 ? ` (runtime ${B.step} of ${B.of})` : "") + "…</p>";
+    if (B.plan) showBusy(B, t);
+    return;
+  }
   if (!L) { $("latest").innerHTML = '<p class="note" style="margin-top:0">No run yet. Pick a scenario below.</p>'; return; }
   const first = L.runs[0];
   $("latest").innerHTML = L.error ? `<p class="latest fail">LATEST RUN · ERROR · ${esc(L.error)}</p>` :
     `<p class="latest ${first.passed ? "pass" : "fail"}"><span>LATEST RUN</span> <strong>${esc(first.verdict)}</strong> · ` +
     `${esc(first.scenario.split(" -- ")[0])} · ${esc(L.comparison ? L.runs.length + " runtimes" : first.runtime.split(" (")[0])}` +
-    `${first.regression ? " (regression build)" : ""} · ` +
-    `${first.plant_time_s !== null ? first.plant_time_s.toFixed(1) + " s plant time · " : ""}${first.checks_passed}/${first.checks_evaluated} checks matched</p>`;
-  if (L.id === resultId) return;
-  resultId = L.id;
-  if (L.error) { $("result").hidden = false; $("result").innerHTML = `<p class="res-name">Verification failed to run</p><p>${esc(L.error)}</p>`; return; }
-  const kicker = first.regression ? (first.passed ? "Regression NOT caught" : "Regression caught") : "Scenario result";
-  let html = `<div class="res-top"><p class="story-kicker">${kicker}</p><span>` +
-    '<a href="/api/replay/latest" target="_blank" rel="noopener">Watch this run (replay)</a> · ' +
-    '<button type="button" id="res-close" class="linkish">Close</button></span></div>' + runHead(first);
-  html += `<p class="res-facts"><span><strong>${first.checks_passed}/${first.checks_evaluated}</strong> checks matched` +
-    (first.checks_total !== first.checks_evaluated ? ` (${first.checks_total - first.checks_evaluated} not run or not observed)` : "") + "</span>" +
-    `<span>First-out alarm: <strong>${esc(val(first.first_out))}</strong></span><span>Invariants: ${esc(first.invariants)}</span>` +
-    `<span>${first.plant_time_s !== null ? first.plant_time_s.toFixed(1) + " s plant time" : ""}` +
-    `${first.wall_time_s !== null ? " · " + first.wall_time_s.toFixed(1) + " s wall time" : ""}</span></p>`;
-  if (first.description) html += `<p class="res-desc">${esc(first.description)}</p>`;
-  if (first.first_divergence) {
-    const d = first.first_divergence;
-    html += `<div class="res-div"><p><strong>Failure detected at ${d.stage ? "stage " + d.stage + (d.stage_title ? " (" + esc(d.stage_title) + ")" : "") : "setup"}` +
-      `${d.t !== null ? ", t = " + d.t.toFixed(2) + " s (the stage's deadline)" : ""}</strong> — ${esc(d.kind)}</p>` +
-      (d.unmet.length ? "<ul>" + d.unmet.map((u) => `<li>${esc(u.label)}: expected <strong>${esc(val(u.expected))}</strong>, actual <strong>${esc(val(u.actual))}</strong></li>`).join("") + "</ul>"
-                      : `<p>${esc(d.detail)}</p>`) +
-      '<p class="note">The first divergence is where the run is known to have left the scenario; the cause may be earlier. ' +
-      "It is also what the optional AI run analysis starts from (docs/AI.md).</p></div>";
-  }
-  if (L.comparison) {
-    html += '<p class="res-sub">Same scenario, same plant, different control runtimes</p><table class="res-cmp"><thead><tr>' +
-      "<th>Runtime</th><th>Result</th><th>Checks</th><th>Stage response times</th><th>How compared</th></tr></thead><tbody>" +
-      L.comparison.rows.map((r) => `<tr><td>${esc(r.runtime)}</td><td><strong>${esc(r.verdict)}</strong></td><td>${r.checks}</td>` +
-        `<td>${r.stage_response_s.map(secs).join(", ")}</td><td>${esc(r.how)}</td></tr>`).join("") + "</tbody></table>" +
-      `<p class="note">${L.comparison.all_agree ? "Every runtime agrees." : "The runtimes DISAGREE: see the rows above."}` +
-      (L.not_compared.length ? ` Not compared: ${esc(L.not_compared.join("; "))}.` : "") + "</p>";
-  }
-  html += '<p class="res-sub">Expected vs actual, stage by stage' + (L.comparison ? " (the Python controller's run)" : "") + "</p>" + stagesHtml(first);
-  $("result").innerHTML = html;
-  $("result").hidden = false;
-  $("res-close").addEventListener("click", () => { $("result").hidden = true; });
-  $("result").scrollIntoView({ behavior: "smooth", block: "start" });
-}
-function renderBusy(ver) {
-  const busy = !!ver.busy;
-  document.querySelectorAll("[data-verify],[data-compare]").forEach((b) => { b.disabled = busy; });
-  document.querySelectorAll("#commands button, #faults button, #field-resets button, #instruments button, [data-level], #restart")
-    .forEach((b) => { b.disabled = busy; });
-  if (busy) $("latest").innerHTML = `<p class="latest busy"><span>RUNNING</span> ${esc(ver.busy.scenario)} on ${esc(ver.busy.runtime.split(" (")[0])}` +
-    (ver.busy.of > 1 ? ` (runtime ${ver.busy.step} of ${ver.busy.of})` : "") + "…</p>";
+    `${first.regression ? " (regression build)" : ""} · ${first.checks_passed}/${first.checks_evaluated} checks matched ` +
+    '<button type="button" class="linkish" data-open-result>Show</button></p>';
+  // The run this page watched lands in the open test view; one that finished
+  // before the page loaded waits behind "Show".
+  if (L.id !== tvResultId) showResult(L, tvRunId === L.id);
 }
 
 let tourKey = "";
@@ -394,8 +434,7 @@ async function poll() {
     renderTour(s.tour);
     if (s.tour) $("tour-details").open = true;
     renderRuntimes(s.verification.runtimes);
-    renderResult(s.verification);
-    renderBusy(s.verification);
+    renderVerification(s.verification, s.t);
     $("speed").value = String(s.speed);
     $("clock").textContent = `t = ${s.t.toFixed(1)} s`;
     renderState(s.state);

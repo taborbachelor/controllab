@@ -85,3 +85,26 @@ def test_the_story_card_says_a_verification_is_running():
     story = narrate({**s.snapshot(), "running": True,
                      "verification": {"busy": {"scenario": "X", "runtime": "Python controller", "step": 1, "of": 1}}})
     assert story["headline"] == "Verifying: X" and "Manual controls are locked" in story["detail"]
+
+
+def test_a_live_run_publishes_its_plan_and_follows_it_stage_by_stage():
+    """What the dashboard's test view renders while a scenario runs: the plan
+    up front, then each stage as it starts and passes."""
+    import json
+
+    v = Verifier(LiveSession(), plc_url=NO_PLC)
+    seen = []
+    run_live = v.session.run_live
+
+    def spy(scenario, pace, line_cls=None, progress=None):
+        def follow(e):
+            progress(e)
+            seen.append(json.loads(json.dumps(v.busy)))  # exactly what /api/state would carry
+        return run_live(scenario, pace, line_cls=line_cls, progress=follow)
+
+    v.session.run_live = spy
+    v.start("faults/feeder_jam_recovery.yaml", background=False)
+    assert seen[0]["plan"]["stages"][1]["title"] == "Reset is refused while the chute is still plugged"
+    assert seen[0]["progress"]["stage"] == 1 and seen[0]["progress"]["passed"] == {}
+    assert seen[-1]["progress"]["passed"].keys() == {str(n) for n in range(1, 7)}
+    assert v.busy is None and v.latest["id"] == seen[0]["id"]  # the result lands under the same run id

@@ -29,7 +29,7 @@ from services.testing.regressions import REGRESSIONS
 from services.testing.rig import DT
 from services.testing.runner import run_scenario
 from services.testing.scenario import Scenario
-from services.testing.verdict import RUNTIMES, event_signature, summarize
+from services.testing.verdict import RUNTIMES, event_signature, plan, summarize
 
 SCENARIOS_DIR = Path(__file__).resolve().parents[2] / "scenarios"
 
@@ -68,7 +68,11 @@ class Verifier:
         self.session = session
         self.pacer = pacer
         self.plc_url = plc_url
-        self.busy: dict | None = None  # {"scenario", "runtime", "step", "of"} while a job runs
+        # While a job runs: {"id", "scenario", "runtime", "step", "of", "plan", "progress"}. `plan` is the
+        # test before it runs (verdict.plan); `progress` follows the live Python run stage by stage
+        # ({"stage": n being run, "applied_t": its start, "passed": {n: response_s}}), and stays empty
+        # for background runtimes, which report only their result.
+        self.busy: dict | None = None
         self.latest: dict | None = None  # {"id", "runs": [summary dicts], "comparison"}
         self.latest_result = None  # (scenario, ScenarioResult) of the first run, for the replay
         self._lock = threading.Lock()
@@ -119,7 +123,8 @@ class Verifier:
         with self._lock:
             if self.busy is not None:
                 raise ValueError("a verification is already running")
-            self.busy = {"scenario": file, "runtime": RUNTIMES[runtime], "step": 1, "of": 1}
+            self.busy = {"scenario": file, "runtime": RUNTIMES[runtime], "step": 1, "of": 1, "plan": None,
+                         "progress": {}, "id": self._seq + 1}
         if background:
             threading.Thread(target=self._job, args=(file, runtime, regression, compare), daemon=True,
                              name="controllab-verify").start()
@@ -136,12 +141,16 @@ class Verifier:
     def _job(self, file: str, runtime: str, regression: str | None, compare: bool) -> None:
         try:
             scenario = Scenario.load(SCENARIOS_DIR / file)
+            test_plan = plan(scenario, root=SCENARIOS_DIR)
             chosen = ["python", "modbus"] + (["openplc"] if self.openplc_available() else []) if compare else [runtime]
             runs = []
             for i, rt in enumerate(chosen, start=1):
-                self.busy = {"scenario": scenario.name, "runtime": RUNTIMES[rt], "step": i, "of": len(chosen)}
+                progress: dict = {"stage": None, "applied_t": None, "passed": {}}
+                self.busy = {"scenario": scenario.name, "runtime": RUNTIMES[rt], "step": i, "of": len(chosen),
+                             "plan": test_plan, "progress": progress if rt == "python" else {}, "id": self._seq + 1,
+                             "regression": regression}
                 t0 = time.monotonic()
-                result = self._run(scenario, rt, regression)
+                result = self._run(scenario, rt, regression, progress)
                 summary = summarize(scenario, result, RUNTIMES[rt], wall_time_s=time.monotonic() - t0,
                                     root=SCENARIOS_DIR, regression=regression)
                 runs.append((rt, result, summary))
@@ -160,10 +169,17 @@ class Verifier:
         finally:
             self.busy = None
 
-    def _run(self, scenario: Scenario, runtime: str, regression: str | None):
+    def _run(self, scenario: Scenario, runtime: str, regression: str | None, progress: dict | None = None):
         cls = REGRESSIONS[regression].cls if regression else None
         if runtime == "python":
-            return self.session.run_live(scenario, self._pace, line_cls=cls)
+            def follow(e: dict) -> None:
+                if progress is None:
+                    return
+                if e["event"] == "stage":
+                    progress.update(stage=e["n"], applied_t=e["applied_t"])
+                else:
+                    progress["passed"] = {**progress["passed"], e["n"]: e["elapsed"]}
+            return self.session.run_live(scenario, self._pace, line_cls=cls, progress=follow)
         if runtime == "modbus":
             return run_scenario(scenario, external=True)
         from services.protocols.openplc import OpenPLCController

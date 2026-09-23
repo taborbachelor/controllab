@@ -66,7 +66,8 @@ Watch the picture:
 5. On stop: the feeder and gate stop first, the conveyor purges the belt,
    then it stops too.
 
-The result card appears: **PASS, 18/18 checks**, each stage with its
+The test beside the line ticks off each stage as it passes, and the result
+lands in the same place: **PASS, 19/19 checks**, each stage with its
 response time against its limit, and invariants held on every tick.
 
 Say: *"That wasn't an animation. The scenario runner operated the line, and
@@ -75,8 +76,8 @@ are identical."*
 
 ## 3. Feeder jam and recovery (2 minutes)
 
-On **Feeder jam recovery**, click **Run & verify**. Walk through the result
-card stage by stage:
+On **Feeder jam recovery**, click **Run & verify**. The test on the right
+follows the run; walk through it stage by stage:
 
 1. **The jam trips the line: feed stops at once, the conveyor keeps
    running to clear the belt.** A jam doesn't fault the motor. The drive
@@ -91,7 +92,8 @@ card stage by stage:
 6. **The line restarts and material flows.**
 
 Each stage shows MATCH for every check and its response time. Click **Watch
-this run (replay)** to scrub through the exact run, tick by tick.
+this run (replay)** to scrub through the exact run, tick by tick, and
+**← All scenarios** to go back to the list.
 
 ## 4. A failed sensor (1 minute)
 

@@ -224,7 +224,7 @@ class LiveSession:
 
     # ---- scenario verification on the live line -----------------------
 
-    def run_live(self, scenario, pace: Callable[[], None] = lambda: None, line_cls=None):
+    def run_live(self, scenario, pace: Callable[[], None] = lambda: None, line_cls=None, progress=None):
         """Run `scenario` through the real scenario runner (runner.execute) on
         this session's own line, so the picture shows the verification as it
         happens. The rig is built exactly as run_scenario() builds it, so the
@@ -250,7 +250,7 @@ class LiveSession:
                 telemetry.sample(self.rig.plant.time_s)
 
         try:
-            return execute(self.rig, scenario, step, Invariants(self.rig), telemetry)
+            return execute(self.rig, scenario, step, Invariants(self.rig), telemetry, progress=progress)
         finally:
             with self._lock:
                 self.invariants = Invariants(self.rig)

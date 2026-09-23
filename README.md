@@ -43,7 +43,7 @@ still plugged.
 - Mass is conserved to the milligram and checked on every scan, and every
   run is deterministic, so the same scenario gives the same result every
   time.
-- 676 automated tests, run on every push (Python 3.12 and 3.13; the badge
+- 678 automated tests, run on every push (Python 3.12 and 3.13; the badge
   above is the latest run). The demo site is rebuilt from the current code
   on every push too, so it can't drift from the repository.
 
@@ -285,7 +285,7 @@ real model. Details: [`docs/AI.md`](docs/AI.md).
   - engineer tools to break it;
   - a replay of every run.
 
-  ![The live dashboard verifying the normal-operation scenario: the status card narrates the run and the scenarios panel leads on the right](docs/images/dashboard-overview.jpg)
+  ![The live dashboard verifying the feeder-jam scenario: the line is faulted with the conveyor clearing the belt, the jam alarm sits under the line, and the test on the right shows stages 1 and 2 passed and stage 3 running](docs/images/dashboard-overview.jpg)
 - **Telemetry and reports:** tag history (CSV), event log (JSONL), a
   deterministic Markdown commissioning report with the interlock coverage
   matrix, and a self-contained HTML replay of any run
@@ -324,7 +324,7 @@ Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md).
 
 ## Status
 
-All roadmap phases are complete, and 676 tests pass.
+All roadmap phases are complete, and 678 tests pass.
 
 | Phase | Focus | Status |
 |---|---|---|
