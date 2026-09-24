@@ -109,3 +109,15 @@ def test_every_hmi_command_bit_is_decoded_in_bit_order():
     assert re.search(rf"FOR i := 0 TO {len(LINE_REGISTER_MAP.commands) - 1} DO\s+bit := SHL", ST)
     cases = [int(n) for n in re.findall(r"^\s*(\d+): \w+_req := TRUE;", ST, re.M)]
     assert cases == list(range(len(LINE_REGISTER_MAP.commands)))
+
+
+def test_the_transmitter_high_high_debounce_matches_the_python_controller():
+    """The PLC counts the 0.5 s debounce in 100 ms task scans."""
+    import inspect
+
+    from services.control.interlocks import Interlocks
+    from services.testing.rig import DT
+
+    default = inspect.signature(Interlocks).parameters["hh_weight_debounce_s"].default
+    assert re.search(rf"LIM_HH_DEBOUNCE : INT := {round(default / DT)};", ST)
+    assert "hopper_high_high := hopper_hh_switch OR hopper_hh_weight_vote;" in ST

@@ -1,8 +1,11 @@
 """Evaluates the interlock table (docs/CONTROL-LAB.md §6.3) against
 current I/O image tags and device-control state.
 
-A query object, not a state machine — it has no memory of its own and no
-opinion about what to DO with a trip; LineController decides that, per
+A query object, not a state machine -- no opinion about what to DO with a
+trip, and one piece of memory only: the on-delay on the weight
+transmitter's high-high vote (see hopper_high_high_weight_vote), advanced by
+scan(), which LineController calls once per tick right after the device
+modules. Everything else is a pure function of the I/O image; LineController decides that, per
 the state and step it's currently in (the same physical condition means
 something different during STARTING's proof steps than it does once
 already RUNNING). It's reused across every state that needs to check a
@@ -34,6 +37,7 @@ class Interlocks:
         gate_ctrl: GateControl,
         hopper_capacity_kg: float,
         hopper_high_high_pct: float = 95.0,
+        hh_weight_debounce_s: float = 0.5,
     ) -> None:
         self.io = io
         self.feeder_ctrl = feeder_ctrl
@@ -43,6 +47,16 @@ class Interlocks:
         # The analog high-high setpoint on WT-105, commissioned to match
         # LSHH-105's switch point -- a configured constant, like the capacity.
         self.hopper_high_high_pct = hopper_high_high_pct
+        # How long the transmitter must read high-high before it votes.
+        self.hh_weight_debounce_s = hh_weight_debounce_s
+        self._hh_weight_held_s = 0.0
+
+    def scan(self, dt: float) -> None:
+        """Advance the weight vote's on-delay by one tick."""
+        if self.hopper_high_high_weight:
+            self._hh_weight_held_s = round(self._hh_weight_held_s + dt, 9)
+        else:
+            self._hh_weight_held_s = 0.0
 
     @property
     def estop_healthy(self) -> bool:
@@ -90,13 +104,26 @@ class Interlocks:
         return not self.hopper_weight_failed and self.hopper_level_pct >= self.hopper_high_high_pct
 
     @property
+    def hopper_high_high_weight_vote(self) -> bool:
+        """The transmitter's high-high vote: WT-105 has read at or above the
+        setpoint for hh_weight_debounce_s straight (0.5 s). A noisy
+        transmitter near the setpoint would otherwise trip the line on a
+        single noise peak (found injecting noise, completing the master
+        specification); the level switch has no noise and still votes
+        instantly. Cost: an overfill only the transmitter sees trips 0.5 s
+        later, about 2.5 kg at the feeder's full rate. Decided with Tabor."""
+        # Reading high NOW as well as for long enough: the vote drops the moment
+        # the reading does, and a debounce of 0 means instant, not always.
+        return self.hopper_high_high_weight and self._hh_weight_held_s >= self.hh_weight_debounce_s - 1e-9
+
+    @property
     def hopper_high_high(self) -> bool:
         """1oo2: high-high if EITHER independent measurement says so -- the
         switch or the transmitter. Every trip, permissive and reset check
         reads this, so a switch seized in the healthy position (which
         fail-safe polarity can't catch) no longer removes the overfill trip.
         Which instrument disagrees is LevelSwitchCheck's job, not this one's."""
-        return self.hopper_high_high_switch or self.hopper_high_high_weight
+        return self.hopper_high_high_switch or self.hopper_high_high_weight_vote
 
     @property
     def hopper_level_pct(self) -> float:

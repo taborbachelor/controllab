@@ -153,7 +153,7 @@ def test_instrument_faults_from_the_dashboard_show_the_level_protection():
     steps(s, 20)
     s.stimulus("sensor_stuck", "LSHH-105")
     s.stimulus("hopper_level_pct", 97)
-    steps(s, 3)
+    steps(s, 8)  # the transmitter's vote holds for 0.5 s before it counts
     snap = s.snapshot()
     assert snap["state"] == "faulted" and snap["injected"]["instruments"] == {"LSHH-105": "stuck"}
     steps(s, 12)
@@ -187,3 +187,26 @@ def test_an_external_session_hands_manual_commands_to_the_controller():
     s.command("select_manual")
     s.step()
     assert "select_manual" in s.handshake.outstanding()
+
+
+def test_degraded_instruments_from_the_dashboard():
+    import pytest
+
+    s = LiveSession()
+    s.stimulus("sensor_slow", {"tag": "ZSS-104", "seconds": 1.5})
+    s.command("start")
+    steps(s, 25)
+    snap = s.snapshot()
+    assert (snap["state"], snap["fault_reason"]) == ("faulted", "conveyor failed to prove running")
+    assert snap["injected"]["instruments"] == {"ZSS-104": "slow"}
+    s.stimulus("sensor_noise", {"tag": "WT-105", "amplitude": 30})
+    s.step()
+    assert s.snapshot()["injected"]["instruments"]["WT-105"] == "noisy"
+    for key, value in [
+        ("sensor_noise", {"tag": "LSH-105", "amplitude": 30}),   # a switch
+        ("sensor_drift", {"tag": "WT-105", "rate_per_s": 0}),    # no drift
+        ("sensor_slow", {"tag": "ZSS-104"}),                     # missing its parameter
+        ("sensor_noise", "WT-105"),                              # wrong shape
+    ]:
+        with pytest.raises(ValueError):
+            s.stimulus(key, value)

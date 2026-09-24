@@ -40,6 +40,8 @@ class PlantConfig:
     hopper_high_pct: float = 80.0
     hopper_high_high_pct: float = 95.0
 
+    instrument_seed: int = 0  # the root of every instrument noise stream (instruments.py)
+
 
 class Plant:
     """The virtual bulk-material line: five devices plus a plant-wide E-stop."""
@@ -63,7 +65,13 @@ class Plant:
         # What the field instruments report, including injected sensor
         # faults (instruments.py). WT-105's input channel has a fault
         # diagnostic; no other instrument's does.
-        self.instruments = Instruments(diagnosed={"WT-105"})
+        self.instruments = Instruments(
+            diagnosed={"WT-105"},
+            # Calibrated ranges: the bin's level transmitter in %, the hopper's
+            # load cells over the hopper's capacity (as the Modbus map spans them).
+            ranges={"LT-101": (0.0, 100.0), "WT-105": (0.0, cfg.hopper_capacity_kg)},
+            seed=cfg.instrument_seed,
+        )
 
         self.spilled_kg = 0.0
         self.time_s = 0.0
@@ -83,6 +91,7 @@ class Plant:
         # bare += dt drifts (25 x 0.1 -> 2.500000000000001), and every
         # telemetry timestamp is read from here.
         self.time_s = round(self.time_s + dt, 9)
+        self.instruments.now = self.time_s
 
         if self.estop.tripped:
             # A real E-stop removes power regardless of what's commanded.

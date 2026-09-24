@@ -1,0 +1,34 @@
+name: A Noisy Weight Transmitter Near High-High -- No Trip On Noise, A Real Overfill Still Trips
+description: "With the hopper at 94 %, the weight transmitter's noise peaks above the 95 % high-high point. Its vote must hold for 0.5 s before it counts, so noise doesn't trip the line; a real overfill still does. (That no noise peak ever trips it over a long run is a pytest: a scenario passes the moment its expectations first hold.)"
+title: "The transmitter turns noisy near high-high: the line keeps running"
+
+given:
+  line_state: running
+  hopper_level_pct: 94
+
+when:
+  sensor_noise: {tag: WT-105, amplitude: 30}
+
+trigger: sensor_noise
+
+expect:
+  hopper_weight_agrees: false
+  line_state: running
+  any_unacknowledged_trip: false
+
+within:
+  seconds: 0.5
+
+then:
+  - title: "A real overfill still trips the line"
+    when:
+      hopper_level_pct: 99
+    expect:
+      line_state: faulted
+      fault_reason: "hopper high-high"
+      feeder_run_commanded: false
+      conveyor_run_commanded: false
+    within:
+      seconds: 1.0
+
+interlock: "Hopper high-high"

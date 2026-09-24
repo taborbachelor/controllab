@@ -90,6 +90,10 @@ STIMULI: dict[str, str] = {
     "sensor_stuck": "instrument",
     "sensor_failed": "instrument",
     "sensor_restored": "instrument",
+    # Degraded instruments: {tag, <parameter>} (vocabulary._degraded_action).
+    "sensor_noise": "degraded",
+    "sensor_drift": "degraded",
+    "sensor_slow": "degraded",
 }
 # Directly setting a level is a deliberate setup action, not a physical
 # event -- the conservation invariant is rebaselined after it, exactly as
@@ -217,6 +221,19 @@ class LiveSession:
             if key == "sensor_failed" and value not in self.rig.plant.instruments.diagnosed \
                     and not isinstance(io.read(value), bool):
                 raise ValueError(f"{value} has no channel diagnostic, so it can only stick")
+        if kind == "degraded":
+            param = {"sensor_noise": "amplitude", "sensor_drift": "rate_per_s", "sensor_slow": "seconds"}[key]
+            io = self.rig.io
+            if not isinstance(value, dict) or set(value) != {"tag", param}:
+                raise ValueError(f"{key} takes {{tag, {param}}}")
+            tag, number = value["tag"], value[param]
+            if not isinstance(tag, str) or tag not in io or not io.tag(tag).type.is_input:
+                raise ValueError(f"{key} takes an input tag")
+            if isinstance(number, bool) or not isinstance(number, (int, float)) or (key != "sensor_drift" and number <= 0) \
+                    or number == 0:
+                raise ValueError(f"{key}: {param} must be a non-zero number (positive, except a drift rate)")
+            if key != "sensor_slow" and isinstance(io.read(tag), bool):
+                raise ValueError(f"{tag} is a switch: {key} applies to an analog reading")
         with self._lock:
             self._pending.append((key, lambda: apply_field(self.rig, key, value)))
 

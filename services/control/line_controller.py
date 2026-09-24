@@ -199,6 +199,7 @@ class LineController:
         self.feeder_ctrl.scan(dt)
         self.conveyor_ctrl.scan(dt)
         self.gate_ctrl.scan(dt)
+        self.interlocks.scan(dt)
         self.level_checks.scan(self.interlocks, dt)
         self.alarms.scan()
 

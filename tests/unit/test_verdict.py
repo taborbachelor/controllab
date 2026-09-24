@@ -30,9 +30,12 @@ def test_every_read_field_has_a_plain_label_and_every_action_a_kind():
 def test_every_action_reads_as_a_plain_sentence():
     """The replay page narrates stages with these; a new vocabulary key
     without a phrase fails here, not as a KeyError on someone's page."""
+    degraded = {"sensor_noise": {"tag": "WT-105", "amplitude": 30}, "sensor_drift": {"tag": "WT-105", "rate_per_s": -10},
+                "sensor_slow": {"tag": "ZSS-104", "seconds": 1.5}}
     for key in APPLY_ACTIONS:
-        for value in ((True, False) if key not in ("estop", "sensor_stuck", "sensor_failed", "sensor_restored",
-                                                   "hopper_level_pct", "bin_level_pct")
+        for value in ((degraded[key],) if key in degraded
+                      else (True, False) if key not in ("estop", "sensor_stuck", "sensor_failed", "sensor_restored",
+                                                        "hopper_level_pct", "bin_level_pct")
                       else ("tripped", "healthy") if key == "estop" else (50,) if key.endswith("_pct") else ("WT-105",)):
             text = describe_action(key, value)
             assert text and "_" not in text, (key, value, text)

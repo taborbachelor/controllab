@@ -9,6 +9,11 @@ title: "The weight transmitter trips the line on its own"
 # now disagree, and once that has lasted 1 s the cross-check names the switch
 # (stage 2). Before the 1oo2 vote, this hopper overfilled with no trip at all.
 # (Stuck is applied first, so the switch freezes before the level moves.)
+# The limit is 1.0 s, not 0.5 s: the transmitter's vote needs 0.5 s of
+# continuous high-high before it counts (a debounce against noise, decided
+# when noisy instruments were added), so this trip -- the one only the
+# transmitter sees -- now takes 0.5 s plus the scan. A changed requirement,
+# not a limit widened to fit a measurement.
 
 given:
   line_state: running
@@ -28,7 +33,7 @@ expect:
   gate_open_commanded: false
 
 within:
-  seconds: 0.5
+  seconds: 1.0
 
 then:
   - title: "The switch/weight disagreement is alarmed"

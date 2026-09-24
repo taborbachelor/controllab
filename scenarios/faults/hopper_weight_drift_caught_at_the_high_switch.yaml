@@ -1,0 +1,23 @@
+name: A Drifting Hopper Weight Transmitter Is Caught At The High Switch
+description: "The hopper weight transmitter drifts out of calibration, reading ever lower while the hopper fills. The controller stops the feed on the high level switch regardless, and the switch/transmitter cross-check raises a disagreement warning. A drift is only visible when the level crosses a switch point: until then the reading is plausible."
+title: "The transmitter reads low; the feed still stops at the high switch and the disagreement is alarmed"
+
+given:
+  line_state: running
+  hopper_level_pct: 70
+
+when:
+  sensor_drift: {tag: WT-105, rate_per_s: -10}
+
+trigger: sensor_drift
+
+expect:
+  latched_alarm_ids: ["LSH-105.DISAGREE"]
+  feeder_run_commanded: false
+  hopper_weight_agrees: false
+  line_state: running
+
+within:
+  seconds: 60
+
+interlock: "Hopper level instruments agree"

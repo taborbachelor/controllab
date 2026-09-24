@@ -1229,6 +1229,12 @@ issue and propose the change"):
   `build_info()` stamps the package version and this checkout's commit
   (dirty flag), and nothing when the directory isn't its own checkout.
   `render_markdown(build=)` prints the same stamp.
+- **Degraded instruments** (item 4) — `Instruments.add_noise()` / `drift()` /
+  `lag()` (+ `ranges`, `seed`, `now`, set by `Plant.step()`); vocabulary
+  `sensor_noise` / `sensor_drift` / `sensor_slow`; dashboard presets.
+  `Interlocks.scan()` + `hopper_high_high_weight_vote`: the transmitter's
+  high-high vote holds 0.5 s (`hh_weight_debounce_s`); `LineController.scan()`
+  calls it after the device modules. The PLC mirrors it (`LIM_HH_DEBOUNCE`).
 
 ## The self-explaining replay (readable cold)
 

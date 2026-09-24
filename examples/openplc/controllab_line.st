@@ -129,6 +129,8 @@ PROGRAM controllab_line
     hopper_high : BOOL;               (* LSH-105 open *)
     hopper_hh_switch : BOOL;          (* LSHH-105 open *)
     hopper_hh_weight : BOOL;          (* WT-105 at or above the high-high setpoint, channel healthy *)
+    hh_weight_scans : INT := 0;       (* how long it has been, for the vote's debounce *)
+    hopper_hh_weight_vote : BOOL;     (* ... held for LIM_HH_DEBOUNCE scans: the transmitter's vote *)
     hopper_high_high : BOOL;          (* 1oo2: either of the two *)
     lsh_mismatch_scans : INT := 0;    (* LevelSwitchCheck delay counters *)
     lshh_mismatch_scans : INT := 0;
@@ -150,6 +152,7 @@ PROGRAM controllab_line
     LIM_HIGH_HIGH_RAW : INT := 19000; (* the analog high-high setpoint, 95 % of 2000 kg *)
     LIM_BAND_RAW : INT := 400;        (* cross-check deadband, 2 % of span = 40 kg *)
     LIM_DISAGREE : INT := 10;         (* cross-check delay, 1.0 s *)
+    LIM_HH_DEBOUNCE : INT := 5;       (* the transmitter's high-high vote holds 0.5 s before it counts *)
   END_VAR
 
   (* ================= HMI request/acknowledge (4-phase) ================= *)
@@ -208,7 +211,14 @@ PROGRAM controllab_line
   hopper_hh_switch := NOT LSHH_105;
   (* the high-high trip is 1oo2: the switch OR WT-105 (no vote while its channel has failed) *)
   hopper_hh_weight := NOT WT105_FLT AND WT_105 >= LIM_HIGH_HIGH_RAW;
-  hopper_high_high := hopper_hh_switch OR hopper_hh_weight;
+  (* Interlocks.scan / hopper_high_high_weight_vote: noise can't trip it; the switch stays instant *)
+  IF hopper_hh_weight THEN
+    IF hh_weight_scans < LIM_HH_DEBOUNCE THEN hh_weight_scans := hh_weight_scans + 1; END_IF;
+  ELSE
+    hh_weight_scans := 0;
+  END_IF;
+  hopper_hh_weight_vote := hopper_hh_weight AND hh_weight_scans >= LIM_HH_DEBOUNCE;
+  hopper_high_high := hopper_hh_switch OR hopper_hh_weight_vote;
 
   (* switch vs transmitter cross-check (LevelSwitchCheck): a gap wider than the
      deadband, lasting LIM_DISAGREE scans; not judged while WT-105 has failed *)

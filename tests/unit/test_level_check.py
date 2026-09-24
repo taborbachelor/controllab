@@ -64,7 +64,9 @@ def test_high_high_is_1oo2_either_measurement_trips():
     io, il = make_interlocks()
     io.write_input("WT-105", 1_000.0)
     assert il.hopper_high_high is False
-    io.write_input("WT-105", 1_900.0)  # 95 %: the transmitter alone
+    io.write_input("WT-105", 1_900.0)  # 95 %: the transmitter alone, once it has held for 0.5 s
+    for _ in range(5):
+        il.scan(0.1)
     assert il.hopper_high_high_switch is False and il.hopper_high_high is True
     io.write_input("WT-105", 1_000.0)
     io.write_input("LSHH-105", False)  # the switch alone
@@ -77,3 +79,26 @@ def test_a_failed_transmitter_casts_no_high_high_vote():
     io.write_input("WT-105", 1_950.0)
     io.write_input("WT-105.FLT", True)  # the reading is meaningless
     assert il.hopper_high_high_weight is False
+
+
+def test_the_transmitter_votes_high_high_only_after_holding_it_for_half_a_second():
+    """A noise peak over the setpoint doesn't trip the line; a real overfill
+    seen only by the transmitter does, 0.5 s later. The switch stays instant."""
+    io, il = make_interlocks()
+    io.write_input("WT-105", 1_920.0)
+    for _ in range(4):
+        il.scan(0.1)
+        assert il.hopper_high_high_weight is True and il.hopper_high_high is False  # 0.4 s: not yet
+    io.write_input("WT-105", 1_880.0)  # the peak ends: the delay starts over
+    il.scan(0.1)
+    io.write_input("WT-105", 1_920.0)
+    for _ in range(4):
+        il.scan(0.1)
+    assert il.hopper_high_high is False
+    il.scan(0.1)  # 0.5 s held
+    assert il.hopper_high_high_weight_vote is True and il.hopper_high_high is True
+    io.write_input("WT-105", 1_000.0)
+    il.scan(0.1)
+    assert il.hopper_high_high is False  # drops at once
+    io.write_input("LSHH-105", False)
+    assert il.hopper_high_high is True  # the switch needs no scan

@@ -185,6 +185,27 @@ def _instrument_action(method: str):
     return apply
 
 
+# Degraded instruments (instruments.py): a reading that is plausible but wrong.
+# The value names the instrument and the one parameter that shapes the fault:
+#   sensor_noise: {tag: WT-105, amplitude: 30}      +/- 30 kg of noise
+#   sensor_drift: {tag: WT-105, rate_per_s: -10}   reading walks off at -10 kg/s
+#   sensor_slow:  {tag: ZSS-104, seconds: 1.5}      reports what was true 1.5 s ago
+def _degraded_action(key: str, method: str, param: str):
+    def apply(rig: Rig, value: dict) -> None:
+        if not isinstance(value, dict) or set(value) != {"tag", param}:
+            raise ScenarioError(f"{key}: expected {{tag: <input tag>, {param}: <number>}}, got {value!r}")
+        tag, number = value["tag"], value[param]
+        if tag not in rig.io or not rig.io.tag(tag).type.is_input:
+            raise ScenarioError(f"{key}: {tag!r} is not an input instrument tag")
+        if isinstance(number, bool) or not isinstance(number, (int, float)):
+            raise ScenarioError(f"{key}: {param} must be a number, got {number!r}")
+        try:
+            getattr(rig.plant.instruments, method)(tag, number)
+        except ValueError as e:
+            raise ScenarioError(f"{key}: {e}") from e
+    return apply
+
+
 def _apply_hopper_level_pct(rig: Rig, value: float) -> None:
     rig.plant.hopper.level_kg = (value / 100.0) * rig.plant.hopper.capacity_kg
 
@@ -217,6 +238,9 @@ APPLY_ACTIONS: dict[str, Callable[[Rig, object], None]] = {
     "sensor_stuck": _instrument_action("stuck"),
     "sensor_failed": _instrument_action("failed"),
     "sensor_restored": _instrument_action("restored"),
+    "sensor_noise": _degraded_action("sensor_noise", "add_noise", "amplitude"),
+    "sensor_drift": _degraded_action("sensor_drift", "drift", "rate_per_s"),
+    "sensor_slow": _degraded_action("sensor_slow", "lag", "seconds"),
     "feeder_drive_reset": _apply_feeder_drive_reset,
     "conveyor_overload_reset": _apply_conveyor_overload_reset,
     "gate_reset": _apply_gate_reset,

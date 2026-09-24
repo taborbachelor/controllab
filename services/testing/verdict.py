@@ -71,7 +71,8 @@ _FAULTS = {"conveyor_trip", "feeder_trip", "conveyor_fail_to_start", "feeder_fai
            "belt_slip", "feeder_jam"}
 _FIELD_RESETS = {"feeder_drive_reset", "conveyor_overload_reset", "gate_reset"}
 _PROCESS = {"hopper_level_pct", "bin_level_pct"}
-_SENSORS = {"sensor_stuck": "fault", "sensor_failed": "fault", "sensor_restored": "repair"}
+_SENSORS = {"sensor_stuck": "fault", "sensor_failed": "fault", "sensor_restored": "repair",
+            "sensor_noise": "fault", "sensor_drift": "fault", "sensor_slow": "fault"}
 
 KINDS = {"operator": "Operator action", "fault": "Fault injected", "repair": "Field repair",
          "process": "Process condition"}
@@ -133,6 +134,12 @@ def describe_action(key: str, value: object) -> str:
         return f"{value} sticks at its last reading"
     if key == "sensor_failed":
         return f"{value} loses its signal"
+    if key == "sensor_noise":
+        return f"{value['tag']} turns noisy (±{value['amplitude']:g} around the true reading)"
+    if key == "sensor_drift":
+        return f"{value['tag']} drifts out of calibration ({value['rate_per_s']:+g} per second)"
+    if key == "sensor_slow":
+        return f"{value['tag']} turns slow (it reports what was true {value['seconds']:g} s earlier)"
     if key == "sensor_restored":
         return f"{value} is repaired"
     if key == "hopper_level_pct":

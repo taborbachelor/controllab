@@ -1,0 +1,32 @@
+name: A Motion Switch Too Slow For The Proof Window Fails The Start
+description: "The conveyor's motion switch responds 1.5 s late. The start sequence gives the belt 1 s to prove it is moving, so the start is abandoned as a conveyor that failed to prove running, instead of opening the gate onto a belt nobody has confirmed."
+title: "Start: the conveyor is commanded first; the gate waits for the belt to prove it's moving"
+
+given:
+  line_state: idle
+
+when:
+  sensor_slow: {tag: ZSS-104, seconds: 1.5}
+  start: true
+
+trigger: sensor_slow
+
+expect:
+  conveyor_run_commanded: true
+  gate_open_commanded: false
+
+within:
+  seconds: 0.3
+
+then:
+  - title: "The belt never proves running in time: the start is abandoned, and the gate never opened"
+    expect:
+      line_state: faulted
+      fault_reason: "conveyor failed to prove running"
+      conveyor_run_commanded: false
+      gate_open_commanded: false
+      feeder_run_commanded: false
+    within:
+      seconds: 2.0
+
+interlock: "Any motor fail-to-start / trip"
