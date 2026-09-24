@@ -113,8 +113,8 @@ always passed and hitting it is an error), or invalid JSON raises
   (every stage), the reachable `given`, the §6.3 row, duplicates, runs it
   twice against the built-in controller (determinism) and once across
   Modbus (agreement), and checks it is **not vacuous**: it must fail with
-  its whole `when` removed, — with a declared trigger — fail with
-  exactly the trigger removed, and fail with any later stage's actions
+  its whole `when` removed; with a declared trigger, fail with
+  exactly the trigger removed; and fail with any later stage's actions
   removed, so no stage of a multi-stage scenario is decoration (it also reports how much of it is observable from the field alone, and warns if, judged only on field evidence, it would pass without its stimulus). The second check is the one a generated
   scenario needs most: a model can put the requested action in `when`
   while the expectations hold without it (e.g. an E-stop in the same

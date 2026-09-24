@@ -21,8 +21,8 @@ committed report diffs cleanly in git and a changed line means changed
 behavior (docs/CONTROL-LAB.md §7, item 3). The git commit a report was
 generated from is the right provenance record, not a date inside it.
 
-Markdown only, for now (CLAUDE.md §14: "don't implement every export
-format immediately") -- GitHub renders it, and it diffs as text.
+Markdown is the committed, diffable form; services/testing/report_export.py
+renders the same report as JSON and as print-ready HTML (the PDF path).
 
 A real-time run against a free-running controller (Phase 9) passes
 `realtime`: the report then states the conditions (latency tolerance,
@@ -62,14 +62,19 @@ class RealtimeConditions:
 
 
 def render_markdown(
-    report: CoverageReport, scenarios_root: Path, controller: str = "", realtime: RealtimeConditions | None = None
+    report: CoverageReport,
+    scenarios_root: Path,
+    controller: str = "",
+    realtime: RealtimeConditions | None = None,
+    build: str | None = None,
 ) -> str:
     """`scenarios_root` only relativizes scenario file paths for display,
     so the output never contains a machine-specific absolute path.
     `controller` names what was tested when it isn't the built-in one
     (Phase 7 step 3b); omitted, the output is exactly as before.
     `realtime` describes a real-time run (Phase 9); see the module
-    docstring."""
+    docstring. `build` is the build stamp (report_export.BuildInfo.label);
+    omitted, there is no build line."""
     lines: list[str] = []
     total = len(report.results)
     observed = ""
@@ -84,6 +89,7 @@ def render_markdown(
     lines += [
         "# ControlLab — Commissioning Report",
         "",
+        *([f"**Build:** {build}", ""] if build else []),
         *([f"**Controller under test:** {controller}", ""] if controller else []),
         f"**Overall: {report.verdict}** — {report.passed_count}/{total} scenarios passed; "
         f"{report.covered_count}/{len(report.rows)} interlocks covered "

@@ -149,8 +149,10 @@ ControlLab/
 │   │   ├── realtime.py               RealtimePlant + run_realtime(): the suite against a
 │   │   │                             FREE-RUNNING external controller, plant paced in
 │   │   │                             real time (Phase 9 step 1)
-│   │   └── commissioning_report.py   render_markdown() -- the Markdown
-│   │                                 commissioning report (pure logic, Phase 5 step 4)
+│   │   ├── commissioning_report.py   render_markdown() -- the Markdown
+│   │   │                             commissioning report (pure logic, Phase 5 step 4)
+│   │   └── report_export.py          report_dict() / render_html() -- the same report as
+│   │                                 JSON and print-ready HTML; build_info() stamp
 │   └── telemetry/
 │       ├── tag_history.py            TagHistory -- generic IOImage tag-value sampler
 │       │                             (Phase 5 step 1); write_csv() exports it
@@ -217,7 +219,7 @@ ControlLab/
 ├── scripts/
 │   ├── scenario_report.py            thin CLI: runs every scenario, prints
 │   │                                  report.py's coverage matrix, --out FILE,
-│   │                                  --markdown FILE.md (commissioning report)
+│   │                                  --markdown FILE.md, --json FILE, --html FILE
 │   ├── replay.py                     runs one scenario, writes a self-contained
 │   │                                  HTML replay of it (--regression NAME)
 │   ├── build_site.py                 the public demo: real runs as linked replays
@@ -1218,6 +1220,15 @@ issue and propose the change"):
 - **`candidates._stages_check()`** (item 2) — the vacuity check for every
   later acting stage: the scenario re-run with that stage's `when`
   emptied must fail; reported as the `stages` finding.
+- **`services/testing/report_export.py`** (item 3) — `report_dict()`: the
+  report as plain data (schema `controllab.commissioning-report/1`: build,
+  controller, overall, summary with warnings, critical failures, modes,
+  interlocks, real-time conditions, and every scenario with its events).
+  `render_html()` renders only from that data (so JSON and HTML agree):
+  self-contained, no script, a print stylesheet for Save as PDF.
+  `build_info()` stamps the package version and this checkout's commit
+  (dirty flag), and nothing when the directory isn't its own checkout.
+  `render_markdown(build=)` prints the same stamp.
 
 ## The self-explaining replay (readable cold)
 

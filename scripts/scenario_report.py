@@ -32,11 +32,13 @@ console formatting and a CLI entry point.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 from services.testing.commissioning_report import RealtimeConditions, render_markdown
 from services.testing.report import CoverageReport, build_report
+from services.testing.report_export import build_info, render_html, report_dict
 from services.testing.runner import run_scenario
 from services.testing.scenario import Scenario, ScenarioLoadError
 
@@ -139,6 +141,11 @@ def main() -> int:
     parser.add_argument(
         "--markdown", type=Path, default=None, help="also write the full Markdown commissioning report to this file"
     )
+    parser.add_argument("--json", type=Path, default=None, help="also write the report as JSON to this file")
+    parser.add_argument(
+        "--html", type=Path, default=None,
+        help="also write a print-ready HTML report to this file (print it to PDF for the PDF report)",
+    )
     rt = parser.add_argument_group("real-time run against a free-running controller (Phase 9)")
     rt.add_argument("--realtime", choices=("reference", "openplc"), default=None)
     rt.add_argument("--modbus-port", type=int, default=5020, help="port the plant is served on (the one the PLC polls)")
@@ -195,9 +202,20 @@ def main() -> int:
         args.out.write_text(text + "\n", encoding="utf-8")
         print(f"\nWrote {args.out}")
 
+    build = build_info(SCENARIOS_DIR.parent)
     if args.markdown is not None:
-        args.markdown.write_text(render_markdown(report, SCENARIOS_DIR, controller_name, conditions), encoding="utf-8")
+        args.markdown.write_text(
+            render_markdown(report, SCENARIOS_DIR, controller_name, conditions, build=build.label), encoding="utf-8"
+        )
         print(f"\nWrote {args.markdown}")
+    if args.json is not None or args.html is not None:
+        data = report_dict(report, SCENARIOS_DIR, controller_name, conditions, build)
+        if args.json is not None:
+            args.json.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            print(f"\nWrote {args.json}")
+        if args.html is not None:
+            args.html.write_text(render_html(data), encoding="utf-8")
+            print(f"\nWrote {args.html}")
 
     return 0 if report.gap_count == 0 and report.failed_count == 0 else 1
 

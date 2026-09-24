@@ -44,7 +44,7 @@ still plugged.
 - Mass is conserved to the milligram and checked on every scan, and every
   run is deterministic, so the same scenario gives the same result every
   time.
-- 762 automated tests, run on every push (Python 3.12 and 3.13; the badge
+- 772 automated tests, run on every push (Python 3.12 and 3.13; the badge
   above is the latest run). The demo site is rebuilt from the current code
   on every push too, so it can't drift from the repository.
 
@@ -179,6 +179,7 @@ non-deterministic, or disagrees between the in-process and Modbus runs.
 controllab test                         # all of them
 controllab test hopper -v               # matching files, full results
 python scripts/scenario_report.py --markdown report.md   # coverage matrix + commissioning report
+python scripts/scenario_report.py --json report.json --html report.html   # the same, as JSON / printable HTML (PDF)
 ```
 
 ## 6. How does OpenPLC fit into it?
@@ -288,8 +289,10 @@ real model. Details: [`docs/AI.md`](docs/AI.md).
 
   ![The live dashboard verifying the feeder-jam scenario: the line is faulted with the conveyor clearing the belt, the jam alarm sits under the line, and the test on the right shows stages 1 and 2 passed and stage 3 running](docs/images/dashboard-overview.jpg)
 - **Telemetry and reports:** tag history (CSV), event log (JSONL), a
-  deterministic Markdown commissioning report with the interlock coverage
-  matrix, and a self-contained HTML replay of any run
+  deterministic commissioning report (Markdown, JSON, or print-ready HTML
+  that saves as PDF; build-stamped with the git commit) with the interlock
+  coverage matrix and operating modes validated, and a self-contained HTML
+  replay of any run
   (`python scripts/replay.py SCENARIO.yaml`).
 - **Modbus and external controllers:**
   - a stdlib Modbus TCP server, tested against the spec's examples and
@@ -325,7 +328,7 @@ Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md).
 
 ## Status
 
-All roadmap phases are complete, and 762 tests pass.
+All roadmap phases are complete, and 772 tests pass.
 
 | Phase | Focus | Status |
 |---|---|---|
