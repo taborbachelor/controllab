@@ -44,6 +44,7 @@ LINE_STATES: tuple[LineState, ...] = (
     LineState.STOPPING,  # 3
     LineState.FAULTED,   # 4
     LineState.ESTOPPED,  # 5
+    LineState.MANUAL,    # 6  (Manual mode, completing Phase 2)
 )
 
 FAULT_REASONS: tuple[str | None, ...] = (

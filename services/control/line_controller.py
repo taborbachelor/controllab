@@ -1,7 +1,17 @@
-"""The line state machine (docs/CONTROL-LAB.md §6.2): Auto-mode sequencing,
-interlocks, and hopper hysteresis, wired together. Manual mode isn't built
-yet — see §6.1's own "Auto first; Manual once Auto is proven" plan; this
-class IS Auto mode for now, not Auto-with-a-mode-switch-around-it.
+"""The line state machine (docs/CONTROL-LAB.md §6.1-6.2): the two modes,
+Auto-mode sequencing, interlocks, and hopper hysteresis, wired together.
+
+Auto is the default and the sequences below. Manual (completing Phase 2)
+is one more state, MANUAL, in which the operator starts and stops each
+device with its own pushbutton: the sequence is bypassed, the protection
+is not. Every §6.3 row is enforced at the device it protects (the feeder
+only onto a proven belt, nothing started at high-high, trips go to
+FAULTED exactly as in Auto), plus one Manual-only rule: LSH-105 stops a
+running feeder and refuses its start, standing in for the level control
+Manual doesn't have, so a routine manual fill ends at the high switch
+rather than in a high-high trip. The mode changes only at rest (IDLE, or
+MANUAL with every device off) and survives FAULTED and ESTOPPED: a reset
+returns the line to its mode's rest state, never with anything running.
 
 Owns nothing from Simulation directly — only the three device-control
 modules (MotorControl x2, GateControl) built in Phase 2 step 2, and the
@@ -35,7 +45,7 @@ from services.control.gate_control import GateControl
 from services.control.hopper_hysteresis import HopperHysteresis
 from services.control.interlocks import Interlocks
 from services.control.level_check import HopperLevelChecks
-from services.control.line_state import LineState, StartInhibit, StartStep
+from services.control.line_state import LineMode, LineState, StartInhibit, StartStep
 from services.control.motor_control import MotorControl
 from services.simulation.engine.io_image import IOImage
 
@@ -47,6 +57,11 @@ from services.simulation.engine.io_image import IOImage
 CLEAR_BELT_ON = frozenset({
     "feeder trip", "feeder jam", "feeder failed to prove running", "gate travel fault", "gate failed to prove open",
 })
+
+# Manual mode's device pushbuttons (one-shot, like start()/stop()). A stop
+# and a start of the same device in one scan leaves it stopped.
+DEVICE_STARTS = frozenset({"start_conveyor", "open_gate", "start_feeder"})
+DEVICE_STOPS = frozenset({"stop_conveyor", "close_gate", "stop_feeder"})
 
 
 class LineController:
@@ -84,6 +99,7 @@ class LineController:
         self.conveyor_proof_timeout_s = conveyor_proof_timeout_s
         self.purge_time_s = purge_time_s
 
+        self.mode = LineMode.AUTO
         self.state = LineState.IDLE
         self.fault_reason: str | None = None
         self.last_start_refusal: list[str] = []
@@ -100,6 +116,13 @@ class LineController:
         self._stop_requested = False
         self._reset_requested = False
         self._acknowledge_requested = False
+        self._mode_request: LineMode | None = None
+        self._device_requests: set[str] = set()
+        # Manual mode's conveyor proof: once the belt has proven running
+        # (RUNNING and ZSS-104) after a manual start, losing it is a trip;
+        # never proving it within conveyor_proof_timeout_s is a fail-to-start.
+        self._manual_conveyor_proven = False
+        self._manual_conveyor_elapsed_s = 0.0
 
         # Phase 5 step 3 -- see the module docstring. Set by whoever
         # wants an audit trail of operator commands (in practice,
@@ -131,6 +154,36 @@ class LineController:
         self._emit_command("acknowledge")
         self._acknowledge_requested = True
 
+    def select_auto(self) -> None:
+        self._emit_command("select_auto")
+        self._mode_request = LineMode.AUTO
+
+    def select_manual(self) -> None:
+        self._emit_command("select_manual")
+        self._mode_request = LineMode.MANUAL
+
+    def start_conveyor(self) -> None:
+        self._device_command("start_conveyor")
+
+    def stop_conveyor(self) -> None:
+        self._device_command("stop_conveyor")
+
+    def open_gate(self) -> None:
+        self._device_command("open_gate")
+
+    def close_gate(self) -> None:
+        self._device_command("close_gate")
+
+    def start_feeder(self) -> None:
+        self._device_command("start_feeder")
+
+    def stop_feeder(self) -> None:
+        self._device_command("stop_feeder")
+
+    def _device_command(self, command: str) -> None:
+        self._emit_command(command)
+        self._device_requests.add(command)
+
     def _emit_command(self, command: str) -> None:
         if self.command_sink is not None:
             self.command_sink(command)
@@ -155,6 +208,11 @@ class LineController:
         if not self.interlocks.estop_healthy and self.state != LineState.ESTOPPED:
             self._enter_estopped()
 
+        if self._mode_request is not None:
+            self._change_mode(self._mode_request)
+        if self.state != LineState.MANUAL:
+            self._refuse_device_starts()
+
         if self.state == LineState.IDLE:
             self._scan_idle()
         elif self.state == LineState.STARTING:
@@ -167,11 +225,64 @@ class LineController:
             self._scan_faulted(dt)
         elif self.state == LineState.ESTOPPED:
             self._scan_estopped()
+        elif self.state == LineState.MANUAL:
+            self._scan_manual(dt)
 
         self._start_requested = False
         self._stop_requested = False
         self._reset_requested = False
         self._acknowledge_requested = False
+        self._mode_request = None
+        self._device_requests.clear()
+
+    # ---- mode -----------------------------------------------------------
+
+    def _change_mode(self, mode: LineMode) -> None:
+        """docs/CONTROL-LAB.md §6.1: the mode changes only at rest. A refusal
+        is reported like a refused start (StartInhibit.LINE_NOT_IDLE), so a
+        scenario can tell a refused mode change from one never requested."""
+        if mode == self.mode:
+            self.start_inhibit = StartInhibit.NONE
+            self.last_start_refusal = []
+            return
+        if self.state == LineState.IDLE or (self.state == LineState.MANUAL and not self._any_device_commanded()):
+            self.mode = mode
+            self._enter_rest()
+            self.start_inhibit = StartInhibit.NONE
+            self.last_start_refusal = []
+            return
+        why = "stop every device first" if self.state == LineState.MANUAL else f"the line is {self.state.name.lower()}"
+        self.start_inhibit = StartInhibit.LINE_NOT_IDLE
+        self.last_start_refusal = [f"mode change to {mode.name.lower()} refused: {why}"]
+
+    def _any_device_commanded(self) -> bool:
+        return self.feeder_ctrl.commanded_run or self.conveyor_ctrl.commanded_run or self.gate_ctrl.commanded_open
+
+    def _enter_rest(self) -> None:
+        """The mode's rest state -- IDLE in Auto, MANUAL in Manual -- with
+        nothing running: every state that enforces outputs off hands over
+        with them already off, and MANUAL only runs what is started anew."""
+        self.state = LineState.IDLE if self.mode == LineMode.AUTO else LineState.MANUAL
+        self.fault_reason = None
+        self._manual_conveyor_proven = False
+        self._manual_conveyor_elapsed_s = 0.0
+
+    def _refuse_device_starts(self) -> None:
+        """A device start outside MANUAL is refused and reported -- in Auto,
+        the master spec's "operator manual override during automatic"; in
+        Manual mode, the line is FAULTED or ESTOPPED. Device stops outside
+        MANUAL are no-ops, like stop() while IDLE."""
+        if not self._device_requests & DEVICE_STARTS:
+            return
+        if self.mode == LineMode.AUTO:
+            self.start_inhibit = StartInhibit.WRONG_MODE
+            self.last_start_refusal = ["device commands need Manual mode"]
+        elif self.state == LineState.ESTOPPED:
+            self.start_inhibit = StartInhibit.ESTOP_ACTIVE
+            self.last_start_refusal = ["e-stop active"]
+        else:
+            self.start_inhibit = StartInhibit.LINE_FAULTED
+            self.last_start_refusal = [f"line faulted: {self.fault_reason}"]
 
     # ---- IDLE -----------------------------------------------------------
 
@@ -192,7 +303,7 @@ class LineController:
         # Interlocks checking AlarmManager back would be circular.
         # LineController is where the two are already combined for every
         # other decision, so it's the natural place for this one too.
-        unacked_trips = [a.id for a in self.alarms.all_alarms if not a.is_warning and not a.acknowledged]
+        unacked_trips = self._unacked_trip_ids()
         if unacked_trips:
             reasons.append(f"unacknowledged alarm: {', '.join(unacked_trips)}")
         self.last_start_refusal = reasons
@@ -208,6 +319,9 @@ class LineController:
         self.start_inhibit = inhibit
         if not reasons:
             self._begin_start_sequence()
+
+    def _unacked_trip_ids(self) -> list[str]:
+        return [a.id for a in self.alarms.all_alarms if not a.is_warning and not a.acknowledged]
 
     def _begin_start_sequence(self) -> None:
         self.state = LineState.STARTING
@@ -411,10 +525,9 @@ class LineController:
             return
         if self._fault_cause_cleared():
             self._clear_all_device_faults()
-            self.clearing_belt = False  # IDLE means off; a reset ends any belt clearing,
+            self.clearing_belt = False  # rest means off; a reset ends any belt clearing,
             self.conveyor_ctrl.command_run(False)  # in this same scan
-            self.state = LineState.IDLE
-            self.fault_reason = None
+            self._enter_rest()
         # else: refused, stays FAULTED, fault_reason unchanged
 
     def _fault_cause_cleared(self) -> bool:
@@ -489,8 +602,148 @@ class LineController:
                 self.state = LineState.FAULTED
                 self.fault_reason = standing
             else:
-                self.state = LineState.IDLE
-                self.fault_reason = None
+                self._enter_rest()
         # else: stays ESTOPPED -- either e-stop is still tripped, or no
         # reset yet. Both conditions are required
         # (docs/CONTROL-LAB.md §6.2's diagram).
+
+    # ---- MANUAL -----------------------------------------------------------
+
+    def _scan_manual(self, dt: float) -> None:
+        self._supervise_manual_conveyor(dt)
+        reason = self._manual_trip_reason()
+        if reason is not None:
+            self._enter_faulted(reason)
+            return
+
+        requests = set(self._device_requests)
+        if self._stop_requested:
+            # The line Stop works in every mode; in Manual it stops every device at once.
+            requests |= DEVICE_STOPS
+        if "stop_feeder" in requests:
+            self.feeder_ctrl.command_run(False)
+        if "close_gate" in requests:
+            self.gate_ctrl.command_open(False)
+        if "stop_conveyor" in requests:
+            self.conveyor_ctrl.command_run(False)
+            self._manual_conveyor_proven = False
+            self._manual_conveyor_elapsed_s = 0.0
+
+        inhibit = StartInhibit.NONE
+        reasons: list[str] = []
+        evaluated = False
+        if self._start_requested:
+            evaluated = True
+            inhibit |= StartInhibit.WRONG_MODE
+            reasons.append("line Start is an Auto command; in Manual start each device")
+        if "start_conveyor" in requests and "stop_conveyor" not in requests:
+            evaluated = True
+            refused, why = self._manual_conveyor_refusal()
+            inhibit |= refused
+            reasons += why
+            if not refused and not self.conveyor_ctrl.commanded_run:
+                self.conveyor_ctrl.command_run(True)
+                self._manual_conveyor_proven = False
+                self._manual_conveyor_elapsed_s = 0.0
+        if "open_gate" in requests and "close_gate" not in requests:
+            # No permissive beyond the E-stop (already diverted to ESTOPPED):
+            # the gate alone moves no material, and stroking it to check its
+            # limit switches is what Manual is for.
+            evaluated = True
+            self.gate_ctrl.command_open(True)
+        if "start_feeder" in requests and "stop_feeder" not in requests:
+            evaluated = True
+            refused, why = self._manual_feeder_refusal()
+            inhibit |= refused
+            reasons += why
+            if not refused:
+                self.feeder_ctrl.command_run(True)
+                self.feeder_ctrl.command_speed(self.feed_speed_pct)
+        if evaluated:
+            self.start_inhibit = inhibit
+            self.last_start_refusal = reasons
+
+        # Enforced every scan, not only at start: the feeder runs only onto a
+        # proven belt (an operator stopping the conveyor takes the feeder with
+        # it, no trip -- an uncommanded loss is a trip, above), and stops at
+        # the high switch.
+        if not self._manual_conveyor_proven or self.interlocks.hopper_high:
+            self.feeder_ctrl.command_run(False)
+
+    def _supervise_manual_conveyor(self, dt: float) -> None:
+        if not self.conveyor_ctrl.commanded_run:
+            self._manual_conveyor_proven = False
+            self._manual_conveyor_elapsed_s = 0.0
+        elif self.interlocks.conveyor_confirmed_running:
+            self._manual_conveyor_proven = True
+        elif not self._manual_conveyor_proven:
+            self._manual_conveyor_elapsed_s = round(self._manual_conveyor_elapsed_s + dt, 9)
+
+    def _manual_trip_reason(self) -> str | None:
+        """Auto's RUNNING trips, applied while the feeder or conveyor is
+        running; with both off, MANUAL is at rest and a condition such as
+        high-high only refuses starts, as it does in IDLE. The gate's travel
+        fault trips at any time: in Manual it is the result of a stroke."""
+        feeding = self.feeder_ctrl.commanded_run
+        conveying = self.conveyor_ctrl.commanded_run
+        if feeding or conveying:
+            if self.interlocks.hopper_high_high:
+                return "hopper high-high"
+            if self.conveyor_ctrl.faulted:
+                return "conveyor trip"
+            if self.feeder_ctrl.faulted:
+                return "feeder trip"
+            if self.interlocks.feeder_plugged:
+                return "feeder jam"
+            if self.interlocks.hopper_weight_failed:
+                return "hopper weight signal failed"
+        if conveying:
+            if self.conveyor_ctrl.start_proof_fault or (
+                not self._manual_conveyor_proven and self._manual_conveyor_elapsed_s >= self.conveyor_proof_timeout_s
+            ):
+                return "conveyor failed to prove running"
+            if self._manual_conveyor_proven and not self.interlocks.conveyor_confirmed_running:
+                return "conveyor lost confirmation"
+        if feeding and self.feeder_ctrl.start_proof_fault:
+            return "feeder failed to prove running"
+        if self.gate_ctrl.travel_fault:
+            return "gate travel fault"
+        return None
+
+    def _manual_conveyor_refusal(self) -> tuple[StartInhibit, list[str]]:
+        inhibit, reasons = StartInhibit.NONE, []
+        if self.interlocks.hopper_high_high:
+            inhibit |= StartInhibit.HOPPER_HIGH_HIGH
+            reasons.append("hopper at high-high")
+        if self.interlocks.hopper_weight_failed:
+            inhibit |= StartInhibit.SENSOR_FAILED
+            reasons.append("hopper weight signal failed")
+        inhibit, reasons = self._unacked_refusal(inhibit, reasons)
+        return inhibit, reasons
+
+    def _manual_feeder_refusal(self) -> tuple[StartInhibit, list[str]]:
+        inhibit, reasons = StartInhibit.NONE, []
+        if not self._manual_conveyor_proven:
+            inhibit |= StartInhibit.CONVEYOR_NOT_RUNNING
+            reasons.append("conveyor not proven running")
+        if self.interlocks.bin_low:
+            inhibit |= StartInhibit.BIN_LOW
+            reasons.append("bin low")
+        if self.interlocks.hopper_high:
+            inhibit |= StartInhibit.HOPPER_HIGH
+            reasons.append("hopper at the high switch")
+        if self.interlocks.hopper_high_high:
+            inhibit |= StartInhibit.HOPPER_HIGH_HIGH
+            reasons.append("hopper at high-high")
+        if self.interlocks.hopper_weight_failed:
+            inhibit |= StartInhibit.SENSOR_FAILED
+            reasons.append("hopper weight signal failed")
+        inhibit, reasons = self._unacked_refusal(inhibit, reasons)
+        return inhibit, reasons
+
+    def _unacked_refusal(self, inhibit: StartInhibit, reasons: list[str]) -> tuple[StartInhibit, list[str]]:
+        unacked = self._unacked_trip_ids()
+        if unacked:
+            inhibit |= StartInhibit.UNACKNOWLEDGED_ALARM
+            reasons = reasons + [f"unacknowledged alarm: {', '.join(unacked)}"]
+        return inhibit, reasons

@@ -4,7 +4,7 @@ from services.control.gate_control import GateControl
 from services.control.hopper_hysteresis import HopperHysteresis
 from services.control.interlocks import Interlocks, PermissiveCheck
 from services.control.line_controller import LineController
-from services.control.line_state import LineState, StartStep
+from services.control.line_state import LineMode, LineState, StartInhibit, StartStep
 from services.control.motor_control import MotorControl
 
 __all__ = [
@@ -16,7 +16,9 @@ __all__ = [
     "Interlocks",
     "PermissiveCheck",
     "LineController",
+    "LineMode",
     "LineState",
+    "StartInhibit",
     "StartStep",
     "MotorControl",
 ]

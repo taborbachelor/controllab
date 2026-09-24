@@ -62,7 +62,8 @@ Full reasoning in `CONTROL-LAB.md` §3. In short:
 
 - **Simulation** (`services/simulation/`) models the physical plant.
 - **Control** (`services/control/`) operates it through states,
-  sequences, and interlocks — Auto mode only so far.
+  sequences, and interlocks — Auto (the sequences) and Manual (device by
+  device, every protection kept).
 - **Testing** (`tests/` for hand-written pytest; `services/testing/` +
   `scenarios/` for declarative commissioning scenarios) verifies behavior.
 - **Telemetry** (`services/telemetry/`, Phase 5, done) observes
@@ -113,8 +114,8 @@ ControlLab/
 │   │   ├── gate_control.py           GateControl (open/close command, travel-timeout)
 │   │   ├── interlocks.py             Interlocks — the §6.3 table as a query object
 │   │   ├── hopper_hysteresis.py      HopperHysteresis — §6.2's on/off feed cycle
-│   │   ├── line_state.py             LineState, StartStep enums
-│   │   ├── line_controller.py        LineController — the whole state machine
+│   │   ├── line_state.py             LineMode, LineState, StartStep, StartInhibit
+│   │   ├── line_controller.py        LineController — the whole state machine, both modes
 │   │   └── alarms.py                 Alarm, AlarmManager — latch/first-out/ack (Phase 4 step 1)
 │   ├── simulation/
 │   │   ├── engine/
@@ -1159,6 +1160,34 @@ issue and propose the change"):
   compared: lockstep runs event by event, real-time runs by verdict and
   checks. `POST /api/verify`, `GET /api/replay/latest`.
 
+## Module responsibilities (completing Phase 2: Manual mode)
+
+- **`LineMode`** (`line_state.py`) — AUTO / MANUAL, separate from
+  `LineState`: the mode says who drives the devices, the state where the
+  line is. Kept on `LineController.mode`; it survives FAULTED and
+  ESTOPPED.
+- **`LineState.MANUAL`** — the operator drives each device. State code 6
+  (`controller_status.py`, appended).
+- **`LineController` pushbuttons** — `select_auto()` / `select_manual()`,
+  `start_conveyor()` / `stop_conveyor()`, `open_gate()` / `close_gate()`,
+  `start_feeder()` / `stop_feeder()`: one-shot requests like `start()`,
+  each reported to `command_sink` by name. `_change_mode()` accepts a mode
+  change only at rest; `_refuse_device_starts()` reports a device start
+  outside MANUAL (`WRONG_MODE`, or `ESTOP_ACTIVE` / `LINE_FAULTED` in
+  Manual mode); `_scan_manual()` checks trips, applies stops before
+  starts, checks each start's permissives (`_manual_conveyor_refusal()`,
+  `_manual_feeder_refusal()`), and enforces the feeder rule every scan
+  (proven belt, below LSH-105). `_supervise_manual_conveyor()` holds the
+  conveyor's proof in Manual, where no start sequence proves it.
+  `_enter_rest()` is the one place a reset or a mode change picks IDLE or
+  MANUAL.
+- **`StartInhibit`** — now the outcome of the most recent start *or mode*
+  request; four bits appended (`CONVEYOR_NOT_RUNNING`, `HOPPER_HIGH`,
+  `WRONG_MODE`, `LINE_NOT_IDLE`). `docs/MODBUS-MAP.md` regenerated.
+- **`tests/integration/test_manual_mode.py`** — 32 tests: mode selection
+  and refusals, wrong-mode commands, a manual cycle with the invariants on
+  every tick, each permissive, each trip, E-stop, and the audit trail.
+
 ## The self-explaining replay (readable cold)
 
 A replay of a scenario run carries the run's summary
@@ -1198,7 +1227,7 @@ controller at 4× against the wall clock) run there too.
 |---|---|---|
 | 0 | Foundation | done |
 | 1 | Simulation core | done |
-| 2 | Control | done |
+| 2 | Control | done — Auto sequences, interlocks, E-stop, fault state; Manual mode being completed (2026-09-23): controller done, testing surface / Modbus + OpenPLC / dashboard to follow |
 | 3 | Testing / commissioning scenarios | done |
 | 4 | Fault injection, alarms | done — alarm core (latch, first-out, acknowledge); every §5.4 fault injectable, including the feeder jam (plug switch) and sensor failure (stuck / failed with channel diagnostic); multi-stage scenarios; 10/10 interlocks; verified on OpenPLC |
 | 5 | Telemetry | done — generic sampled tag history; state/alarm diffing observer; optional command sink; generated Markdown commissioning report |

@@ -120,7 +120,7 @@ Don't implement every technology immediately. The initial system is primarily Py
 
 ## 9. Control System — Modes (destination)
 
-Eventual operating modes: `AUTOMATIC`, `MANUAL`, `BATCH`, `CONTINUOUS`, `MAINTENANCE`, `FAULT`, `ESTOP`. Early phases don't need all of them — start with the minimum for meaningful behavior (see `docs/CONTROL-LAB.md` §6 for the current concrete design: Auto/Manual plus the line state machine).
+Eventual operating modes: `AUTOMATIC`, `MANUAL`, `BATCH`, `CONTINUOUS`, `MAINTENANCE`, `FAULT`, `ESTOP`. Early phases don't need all of them — start with the minimum for meaningful behavior. Built: Auto and Manual plus the line state machine (`docs/CONTROL-LAB.md` §6; Manual's controller built 2026-09-23, its testing surface, PLC port and dashboard in progress). Not built: Batch, Continuous as its own mode, Maintenance.
 
 Control logic must be deterministic: same inputs + initial conditions → same results, always.
 

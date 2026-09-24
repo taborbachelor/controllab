@@ -99,6 +99,7 @@ Kept apart from field I/O and outside the controller view: writing 1 issues the 
 | 3 | STOPPING |
 | 4 | FAULTED |
 | 5 | ESTOPPED |
+| 6 | MANUAL |
 
 ### `fault_reason` codes
 
@@ -145,6 +146,10 @@ Kept apart from field I/O and outside the controller view: writing 1 issues the 
 | 8 | ESTOP_ACTIVE |
 | 16 | LINE_FAULTED |
 | 32 | SENSOR_FAILED |
+| 64 | CONVEYOR_NOT_RUNNING |
+| 128 | HOPPER_HIGH |
+| 256 | WRONG_MODE |
+| 512 | LINE_NOT_IDLE |
 
 Set only when a start command is evaluated: NONE after an accepted start, unchanged when no start is requested -- so it proves a start was actually issued.
 
