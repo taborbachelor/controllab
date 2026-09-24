@@ -80,6 +80,9 @@ STIMULI: dict[str, str] = {
     "gate_b_stuck": "bool",
     "gate_c_stuck": "bool",
     "gate_b_reset": "action",
+    "outlet_stuck": "bool",
+    "outlet_plugged": "bool",
+    "outlet_reset": "action",
     "gate_c_reset": "action",
     "bin_b_level_pct": "pct",
     "bin_c_level_pct": "pct",
@@ -207,29 +210,47 @@ class LiveSession:
                 self._pending.append((name, getattr(self.rig.line, name)))
 
     def setpoint(self, name: str, value: object) -> None:
-        """An HMI setpoint (master specification, item 6): today the source
-        bin, "A" / "B" / "C". Applied at the next tick like a command; in
-        external mode it's entered into the setpoint register the external
-        controller reads."""
+        """An HMI setpoint: the source bin ("A" / "B" / "C"), a recipe weight
+        (recipe_a_kg / recipe_b_kg / recipe_c_kg, kg) or the batch hold
+        (hold_s). Applied at the next tick like a command; in external mode
+        it's entered into the setpoint register the external controller reads."""
         self._refuse_while_verifying()
-        if name != "source_bin" or value not in ("A", "B", "C"):
-            raise ValueError("setpoints: source_bin takes 'A', 'B' or 'C'")
-        label = f"source_bin {value}"
+        if name == "source_bin":
+            if value not in ("A", "B", "C"):
+                raise ValueError("source_bin takes 'A', 'B' or 'C'")
+            raw = "ABC".index(value) + 1
+            apply = lambda: self.rig.line.select_source(value)  # noqa: E731
+        elif name in ("recipe_a_kg", "recipe_b_kg", "recipe_c_kg", "hold_s"):
+            limit = 3_600 if name == "hold_s" else PLANT["hopper_capacity_kg"]
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= limit:
+                raise ValueError(f"{name} takes a number from 0 to {limit:g}")
+            raw = round(value)
+            if name == "hold_s":
+                apply = lambda: self.rig.line.set_hold(value)  # noqa: E731
+            else:
+                apply = lambda: self.rig.line.set_recipe(name[7].upper(), value)  # noqa: E731
+        else:
+            raise ValueError(f"unknown setpoint {name!r}")
+        label = f"{name} {value}"
         with self._lock:
             if self.external:
-                code = "ABC".index(value) + 1
-                self._pending.append((label, lambda: self.handshake.set_setpoint("source_bin", code)))
+                self._pending.append((label, lambda: self.handshake.set_setpoint(name, raw)))
             else:
-                self._pending.append((label, lambda: self.rig.line.select_source(value)))
+                self._pending.append((label, apply))
 
     def setpoint_raw(self, name: str, raw: int) -> None:
         """A setpoint written over Modbus (built-in mode's HMI registers)."""
-        if name != "source_bin" or raw not in (1, 2, 3):
-            raise ValueError(f"setpoint {name}: {raw} is not a bin code (1-3)")
-        self.setpoint(name, "ABC"[raw - 1])
+        if name == "source_bin":
+            if raw not in (1, 2, 3):
+                raise ValueError(f"setpoint {name}: {raw} is not a bin code (1-3)")
+            self.setpoint(name, "ABC"[raw - 1])
+        else:
+            self.setpoint(name, raw)
 
     def setpoint_values(self) -> dict[str, int]:
-        return {"source_bin": "ABC".index(self.rig.line.source_bin) + 1}
+        line = self.rig.line
+        return {"source_bin": "ABC".index(line.source_bin) + 1,
+                **{f"recipe_{b.lower()}_kg": round(line.recipe[b]) for b in "ABC"}, "hold_s": round(line.hold_s)}
 
     def stimulus(self, key: str, value: object) -> None:
         self._refuse_while_verifying()
@@ -395,7 +416,8 @@ class LiveSession:
             t = self.rig.plant.time_s
             if self.external:
                 for key, _ in pending:
-                    if key in COMMANDS or key.startswith("source_bin "):
+                    if key in COMMANDS or key.split(" ")[0] in ("source_bin", "recipe_a_kg", "recipe_b_kg",
+                                                                 "recipe_c_kg", "hold_s"):
                         self._external_events.append(Event(t, "command_issued", {"command": key}))
             else:
                 self.events.sample(t)
@@ -438,6 +460,7 @@ class LiveSession:
                     "mode": "external", "state": "external", "fault_reason": None,
                     "last_start_refusal": [], "alarms": [], "start_step": None, "line_mode": None,
                     "source_bin": "ABC"[self.handshake.setpoints.get("source_bin", 1) - 1], "active_bin": None,
+                    "batch": None,
                 }
             else:
                 controller = {
@@ -448,6 +471,13 @@ class LiveSession:
                     "line_mode": line.mode.name.lower(),
                     "source_bin": line.source_bin,
                     "active_bin": line.active_bin,
+                    # Batch mode (master specification, item 7).
+                    "batch": {
+                        "recipe": dict(line.recipe), "hold_s": line.hold_s,
+                        "step": line.batch_step.name.lower() if line.batch_step else None,
+                        "loaded_kg": line.batch_loaded_kg, "target_kg": line.batch_target_kg,
+                        "completed": line.batches_completed,
+                    },
                     "fault_reason": line.fault_reason,
                     "last_start_refusal": list(line.last_start_refusal),
                     "start_step": line.start_step.name.lower() if line.start_step else None,
@@ -482,6 +512,8 @@ class LiveSession:
                     "feeder_fail_to_start": plant.feeder.motor.fail_to_start,
                     "gate_stuck": plant.gate.stuck,
                     "gate_b_stuck": plant.gate_b.stuck,
+                    "outlet_stuck": plant.outlet.stuck,
+                    "outlet_plugged": plant.outlet_plugged,
                     "gate_c_stuck": plant.gate_c.stuck,
                     "belt_slip": plant.conveyor.motion_switch_stuck_false,
                     "conveyor_jam": plant.conveyor.jammed,

@@ -61,6 +61,8 @@ class StatusWithheld:
     mode = property(_withheld)
     source_bin = property(_withheld)
     active_bin = property(_withheld)
+    batch_loaded_kg = property(_withheld)
+    batches_completed = property(_withheld)
     fault_reason = property(_withheld)
     alarms = property(_withheld)
     start_inhibit = property(_withheld)
@@ -216,6 +218,36 @@ def _degraded_action(key: str, method: str, param: str):
     return apply
 
 
+def _apply_recipe(rig: Rig, value: dict) -> None:
+    """The batch recipe setpoints: {A: kg, B: kg, C: kg}; a bin left out is 0."""
+    if not isinstance(value, dict) or not set(value) <= {"A", "B", "C"}:
+        raise ScenarioError(f"recipe: expected {{A: kg, B: kg, C: kg}}, got {value!r}")
+    for bin_ in "ABC":
+        kg = value.get(bin_, 0)
+        if isinstance(kg, bool) or not isinstance(kg, (int, float)) or kg < 0:
+            raise ScenarioError(f"recipe: {bin_} must be a number of kg >= 0, got {kg!r}")
+        rig.line.set_recipe(bin_, kg)
+
+
+def _apply_hold_s(rig: Rig, value: float) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+        raise ScenarioError(f"hold_s must be a number of seconds >= 0, got {value!r}")
+    rig.line.set_hold(value)
+
+
+def _apply_outlet_stuck(rig: Rig, value: bool) -> None:
+    rig.plant.outlet.stuck = value
+
+
+def _apply_outlet_plugged(rig: Rig, value: bool) -> None:
+    rig.plant.outlet_plugged = value
+
+
+def _apply_outlet_reset(rig: Rig, value: bool) -> None:
+    if value:
+        rig.plant.outlet.clear_fault()
+
+
 def _apply_source_bin(rig: Rig, value: str) -> None:
     """The HMI's source-bin setpoint: the bin the next start draws from."""
     if value not in ("A", "B", "C"):
@@ -258,6 +290,9 @@ APPLY_ACTIONS: dict[str, Callable[[Rig, object], None]] = {
     "acknowledge": _apply_acknowledge,
     "select_manual": _pushbutton("select_manual"),
     "select_auto": _pushbutton("select_auto"),
+    "select_batch": _pushbutton("select_batch"),
+    "open_outlet": _pushbutton("open_outlet"),
+    "close_outlet": _pushbutton("close_outlet"),
     "start_conveyor": _pushbutton("start_conveyor"),
     "stop_conveyor": _pushbutton("stop_conveyor"),
     "open_gate": _pushbutton("open_gate"),
@@ -278,6 +313,11 @@ APPLY_ACTIONS: dict[str, Callable[[Rig, object], None]] = {
     "sensor_failed": _instrument_action("failed"),
     "sensor_restored": _instrument_action("restored"),
     "source_bin": _apply_source_bin,
+    "recipe": _apply_recipe,
+    "outlet_stuck": _apply_outlet_stuck,
+    "outlet_plugged": _apply_outlet_plugged,
+    "outlet_reset": _apply_outlet_reset,
+    "hold_s": _apply_hold_s,
     "bin_b_level_pct": _bin_level("B"),
     "bin_c_level_pct": _bin_level("C"),
     "gate_b_stuck": _gate_stuck("B"),
@@ -322,6 +362,12 @@ READ_FIELDS: dict[str, Callable[[Rig], object]] = {
     # drawing from now ("none" at rest).
     "source_bin": lambda rig: rig.line.source_bin,
     "active_bin": lambda rig: rig.line.active_bin or "none",
+    # The batch (master specification, item 7): this (or the last) batch's
+    # weigh-in, the batches completed, and the hopper's outlet gate.
+    "batch_loaded_kg": lambda rig: rig.line.batch_loaded_kg,
+    "batches_completed": lambda rig: rig.line.batches_completed,
+    "outlet_open": lambda rig: rig.plant.outlet.is_open,
+    "outlet_open_commanded": lambda rig: rig.io.read("XV-106.CMD_OPEN"),
     "estop_healthy": lambda rig: rig.plant.estop.healthy,
     "spilled_kg": lambda rig: rig.plant.spilled_kg,
     "spilled": lambda rig: rig.plant.spilled_kg > 1e-9,
@@ -353,7 +399,7 @@ READ_FIELDS: dict[str, Callable[[Rig], object]] = {
 # silently be treated as always observable.
 CONTROLLER_FIELDS = frozenset(
     {"line_state", "mode", "fault_reason", "any_unacknowledged_trip", "latched_alarm_ids", "first_out", "start_inhibit",
-     "source_bin", "active_bin"}
+     "source_bin", "active_bin", "batch_loaded_kg", "batches_completed"}
 )
 
 

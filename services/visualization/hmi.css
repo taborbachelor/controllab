@@ -65,6 +65,7 @@
   .buttons button:disabled { opacity: .5; cursor: default; }
   /* Manual mode (completing Phase 2): the mode switch and the device panel */
   .mode-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .mode-row[hidden] { display: none; }
   .mode-row .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
   .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
   .seg button { font: inherit; padding: 5px 14px; border: 0; background: var(--hollow); color: var(--ink); cursor: pointer; }
@@ -75,6 +76,10 @@
   .devices { display: grid; grid-template-columns: minmax(70px, auto) auto auto 1fr; gap: 6px 8px; align-items: center;
              margin-top: 10px; }
   .devices .dev { font-weight: 600; }
+  .recipe { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 4px; font-size: 13px; }
+  .recipe input { width: 70px; font: inherit; padding: 2px 6px; }
+  .recipe button { font: inherit; padding: 4px 10px; border: 1px solid var(--line); background: var(--hollow);
+                   color: var(--ink); border-radius: 4px; cursor: pointer; }
   .devices .dev-state { color: var(--muted); font-size: 12px; }
   .devices .dev-state.on { color: var(--run); font-weight: 600; }
   .devices button { font: inherit; padding: 4px 10px; border: 1px solid var(--line); background: var(--hollow);

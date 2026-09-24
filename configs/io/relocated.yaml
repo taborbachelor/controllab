@@ -29,6 +29,8 @@ discrete_inputs:
   1016: LSL-121
   1017: ZSO-122
   1018: ZSC-122
+  1019: ZSO-106
+  1020: ZSC-106
 
 input_registers:
   2000: {tag: LT-101, scale: 100, full_scale: 100}
@@ -44,6 +46,7 @@ coils:
   3002: M-104.RUN
   3003: XV-112.CMD_OPEN
   3004: XV-122.CMD_OPEN
+  3005: XV-106.CMD_OPEN
 
 holding_registers:
   4000: {tag: SC-103, scale: 100, full_scale: 100}
@@ -64,8 +67,15 @@ hmi:
     close_gate: 3109
     start_feeder: 3110
     stop_feeder: 3111
+    select_batch: 3112
+    open_outlet: 3113
+    close_outlet: 3114
   setpoints:
     source_bin: 4101
+    recipe_a_kg: 4102
+    recipe_b_kg: 4103
+    recipe_c_kg: 4104
+    hold_s: 4105
 
 status:
   line_state: 4001
@@ -79,3 +89,5 @@ status:
   alarms_unacked_2: 4010
   source_bin: 4011
   active_bin: 4012
+  batch_loaded_kg: 4013
+  batches_completed: 4014

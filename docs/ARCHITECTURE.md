@@ -1253,6 +1253,19 @@ issue and propose the change"):
   bins). Dashboard: `LiveSession.setpoint()`, `/api/setpoint`, the Source bin
   switch, the three-bin picture. `tests/unit/test_hmi_js.py` runs `hmi.js`
   in Node.
+- **Batch mode** (item 7) — `Plant.outlet` (XV-106, a `Gate`) and
+  `Plant.outlet_plugged`; the hopper draws only while the outlet is open.
+  `LineMode.BATCH`, `LineState.LOADING/PROCESSING/DISCHARGING/CLEANING`,
+  `BatchStep` (CONVEYOR, GATE, FEED, SETTLE). `LineController(outlet_ctrl=,
+  batch_preact_kg=, batch_empty_kg=, batch_tolerance_kg=, discharge_timeout_s=)`;
+  `set_recipe()`, `set_hold()`, `select_batch()`, `open_outlet()` /
+  `close_outlet()`; `_request_batch()` (the permissives), `_batch_trip_reason()`,
+  `_scan_loading/processing/discharging/cleaning()`; `_enter_rest()` returns to
+  the mode's rest state. Setpoints HR 102-105; `controller_status`: 13 registers
+  (`batch_loaded_kg`, `batches_completed`). `ExternalController.scan_once()`
+  applies setpoints before commands. Dashboard: the Batch button, the recipe
+  panel, the outlet in the picture. `scenarios/batch/`; the PLC port's batch
+  limits are tied to the rig by `test_openplc_program.py`.
 
 ## The self-explaining replay (readable cold)
 

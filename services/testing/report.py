@@ -82,6 +82,11 @@ INTERLOCKS: list[InterlockRow] = [
     # Master specification, item 5: the conveyor motor current and the belt scale.
     InterlockRow("Conveyor motor current normal", "Trip"),
     InterlockRow("Material flowing on the belt", "Alarm"),
+    # Master specification, item 7: Batch mode's own protections.
+    InterlockRow("Batch start permissives", "Permissive"),
+    InterlockRow("Batch dose flows", "Trip"),
+    InterlockRow("Hopper discharges", "Trip"),
+    InterlockRow("Batch weighed in within tolerance", "Alarm"),
 ]
 
 

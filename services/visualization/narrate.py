@@ -64,6 +64,21 @@ _FAULTS: dict[str, tuple[str, str]] = {
         "Free the stuck gate (Engineer tools → Bin A/B/C gate stuck, click it off), then reset it (Engineer "
         "tools → Reset bin A/B/C gate actuator)",
     ),
+    "outlet travel fault": (
+        "The hopper's outlet gate didn't reach its commanded position in time: stuck shut, a batch can't "
+        "discharge; stuck open, the hopper drains when it should hold.",
+        "Free the outlet gate (Manual mode: open or close it), then reset",
+    ),
+    "batch feed stalled": (
+        "The batch was feeding a bin, but nothing reached the belt scale (material bridging in the bin, "
+        "say), so the batch stopped instead of waiting forever for its weight.",
+        "Break up the bridge (Engineer tools → Bin bridged, click it off), empty the hopper in Manual, then reset",
+    ),
+    "discharge timeout": (
+        "The batch discharge opened the hopper's outlet, but the hopper never emptied in time (a plugged "
+        "outlet, or material bridging in the hopper).",
+        "Empty the hopper (Manual mode: open the outlet), then reset",
+    ),
     "conveyor jam": (
         "The conveyor belt jammed: it stopped moving while its motor strained against it (the motor current "
         "said so), so the line stopped before the overload relay had to.",
@@ -93,6 +108,9 @@ _CLEARED = {
     "gate travel fault": lambda v, inj: not any(inj.get(k) for k in ("gate_stuck", "gate_b_stuck", "gate_c_stuck")),
     "conveyor lost confirmation": lambda v, inj: not inj.get("belt_slip"),
     "conveyor jam": lambda v, inj: not inj.get("conveyor_jam") and not v["M-104.OL"],
+    "outlet travel fault": lambda v, inj: v.get("ZSC-106", True),
+    "discharge timeout": lambda v, inj: v["WT-105"] <= 5.0,
+    "batch feed stalled": lambda v, inj: not inj.get("bin_bridged"),
 }
 
 # Why a start was refused (LineController.last_start_refusal), in plain
@@ -106,6 +124,12 @@ _REFUSALS: list[tuple[str, str, str]] = [
      "Restore it (Engineer tools → Instrument faults → WT-105 → Restore)"),
     ("unacknowledged alarm", "an alarm hasn't been acknowledged yet (someone has to confirm they've seen it)",
      "Press Acknowledge"),
+    # Batch mode (master specification, item 7)
+    ("recipe is empty", "the recipe has no bin in it", "Enter a recipe (kg from at least one bin) and press Apply recipe"),
+    ("recipe is more than fits", "the recipe is more than the hopper takes under its high switch",
+     "Enter a smaller recipe"),
+    ("hopper not empty", "a batch starts only from an empty hopper",
+     "Empty the hopper (Manual mode: open the outlet, then close it)"),
     # Manual mode (docs/CONTROL-LAB.md §6.1)
     ("conveyor not proven running", "the conveyor isn't proven running, and the feeder may only feed onto a moving belt",
      "Start the conveyor first and wait for it to show running"),
@@ -210,6 +234,32 @@ def _manual(s: dict, v: dict, alarms: list[dict], notes: list[str]) -> dict:
     }
 
 
+def _batch(s: dict, v: dict, notes: list[str]) -> dict:
+    """Batch mode's four states: where the batch is, as a checklist."""
+    b = s.get("batch") or {}
+    order = ["loading", "processing", "discharging", "cleaning"]
+    at = order.index(s["state"])
+    loaded, target = b.get("loaded_kg", 0.0), b.get("target_kg", 0.0)
+    detail = {
+        "loading": f"Feeding bin {s.get('active_bin') or '?'} until the hopper holds its share of the recipe: "
+                   f"{loaded:.0f} of {target:.0f} kg so far. Each bin's gate opens in turn, and feeding stops a "
+                   "little early so the material still on the belt makes up the rest.",
+        "processing": f"Loaded {loaded:.0f} kg against a recipe of {target:.0f} kg. Holding for "
+                      f"{b.get('hold_s', 0):g} s (the process step) before the discharge.",
+        "discharging": "The hopper's outlet gate is open and the batch is leaving the hopper; the gate closes once "
+                       "the hopper is empty.",
+        "cleaning": "The hopper is empty. The conveyor runs a little longer to clear the belt, then the outlet "
+                    "closes and the line is ready for the next batch.",
+    }[s["state"]]
+    return {
+        "tone": "info",
+        "headline": f"Batch: {['Loading', 'Holding', 'Discharging', 'Cleaning out'][at]}.",
+        "detail": " ".join([detail] + notes + ["Press Stop to abort the batch."]),
+        "steps": [{"text": t, "done": i < at} for i, t in enumerate(
+            ["Load each bin's share", "Hold", "Discharge the hopper", "Clean out the belt"])],
+    }
+
+
 def narrate(s: dict) -> dict:
     busy = (s.get("verification") or {}).get("busy")
     if busy:
@@ -291,6 +341,8 @@ def narrate(s: dict) -> dict:
         }
     elif state == "manual":
         out = _manual(s, v, alarms, notes)
+    elif state in ("loading", "processing", "discharging", "cleaning"):
+        out = _batch(s, v, notes)
     elif state == "stopping":
         out = {
             "tone": "info",
@@ -312,6 +364,15 @@ def narrate(s: dict) -> dict:
                 "detail": ("The controller checks that it's safe to start before it moves anything. " if start else "")
                 + "It refused because " + " and ".join(why) + ".",
                 "steps": steps,
+            }
+        elif s.get("line_mode") == "batch":
+            b = s.get("batch") or {}
+            out = {
+                "tone": "info",
+                "headline": "Batch mode: ready for a batch.",
+                "detail": "Enter a recipe (kg from each bin, and a hold time) and press Start: the line loads each bin's "
+                f"share into the hopper, holds, discharges it, and cleans out. Batches completed: {b.get('completed', 0)}.",
+                "steps": [],
             }
         else:
             unacked = _unacked(alarms)

@@ -1,0 +1,38 @@
+name: A Discharge That Never Empties The Hopper Times Out
+description: "The outlet opens but it's plugged, so the hopper never empties. After the discharge timeout the line trips instead of waiting forever with the outlet open."
+title: "A small batch loads and holds"
+
+given:
+  line_state: batch
+  recipe: {A: 50}
+  hold_s: 2
+
+when:
+  start: true
+
+expect:
+  line_state: processing
+
+within:
+  seconds: 30
+
+then:
+  - title: "The outlet is plugged: it opens, the hopper doesn't empty"
+    when:
+      outlet_plugged: true
+    expect:
+      line_state: discharging
+      outlet_open: true
+    within:
+      seconds: 5
+  - title: "The discharge times out: the line trips and the outlet closes"
+    expect:
+      line_state: faulted
+      fault_reason: "discharge timeout"
+      first_out: "HOP-105.NOT_EMPTYING"
+      outlet_open_commanded: false
+    within:
+      seconds: 250
+
+trigger: start
+interlock: "Hopper discharges"

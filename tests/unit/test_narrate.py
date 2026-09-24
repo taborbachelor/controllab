@@ -193,6 +193,24 @@ def test_every_refusal_the_controller_can_give_has_plain_words():
         "bin low", "hopper at high-high", "hopper weight signal failed", "unacknowledged alarm: M-104.OL",
         "conveyor not proven running", "hopper at the high switch", "device commands need Manual mode",
         "line Start is an Auto command; in Manual start each device", "mode change to manual refused: the line is running",
+        "recipe is empty", "recipe is more than fits under the high switch (1600 kg)", "hopper not empty",
     ]
     for r in reasons:
         assert any(r.startswith(prefix) for prefix, _, _ in _REFUSALS), r
+
+
+def test_a_batch_narrates_where_it_is():
+    s = LiveSession()
+    s.command("select_batch")
+    s.step()
+    assert story(s)["headline"] == "Batch mode: ready for a batch."
+    s.command("start")
+    s.step()
+    assert "recipe has no bin in it" in story(s)["detail"]  # refused: no recipe yet
+    s.setpoint("recipe_b_kg", 100)
+    s.step()
+    s.command("start")
+    steps(s, 10)
+    st = story(s)
+    assert st["headline"] == "Batch: Loading." and "bin B" in st["detail"]
+    assert [x["done"] for x in st["steps"]] == [False, False, False, False]

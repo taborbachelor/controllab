@@ -34,8 +34,8 @@ def test_the_committed_line_map_file_is_exactly_the_built_in_map():
 def test_the_relocated_map_is_five_ranges_at_its_own_offsets():
     loaded, _ = load_map(RELOCATED, build_line_io_image())
     assert loaded.controller_ranges() == ControllerRanges(
-        discrete_inputs=(1000, 19), input_registers=(2000, 6), holding_read=(4100, 2),
-        coils=(3000, 5), holding_write=(4000, 13),
+        discrete_inputs=(1000, 21), input_registers=(2000, 6), holding_read=(4100, 6),
+        coils=(3000, 6), holding_write=(4000, 15),
     )
 
 
@@ -61,7 +61,7 @@ def test_leaving_out_the_status_block_declares_a_controller_without_one(tmp_path
 
 def test_a_partial_status_block_is_refused(tmp_path):
     path = relocated_with(tmp_path, "  start_inhibit: 4007\n", "")
-    with pytest.raises(MapFileError, match=r"all 11 registers or none -- missing \['start_inhibit'\]"):
+    with pytest.raises(MapFileError, match=r"all 13 registers or none -- missing \['start_inhibit'\]"):
         load_map(path, build_line_io_image())
 
 

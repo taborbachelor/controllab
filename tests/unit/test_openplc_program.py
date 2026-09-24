@@ -102,8 +102,28 @@ def test_the_belt_clearing_trips_match_the_python_controller():
     from services.protocols.controller_status import FAULT_REASONS
 
     lists = re.findall(r"clearing := M104_RUN AND \(([^)]*)\)", ST)
-    assert len(lists) == 4 and len(set(lists)) == 1  # the STARTING, RUNNING, STOPPING and MANUAL trip entries
+    # the STARTING, RUNNING, STOPPING, MANUAL and batch trip entries
+    assert len(lists) == 5 and len(set(lists)) == 1
     assert {FAULT_REASONS[int(c)] for c in re.findall(r"trip = (\d+)", lists[0])} == set(CLEAR_BELT_ON)
+
+
+def test_the_batch_constants_match_the_test_rig():
+    """The program's batch limits are the rig's LineController parameters in
+    WT-105 raw units (kg x 10) and 0.1 s scans; the scenarios pass on OpenPLC
+    only while the two agree."""
+    from services.testing.rig import build_rig
+
+    line = build_rig().line
+
+    def const(name):
+        return int(re.search(rf"{name} : D?INT := (\d+);", ST).group(1))
+
+    assert const("LIM_PREACT_RAW") == round(line.batch_preact_kg * 10)
+    assert const("LIM_EMPTY_RAW") == round(line.batch_empty_kg * 10)
+    assert const("LIM_TOLERANCE_RAW") == round(line.batch_tolerance_kg * 10)
+    room_kg = line.interlocks.hopper_capacity_kg * line.level_checks.lsh.switch_pct / 100.0
+    assert const("LIM_ROOM_RAW") == round(room_kg * 10)
+    assert const("LIM_DISCHARGE") == round(line.discharge_timeout_s * 10)
 
 
 def test_every_hmi_command_bit_is_decoded_in_bit_order():

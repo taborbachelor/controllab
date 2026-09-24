@@ -184,4 +184,5 @@ def test_a_fresh_hmi_channel_puts_every_setpoint_back_at_its_default():
     handshake.set_setpoint("source_bin", 3)
     handshake.request("start")
     handshake.reset()
-    assert handshake.setpoints == {"source_bin": 1} and handshake.request_word == 0
+    assert handshake.setpoints == LINE_REGISTER_MAP.setpoint_defaults and handshake.request_word == 0
+    assert handshake.setpoints["source_bin"] == 1

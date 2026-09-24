@@ -106,10 +106,12 @@ Current repository layout and what's actually implemented: `docs/ARCHITECTURE.md
 
 ```
 BIN-101 (A) ──► XV-102 ──┐
-BIN-111 (B) ──► XV-112 ──┼──► FDR-103 ──► CV-104 ──► HOP-105 ──► (downstream draw)
-BIN-121 (C) ──► XV-122 ──┘    Screw        Belt        Surge
-Material bins  Slide gates    feeder       conveyor    hopper
+BIN-111 (B) ──► XV-112 ──┼──► FDR-103 ──► CV-104 ──► HOP-105 ──► XV-106 ──► (downstream draw)
+BIN-121 (C) ──► XV-122 ──┘    Screw        Belt        Surge       Outlet
+Material bins  Slide gates    feeder       conveyor    hopper      gate
 ```
+
+The hopper outlet gate `XV-106` (added for Batch mode, §6.1) is a slide gate like the bin gates; the hopper draws downstream only while it is open. A line built without it draws continuously, as the original line did.
 
 The slide gate is included because it is the simplest device with travel time and limit switches, which is the classic source of "commanded but never arrived" faults.
 
@@ -135,6 +137,8 @@ The slide gate is included because it is the simplest device with travel time an
 | `XV-102.CMD_OPEN` | DO | Gate open command (de-energized = close) |
 | `ZSO-102` | DI | Gate open limit switch |
 | `ZSC-102` | DI | Gate closed limit switch |
+| `LT-111`, `LSL-111`, `XV-112.CMD_OPEN`, `ZSO-112`, `ZSC-112` | AI/DI/DO/DI/DI | Bin B: the same five points as bin A |
+| `LT-121`, `LSL-121`, `XV-122.CMD_OPEN`, `ZSO-122`, `ZSC-122` | AI/DI/DO/DI/DI | Bin C: the same five points as bin A |
 | `M-103.RUN` | DO | Feeder motor run command |
 | `M-103.RUNNING` | DI | Feeder motor running feedback (VFD) |
 | `M-103.FAULT` | DI | Feeder VFD fault |
@@ -150,6 +154,9 @@ The slide gate is included because it is the simplest device with travel time an
 | `WT-105.FLT` | DI | Hopper weight input channel fault (wire break / transmitter failed) |
 | `LSH-105` | DI | Hopper high level switch (80%; 1 = below, fail-safe polarity) |
 | `LSHH-105` | DI | Hopper high-high level switch (95%; 1 = below, fail-safe polarity) |
+| `XV-106.CMD_OPEN` | DO | Hopper outlet gate open command (de-energized = close) |
+| `ZSO-106` | DI | Hopper outlet gate open limit switch |
+| `ZSC-106` | DI | Hopper outlet gate closed limit switch |
 | `ES-001` | DI | E-stop healthy (1 = healthy; fail-safe polarity) |
 
 Tag naming loosely follows ISA-5.1 conventions. This table is the first commissioning artifact the project produces, and it should stay in sync with the code.
@@ -181,6 +188,7 @@ Tag naming loosely follows ISA-5.1 conventions. This table is the first commissi
 |---|---|
 | **Auto** | The line runs from Start/Stop commands via the automatic sequences. Hopper level control is active. |
 | **Manual** | The operator commands individual devices. **All interlocks remain enforced**; manual mode bypasses the sequence, not the protection. |
+| **Batch** | Start runs one batch: a recipe (kg from each bin) is weighed into the empty hopper, held, discharged through the outlet gate and cleaned out. Auto stays continuous. |
 
 The mode can only change while the line is **Idle**. Changing mode mid-run is refused and logged. (Interlock bypass for maintenance is a deliberate non-goal for early versions.)
 
@@ -198,6 +206,14 @@ The mode can only change while the line is **Idle**. Changing mode mid-run is re
 - **The mode changes only at rest** (IDLE, or MANUAL with every device commanded off) and outlives FAULTED and ESTOPPED: a reset returns the line to its mode's rest state with nothing running. A refused mode change is reported (`LINE_NOT_IDLE`).
 - **Wrong-mode commands are refused and reported** (`WRONG_MODE`): a device start in Auto (an operator override during an automatic run changes nothing) and the line Start in Manual. Device *stops* in Auto are no-ops, like Stop while IDLE. The line Stop works in both modes; in Manual it stops every device at once.
 
+**Batch mode, as built (completing the master specification, item 7).** Four more line states: `LOADING` → `PROCESSING` → `DISCHARGING` → `CLEANING` → `IDLE`. The recipe (`recipe_a_kg`, `recipe_b_kg`, `recipe_c_kg`) and the hold (`hold_s`) are HMI setpoints, like the source bin.
+
+- **Start** checks the batch permissives (§6.3): a recipe that isn't empty and fits under the high switch, an empty hopper, none of the recipe's bins low, no high-high, a healthy weight signal and no unacknowledged trip.
+- **LOADING** proves the belt running, then takes the recipe's bins in order (A, B, C): open the bin's gate and prove it open, run the feeder until the hopper weight plus a preact (the belt's in-flight load, 50 kg; 10 kg on the test rig) reaches the batch's cumulative target, close the gate, and let the belt's load land for the purge time. The weigh-in is then checked against the recipe (`BATCH.TOLERANCE`, a warning) and the belt stops.
+- **PROCESSING** holds for `hold_s`. **DISCHARGING** opens the outlet gate until the hopper reads empty (5 kg; 2 kg on the test rig); a hopper that doesn't empty within the discharge timeout trips ("discharge timeout", `HOP-105.NOT_EMPTYING`). **CLEANING** proves the belt and runs it for the purge time, then closes the outlet; with it proven closed the batch is counted and the line rests at IDLE, ready for the next Start with no reset.
+- **Trips** are the running line's, applied to what the batch has running, plus a stalled dose (no flow at the belt scale while feeding: "batch feed stalled") and the outlet gate's travel fault. Stop aborts a batch through the stop sequence; what's in the hopper stays, and the next batch is refused until it has gone.
+- **Manual** gains outlet open/close pushbuttons (no permissive but the E-stop, like a bin gate), so a partial batch can be drained. Device pushbuttons in Batch mode are the wrong mode, as in Auto.
+
 ### 6.2 Line state machine (Auto)
 
 ```
@@ -213,6 +229,9 @@ The mode can only change while the line is **Idle**. Changing mode mid-run is re
 
   Manual mode (§6.1): IDLE ◄──(Auto/Manual, at rest)──► MANUAL ──trip──► FAULTED;
   in Manual mode, every reset above returns to MANUAL instead of IDLE.
+
+  Batch mode (§6.1): IDLE ──Start──► LOADING ──► PROCESSING ──► DISCHARGING ──► CLEANING ──► IDLE;
+  a trip in any of them → FAULTED, Stop → STOPPING.
 ```
 
 - **Start sequence (downstream first):** confirm permissives → start CV-104 → prove running (`RUNNING` and `ZSS-104` within 3 s) → open XV-102 → prove open (`ZSO-102` within 5 s) → start FDR-103 → prove running → RUNNING.
@@ -240,6 +259,10 @@ The mode can only change while the line is **Idle**. Changing mode mid-run is re
 | Hopper weight signal healthy | Permissive + trip | WT-105's channel fault (WT-105.FLT): start refused; while starting or running the line → FAULTED (the feed decision reads WT-105; unknown means stopped); reset refused until the signal is restored |
 | Conveyor motor current normal | Trip | IT-104 at or above 125 % of the motor's full-load current for 1 s while proven running, or the belt losing motion while the current is that high: line → FAULTED "conveyor jam", conveyor stopped at once (the same as any conveyor fault). A belt losing motion at normal or low current is a slip: "conveyor lost confirmation". Catches a jam behind a motion switch stuck healthy, before the thermal overload |
 | Material flowing on the belt | Alarm | The feeder running with the gate open for longer than a belt transit (15 s; 4 s on the test rig) while the belt scale FT-104 reads under 0.2 kg/s: warning `FT-104.NO_FLOW` (bridging in the bin, a plugged gate). Not a trip: nothing is being harmed |
+| Batch start permissives | Permissive | Batch mode only: a batch starts from an empty hopper (at or under 5 kg; 2 kg on the test rig), with a recipe that has at least one bin and fits under the high switch (80 % of capacity), and none of its bins low. Refused with `HOPPER_NOT_EMPTY`, `RECIPE_EMPTY`, `RECIPE_TOO_LARGE` or `BIN_LOW` |
+| Batch dose flows | Trip | While a batch feeds a bin, no flow at the belt scale for longer than a belt transit: line → FAULTED "batch feed stalled" (in a batch the no-flow warning is a trip; the batch would otherwise wait forever for its weight) |
+| Hopper discharges | Trip | The outlet gate must reach its commanded position (`XV-106.TRAVEL_FAULT`, "outlet travel fault", in any state), and a discharge must empty the hopper within its timeout (900 s; 240 s on the test rig): line → FAULTED "discharge timeout" |
+| Batch weighed in within tolerance | Alarm | After loading, the weigh-in must be within the batch tolerance of the recipe (10 kg; 5 kg on the test rig): warning `BATCH.TOLERANCE`; the batch carries on |
 
 Trips cascade **upstream**: if a device stops, everything feeding it stops, and anything downstream keeps running so it can clear. Concretely, on an upstream trip (feeder trip, feeder fail-to-start, feeder jam, gate fault) the feeder and gate stop at once and a running conveyor keeps running for the purge time so the belt empties, then stops; the line is FAULTED throughout. Every other trip (E-stop, hopper high-high, a failed hopper weight signal, any conveyor fault) stops the conveyor at once, since running the belt on would feed an overfull hopper, one of unknown level, or a failed conveyor. Clearing is cut short by any of those conditions arising mid-clear, and ends on a reset or an E-stop.
 
@@ -327,7 +350,7 @@ Test tiers, in the order they get built:
   - **Finding (fixed) — two scenario stage titles described the wrong stage.** The replay showed `manual_operation` stage 2 titled "Gate opened and feeder started by hand: material flows" over a stage that only opens the gate, and `manual_belt_slip_trips` stage 1 claiming all three devices start when only the conveyor does. Titles are for people and never part of a verdict, which is exactly why no test caught them; the replay did.
   - 10 new tests (754 total).
 
-**Phase 2 is now complete against the original master specification:** Auto and Manual modes, every protection enforced in both, verified in-process, across Modbus and on OpenPLC, and operable from the dashboard. Batch, a separate Continuous mode, and Maintenance remain unbuilt (Maintenance is on the *Later* list).
+**Phase 2 is now complete against the original master specification:** Auto and Manual modes, every protection enforced in both, verified in-process, across Modbus and on OpenPLC, and operable from the dashboard. A separate Continuous mode and Maintenance remain unbuilt (Maintenance is on the *Later* list); Batch was built while completing the master specification (item 7, below).
 
 ### Phase 3 — Testing / commissioning scenarios ✅ done
 - ✅ **Step 1 — scenario format + runner + invariants.** `services/testing/` (`scenario.py`, `vocabulary.py`, `invariants.py`, `runner.py`, `rig.py`) plus four proof-of-concept scenarios under `scenarios/` (`safety/estop_from_running.yaml` is literally `CLAUDE.md` §10's illustrative example, made real; `startup/normal_start.yaml`, `shutdown/normal_stop.yaml`, `faults/gate_travel_timeout.yaml`). Discovered and run automatically by `pytest` (`tests/integration/test_scenarios.py`), not a separate tool. One real bug found and fixed while proving this out: the runner checked `expect`/invariants *before* the first tick processed a `when` stimulus, catching a transient state that exists only in Python call order, not one the real system passes through (§3.3's own diagram has Testing's stimulus and Simulation's advance within the *same* tick) — fixed by ticking before every check, not after.
@@ -508,7 +531,13 @@ Test tiers, in the order they get built:
   - **Finding (fixed) — HMI setpoints leaked between real-time scenarios.** The first run of the three-bin suite against OpenPLC failed 7 of 51, all order-dependent: the real-time runner keeps one HMI channel for the whole run, its `reset()` cleared the request and ack words but not the setpoints, so after `bins/` selected bin C the next scenarios started from bin C. `HmiHandshake.reset()` now restores every setpoint's default (the dashboard's New session shares it); tested. **Re-run: 51/51 scenarios, 369/369 checks, on OpenPLC.**
   - **Scenario draft corrected (the known latency race):** the first bin-low scenario changed the bin levels and pressed Start in the same stage; Control scans before the plant publishes, so the start was judged on the old levels. Split into the operator's real procedure, as Phase 7 recorded.
   - 26 new tests (847 total).
-- ☐ **7. Batch mode with cleanout.**
+- ✅ **7. Batch mode with cleanout.** Tabor's scope: a recipe across the three bins, loaded by hopper weight, held, discharged through a new hopper outlet gate until empty, and cleaned out; Auto stays continuous. *Plant:* the outlet gate `XV-106` (a slide gate with both limit switches) and an outlet-plugged fault; the hopper draws only while the outlet is open (a line without an outlet still draws continuously). *Controller:* mode `BATCH`, states `LOADING`/`PROCESSING`/`DISCHARGING`/`CLEANING` and the sequence in §6.1; recipe and hold as HMI setpoints (`set_recipe`, `set_hold`, recorded like commands); three batch permissives (`RECIPE_EMPTY`, `RECIPE_TOO_LARGE`, `HOPPER_NOT_EMPTY`) beside the existing ones; three new faults (outlet travel fault, discharge timeout, batch feed stalled) and three alarms (`XV-106.TRAVEL_FAULT`, `HOP-105.NOT_EMPTYING`, `BATCH.TOLERANCE`, a warning); outlet pushbuttons in Manual. Four new §6.3 rows (17 in all). *Modbus:* setpoints HR 102-105, status HR 13-14 (`batch_loaded_kg`, `batches_completed`), DIs 19-20, coil 5, command bits 12-14, line states 7-10, mode 2, fault reasons 13-15, alarm bits 19-21. *PLC:* the Structured Text port has the whole sequence, in raw WT-105 units and scan counts, with a drift test tying its batch limits to the rig's. *Dashboard:* a Batch mode button, a recipe panel (kg per bin, hold, Apply) showing the batch's progress, the outlet gate and discharge in the line picture, outlet pushbuttons and the two outlet faults. Seven scenarios in `scenarios/batch/`, all READY at the review gate and identical across Modbus: a full two-bin cycle, the start permissives, a bridged bin stalling a dose, a stuck outlet, a plugged outlet timing the discharge out, an out-of-tolerance weigh-in, and Stop aborting a batch.
+  - **Finding (fixed, a design gap) — a stalled dose would wait forever.** In Auto a feeder running with nothing arriving is a warning (`FT-104.NO_FLOW`): the level control just keeps asking. A batch waits for a weight, so a bin bridging mid-dose left the line in LOADING indefinitely with the feeder running. In a batch, no flow while feeding is now a trip ("batch feed stalled"). Found writing the bridged-bin scenario.
+  - **Finding (fixed) — the external controller applied setpoints after commands.** A recipe written in the same exchange as Start reached the controller one scan late, so the batch started on the old recipe (and was refused as empty). `ExternalController.scan_once()` now applies setpoints before commands, as an operator enters a recipe before pressing Start.
+  - **Finding (fixed) — a device pushbutton in Batch mode reported "line faulted".** The refusal checked for Auto alone, so at rest in Batch mode it fell through to the faulted branch. Found porting the refusal to the PLC, where every case had to be written out; both now report `WRONG_MODE`. Tested.
+  - **Rig values corrected, not widened to fit:** the test rig's discharge timeout started at 120 s, shorter than a large recipe takes to drain at the rig's 10 kg/s draw; it is 240 s. The invariants' conservation baseline is now the accounted mass (it includes what has left through the outlet), so a checker built partway through a run (the second of two back-to-back batches) counts what has already left.
+  - **Verified on OpenPLC:** MatIEC compiled the port first time; the seven batch scenarios passed in real time (62/62 checks), then the whole suite on a fresh container: **58/58 scenarios, 431/431 checks, one pass**.
+  - 38 new tests (885 total).
 - ☐ **8. MQTT telemetry and an OPC UA server.**
 
 ### Later (unscheduled)
@@ -609,3 +638,4 @@ Test tiers, in the order they get built:
 | 2026-09-23 | **Completing the master specification, item 4: noise, drift and slow response.** Three degraded-instrument faults (seeded noise, drift, dead time; clamped to range), in the vocabulary and the dashboard; three scenarios. Findings: noise near high-high nuisance-tripped the line, fixed per Tabor with a 0.5 s debounce on the transmitter's vote (switch instant; ported to the PLC, 12 affected scenarios passed on OpenPLC); a zero debounce voted high-high forever (fixed); a drift is invisible between switch points (recorded). 26 new tests (799 total). |
 | 2026-09-23 | **Completing the master specification, item 5: motor current, a belt scale, a conveyor jam.** `IT-104` and `FT-104` (Modbus IR 2-3); conveyor jam and bin bridging faults; a "conveyor jam" trip from overcurrent or from motion lost at high current (a slip stays a slip); a no-flow warning; two new §6.3 rows (13); ported to the PLC. Finding (fixed): `feeder_flowing` read the feeder's rate rather than what left the bin. 20 new tests (819 total). |
 | 2026-09-24 | **Completing the master specification, item 6: three bins.** Bins B and C with their gates; the source bin as an HMI setpoint taken at Start (a new Modbus element, `HmiSetpoint`, HR 101); one gate at a time; any gate's travel fault trips; a second pair of alarm words and `source_bin`/`active_bin` in the status block; the PLC port; a three-bin line picture and a source-bin switch. Finding (fixed): a dashboard script error only a browser showed; the rendering script now runs in Node in the suite. 26 new tests (847 total); verified on OpenPLC, 51/51. |
+| 2026-09-24 | **Completing the master specification, item 7: Batch mode with cleanout.** A recipe across the three bins: Load (by hopper weight, bin by bin, with a preact) → Process (hold) → Discharge (a new hopper outlet gate, `XV-106`, until empty) → Cleanout, then IDLE; Auto stays continuous. Recipe and hold are HMI setpoints (HR 102-105); three batch permissives, three faults, three alarms, four new §6.3 rows (17); outlet pushbuttons in Manual; the PLC port, the dashboard recipe panel, seven scenarios. Findings (fixed): a stalled dose waited forever (now a trip in a batch), the external controller applied setpoints after commands, and a device pushbutton in Batch mode reported "line faulted". 38 new tests (885 total); verified on OpenPLC, 58/58. |

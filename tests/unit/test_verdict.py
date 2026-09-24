@@ -31,7 +31,8 @@ def test_every_action_reads_as_a_plain_sentence():
     """The replay page narrates stages with these; a new vocabulary key
     without a phrase fails here, not as a KeyError on someone's page."""
     degraded = {"sensor_noise": {"tag": "WT-105", "amplitude": 30}, "sensor_drift": {"tag": "WT-105", "rate_per_s": -10},
-                "sensor_slow": {"tag": "ZSS-104", "seconds": 1.5}}
+                "sensor_slow": {"tag": "ZSS-104", "seconds": 1.5}, "recipe": {"A": 300, "B": 200},
+                "hold_s": 5, "source_bin": "B", "bin_b_level_pct": 30, "bin_c_level_pct": 30}
     for key in APPLY_ACTIONS:
         for value in ((degraded[key],) if key in degraded
                       else (True, False) if key not in ("estop", "sensor_stuck", "sensor_failed", "sensor_restored",

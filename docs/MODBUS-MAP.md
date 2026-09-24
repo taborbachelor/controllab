@@ -10,11 +10,11 @@ Everything a controller needs is five contiguous ranges, one per table — exact
 
 | Table | Direction | Start | Size | Contents |
 |---|---|---:|---:|---|
-| Discrete inputs (FC 02) | read | 0 | 19 | field sensors |
+| Discrete inputs (FC 02) | read | 0 | 21 | field sensors |
 | Input registers (FC 04) | read | 0 | 6 | analog sensors |
-| Holding registers (FC 03) | read | 100 | 2 | HMI request word + setpoints |
-| Coils (FC 15) | write | 0 | 5 | field outputs |
-| Holding registers (FC 16) | write | 0 | 13 | analog outputs, controller status, HMI ack word |
+| Holding registers (FC 03) | read | 100 | 6 | HMI request word + setpoints |
+| Coils (FC 15) | write | 0 | 6 | field outputs |
+| Holding registers (FC 16) | write | 0 | 15 | analog outputs, controller status, HMI ack word |
 
 ## Discrete inputs (FC 02, read-only)
 
@@ -39,6 +39,8 @@ Everything a controller needs is five contiguous ranges, one per table — exact
 | 16 | 10017 | `LSL-121` | Bin C low level switch |
 | 17 | 10018 | `ZSO-122` | Bin C gate open limit switch |
 | 18 | 10019 | `ZSC-122` | Bin C gate closed limit switch |
+| 19 | 10020 | `ZSO-106` | Hopper outlet gate open limit switch |
+| 20 | 10021 | `ZSC-106` | Hopper outlet gate closed limit switch |
 
 ## Input registers (FC 04, read-only)
 
@@ -60,6 +62,7 @@ Everything a controller needs is five contiguous ranges, one per table — exact
 | 2 | 00003 | `M-104.RUN` | Conveyor motor run command |
 | 3 | 00004 | `XV-112.CMD_OPEN` | Bin B gate open command (de-energized = close) |
 | 4 | 00005 | `XV-122.CMD_OPEN` | Bin C gate open command (de-energized = close) |
+| 5 | 00006 | `XV-106.CMD_OPEN` | Hopper outlet gate open command (de-energized = close) |
 
 ## Holding registers
 
@@ -80,11 +83,13 @@ Written by the controller in external-controller mode (FC 16); read-only with th
 | 10 | 40011 | `alarms_unacked_2` | Alarm bits 16-31: not yet acknowledged | | |
 | 11 | 40012 | `source_bin` | Source bin the next start draws from (1 = A, 2 = B, 3 = C) | | |
 | 12 | 40013 | `active_bin` | Bin the line is drawing from now (0 = none) | | |
+| 13 | 40014 | `batch_loaded_kg` | The current (or last) batch's weigh-in, kg | | |
+| 14 | 40015 | `batches_completed` | Batches completed since the controller started | | |
 | 100 | 40101 | `hmi_request` | HMI request word (ControlLab → controller; read-only to clients) | | |
 
 ## HMI commands to an external controller — request/acknowledge
 
-Bits of `hmi_request` / `hmi_ack`: bit 0 = `start`, bit 1 = `stop`, bit 2 = `reset`, bit 3 = `acknowledge`, bit 4 = `select_auto`, bit 5 = `select_manual`, bit 6 = `start_conveyor`, bit 7 = `stop_conveyor`, bit 8 = `open_gate`, bit 9 = `close_gate`, bit 10 = `start_feeder`, bit 11 = `stop_feeder`. A 4-phase handshake, so each command is taken exactly once:
+Bits of `hmi_request` / `hmi_ack`: bit 0 = `start`, bit 1 = `stop`, bit 2 = `reset`, bit 3 = `acknowledge`, bit 4 = `select_auto`, bit 5 = `select_manual`, bit 6 = `start_conveyor`, bit 7 = `stop_conveyor`, bit 8 = `open_gate`, bit 9 = `close_gate`, bit 10 = `start_feeder`, bit 11 = `stop_feeder`, bit 12 = `select_batch`, bit 13 = `open_outlet`, bit 14 = `close_outlet`. A 4-phase handshake, so each command is taken exactly once:
 
 1. ControlLab sets the request bit.
 2. The controller sees request = 1, ack = 0: it executes the command and sets the ack bit.
@@ -111,6 +116,9 @@ Kept apart from field I/O and outside the controller view: writing 1 issues the 
 | 109 | 00110 | `close_gate` | Manual: close the gate |
 | 110 | 00111 | `start_feeder` | Manual: start the feeder (needs the conveyor proven running) |
 | 111 | 00112 | `stop_feeder` | Manual: stop the feeder |
+| 112 | 00113 | `select_batch` | Select Batch mode (accepted only at rest) |
+| 113 | 00114 | `open_outlet` | Manual: open the hopper outlet gate |
+| 114 | 00115 | `close_outlet` | Manual: close the hopper outlet gate |
 
 ## HMI setpoints (holding registers; the HMI writes, the controller reads)
 
@@ -119,6 +127,10 @@ Values the operator enters, read by the controller in the same range as the requ
 | Address | Ref | Setpoint | Default | Description |
 |---:|---:|---|---:|---|
 | 101 | 40102 | `source_bin` | 1 | Source bin for the next start (1 = A, 2 = B, 3 = C) |
+| 102 | 40103 | `recipe_a_kg` | 0 | Batch recipe: kg from bin A |
+| 103 | 40104 | `recipe_b_kg` | 0 | Batch recipe: kg from bin B |
+| 104 | 40105 | `recipe_c_kg` | 0 | Batch recipe: kg from bin C |
+| 105 | 40106 | `hold_s` | 10 | Batch hold (PROCESSING) time, s |
 
 ## Controller status codes
 
@@ -133,6 +145,10 @@ Values the operator enters, read by the controller in the same range as the requ
 | 4 | FAULTED |
 | 5 | ESTOPPED |
 | 6 | MANUAL |
+| 7 | LOADING |
+| 8 | PROCESSING |
+| 9 | DISCHARGING |
+| 10 | CLEANING |
 
 ### `mode` codes
 
@@ -140,6 +156,7 @@ Values the operator enters, read by the controller in the same range as the requ
 |---:|---|
 | 0 | AUTO |
 | 1 | MANUAL |
+| 2 | BATCH |
 
 ### `fault_reason` codes
 
@@ -158,6 +175,9 @@ Values the operator enters, read by the controller in the same range as the requ
 | 10 | feeder jam |
 | 11 | hopper weight signal failed |
 | 12 | conveyor jam |
+| 13 | outlet travel fault |
+| 14 | discharge timeout |
+| 15 | batch feed stalled |
 
 ### Alarm bits (`alarms_active`, `alarms_unacked`; `first_out` = bit + 1)
 
@@ -182,6 +202,9 @@ Values the operator enters, read by the controller in the same range as the requ
 | 16 | `XV-112.TRAVEL_FAULT` | Bin B gate travel fault | trip |
 | 17 | `LSL-121.LOW` | Bin C low | warning |
 | 18 | `XV-122.TRAVEL_FAULT` | Bin C gate travel fault | trip |
+| 19 | `XV-106.TRAVEL_FAULT` | Hopper outlet gate travel fault | trip |
+| 20 | `HOP-105.NOT_EMPTYING` | Batch discharge didn't empty the hopper | trip |
+| 21 | `BATCH.TOLERANCE` | Batch weighed in out of tolerance | warning |
 
 ### `start_inhibit` bits (why the most recent start or mode request was refused; 0 = NONE)
 
@@ -197,6 +220,9 @@ Values the operator enters, read by the controller in the same range as the requ
 | 128 | HOPPER_HIGH |
 | 256 | WRONG_MODE |
 | 512 | LINE_NOT_IDLE |
+| 1024 | RECIPE_EMPTY |
+| 2048 | RECIPE_TOO_LARGE |
+| 4096 | HOPPER_NOT_EMPTY |
 
 Set only when a start (line or Manual device) or a mode change is evaluated: NONE after an accepted one, unchanged when none is requested -- so it proves the request was actually issued.
 

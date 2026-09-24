@@ -46,6 +46,8 @@ class JamTripRemoved(LineController):
             return self._motion_loss_reason()
         if self._gate_travel_fault:
             return "gate travel fault"
+        if self.outlet_ctrl is not None and self.outlet_ctrl.travel_fault:
+            return "outlet travel fault"
         return None
 
 

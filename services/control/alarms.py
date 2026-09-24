@@ -152,6 +152,11 @@ class AlarmManager:
             self._register(f"{gate}.TRAVEL_FAULT", f"Bin {letter} gate travel fault",
                            lambda b=letter: b in self._il.gates and self._il.gates[b].travel_fault)
 
+    def add(self, alarm_id: str, description: str, condition: AlarmCondition, is_warning: bool = False) -> None:
+        """Register an alarm whose condition the owner computes (the batch
+        sequence's), after the built-in set: bits are append-only."""
+        self._register(alarm_id, description, condition, is_warning)
+
     def _register(self, alarm_id: str, description: str, condition: AlarmCondition, is_warning: bool = False) -> None:
         alarm = Alarm(id=alarm_id, description=description, is_warning=is_warning)
         self._entries.append((alarm, condition))

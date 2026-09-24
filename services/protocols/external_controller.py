@@ -51,6 +51,9 @@ COMMANDS = {
     "close_gate": LineController.close_gate,
     "start_feeder": LineController.start_feeder,
     "stop_feeder": LineController.stop_feeder,
+    "select_batch": LineController.select_batch,
+    "open_outlet": LineController.open_outlet,
+    "close_outlet": LineController.close_outlet,
 }
 
 
@@ -68,14 +71,26 @@ class ExternalController:
 
     def scan_once(self, dt: float = DT) -> None:
         self.sync.pull_inputs()
-        for command in self.sync.take_commands():
-            COMMANDS[command](self.line)
-        # The HMI's source-bin setpoint, read with the request word.
+        commands = self.sync.take_commands()
+        # The HMI's setpoints, read with the request word -- applied BEFORE the
+        # commands: an HMI enters a recipe and then presses Start, and the start
+        # must see the recipe. (They were applied after, so a recipe entered with
+        # Start was judged on the old one across Modbus but not in-process:
+        # caught by the review gate's Modbus agreement check, item 7.)
+        for bin_ in "ABC":
+            kg = self.sync.setpoints.get(f"recipe_{bin_.lower()}_kg")
+            if kg is not None and kg != self.line.recipe[bin_]:
+                self.line.set_recipe(bin_, kg)
+        hold = self.sync.setpoints.get("hold_s")
+        if hold is not None and hold != self.line.hold_s:
+            self.line.set_hold(hold)
         code = self.sync.setpoints.get("source_bin")
         if code in (1, 2, 3):
             bin_ = "ABC"[code - 1]
             if bin_ in self.line.gates and bin_ != self.line.source_bin:
                 self.line.select_source(bin_)
+        for command in commands:
+            COMMANDS[command](self.line)
         self.line.scan(dt)
         self.sync.push_outputs(status=controller_status.encode(self.line))
         self.scans += 1

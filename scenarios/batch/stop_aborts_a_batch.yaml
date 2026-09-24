@@ -1,0 +1,39 @@
+name: Stop Aborts A Batch
+description: "Stop during loading ends the batch the way a normal stop ends a run: feed and gates first, the belt purged, the line at rest; the hopper keeps what it had (a new batch needs it emptied first)."
+title: "Loading from bin A"
+
+given:
+  line_state: batch
+  recipe: {A: 300}
+
+when:
+  start: true
+
+expect:
+  line_state: loading
+  feeder_flowing: true
+
+within:
+  seconds: 3.0
+
+then:
+  - title: "Stop: feed and gate off at once, the belt purges"
+    when:
+      stop: true
+    expect:
+      line_state: stopping
+      feeder_run_commanded: false
+      gate_open_commanded: false
+      outlet_open_commanded: false
+    within:
+      seconds: 0.3
+  - title: "At rest, still in Batch mode, no batch completed"
+    expect:
+      line_state: idle
+      mode: batch
+      batches_completed: 0
+      belt_empty: true
+    within:
+      seconds: 3.0
+
+trigger: start

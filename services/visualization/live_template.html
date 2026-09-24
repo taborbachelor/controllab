@@ -89,9 +89,10 @@
         <div class="seg" role="group" aria-labelledby="mode-label" id="mode-switch">
           <button type="button" data-cmd="select_auto" aria-pressed="true">Auto</button>
           <button type="button" data-cmd="select_manual" aria-pressed="false">Manual</button>
+          <button type="button" data-cmd="select_batch" aria-pressed="false">Batch</button>
         </div>
       </div>
-      <div class="mode-row">
+      <div class="mode-row" id="bin-row">
         <span class="label" id="bin-label">Source bin</span>
         <div class="seg" role="group" aria-labelledby="bin-label" id="bin-switch">
           <button type="button" data-bin="A" aria-pressed="true">A</button>
@@ -99,6 +100,16 @@
           <button type="button" data-bin="C" aria-pressed="false">C</button>
         </div>
         <span class="note" id="bin-note" style="margin:0"></span>
+      </div>
+      <div id="recipe-panel" hidden>
+        <div class="recipe">
+          <label>Bin A <input id="rcp-a" type="number" min="0" max="1600" step="10" value="300"> kg</label>
+          <label>Bin B <input id="rcp-b" type="number" min="0" max="1600" step="10" value="200"> kg</label>
+          <label>Bin C <input id="rcp-c" type="number" min="0" max="1600" step="10" value="0"> kg</label>
+          <label>Hold <input id="rcp-hold" type="number" min="0" max="3600" step="1" value="10"> s</label>
+          <button type="button" id="rcp-apply">Apply recipe</button>
+        </div>
+        <p class="note" id="batch-note" style="margin-top:4px"></p>
       </div>
       <div class="buttons" id="commands"></div>
       <p class="note">Acknowledge and reset are separate on purpose: acknowledging says an operator has seen the alarm; reset says the cause is fixed.</p>
@@ -112,6 +123,9 @@
         <span class="dev">Feeder</span>
         <button type="button" data-cmd="start_feeder">Start</button><button type="button" data-cmd="stop_feeder">Stop</button>
         <span class="dev-state" id="dev-feeder"></span>
+        <span class="dev">Outlet</span>
+        <button type="button" data-cmd="open_outlet">Open</button><button type="button" data-cmd="close_outlet">Close</button>
+        <span class="dev-state" id="dev-outlet"></span>
       </div>
       <p class="note" id="devices-note"></p>
     </section>
@@ -162,6 +176,7 @@
         <button type="button" data-action="gate_reset">Reset bin A gate actuator</button>
         <button type="button" data-action="gate_b_reset">Reset bin B gate actuator</button>
         <button type="button" data-action="gate_c_reset">Reset bin C gate actuator</button>
+        <button type="button" data-action="outlet_reset">Reset hopper outlet actuator</button>
       </div>
       <h2 style="margin-top:12px">Instrument faults</h2>
       <div id="instruments"></div>
@@ -209,6 +224,7 @@ const FAULTS = [
   ["gate_stuck", "Bin A gate stuck"], ["gate_b_stuck", "Bin B gate stuck"], ["gate_c_stuck", "Bin C gate stuck"],
   ["belt_slip", "Belt slip"], ["feeder_jam", "Feeder jam"],
   ["conveyor_jam", "Conveyor jam"], ["bin_bridged", "Bin bridged"],
+  ["outlet_stuck", "Hopper outlet stuck"], ["outlet_plugged", "Hopper outlet plugged"],
 ];
 
 async function post(path, body) {
@@ -221,6 +237,11 @@ async function post(path, body) {
 const LINE_COMMANDS = ["start", "stop", "reset", "acknowledge"];
 $("commands").innerHTML = LINE_COMMANDS.map((c) => `<button type="button" data-cmd="${c}">${c[0].toUpperCase() + c.slice(1)}</button>`).join("");
 $("bin-switch").addEventListener("click", (e) => { const b = e.target.dataset.bin; if (b) post("/api/setpoint", { name: "source_bin", value: b }); });
+$("rcp-apply").addEventListener("click", async () => {
+  for (const [name, id] of [["recipe_a_kg", "rcp-a"], ["recipe_b_kg", "rcp-b"], ["recipe_c_kg", "rcp-c"], ["hold_s", "rcp-hold"]]) {
+    await post("/api/setpoint", { name, value: +$(id).value });
+  }
+});
 for (const id of ["commands", "mode-switch", "devices"]) {
   $(id).addEventListener("click", (e) => { const c = e.target.dataset.cmd; if (c) post("/api/command", { name: c }); });
 }
@@ -228,6 +249,22 @@ for (const id of ["commands", "mode-switch", "devices"]) {
 // Manual mode (docs/CONTROL-LAB.md §6.1): the switch shows the controller's
 // mode; the device buttons work only in Manual, and say so otherwise.
 // The source bin (master specification, item 6): a setpoint for the next start.
+// Batch mode (master specification, item 7): the recipe and how far the batch is.
+const BATCH_PHASE = { loading: "Loading", processing: "Holding", discharging: "Discharging", cleaning: "Cleaning out" };
+function renderBatch(s) {
+  const batch = s.batch, on = s.line_mode === "batch";
+  $("recipe-panel").hidden = !on || !batch;
+  $("bin-row").hidden = on && !!batch;  // a batch draws from its recipe's bins, not the source bin
+  if (!on || !batch) return;
+  const r = batch.recipe, parts = ["A", "B", "C"].filter((b) => r[b] > 0).map((b) => `${r[b]} kg from ${b}`);
+  const recipe = parts.length ? `${parts.join(", ")}, hold ${batch.hold_s} s` : "no recipe yet";
+  const phase = BATCH_PHASE[s.state];
+  $("batch-note").textContent = phase
+    ? `${phase}${s.state === "loading" && s.active_bin ? ` bin ${s.active_bin}` : ""}: ${batch.loaded_kg.toFixed(0)} of ` +
+      `${batch.target_kg.toFixed(0)} kg loaded. Batches completed: ${batch.completed}.`
+    : `Recipe: ${recipe}. Press Start to run a batch into an empty hopper. Batches completed: ${batch.completed}.`;
+}
+
 function renderBins(s) {
   document.querySelectorAll("#bin-switch button").forEach((b) => {
     b.setAttribute("aria-pressed", String(b.dataset.bin === s.source_bin));
@@ -251,6 +288,7 @@ function renderManual(s) {
     // The gate row follows the selected (or active) bin: the one its buttons act on.
     ["dev-gate", v[gateTags[0]], "open", v[gateTags[1]] ? "closed" : "moving"],
     ["dev-feeder", v["M-103.RUNNING"], "running", "stopped"],
+    ["dev-outlet", v["ZSO-106"], "open", v["ZSC-106"] ? "closed" : "moving"],
   ];
   for (const [id, on, yes, no] of shown) { $(id).textContent = on ? yes : no; $(id).classList.toggle("on", !!on); }
   const usable = ext || manual;
@@ -433,7 +471,7 @@ function renderVerification(ver, t) {
   const busy = !!B;
   verificationBusy = busy;
   document.querySelectorAll("[data-verify],[data-compare]").forEach((b) => { b.disabled = busy; });
-  document.querySelectorAll("#commands button, #mode-switch button, #faults button, #field-resets button, #instruments button, [data-level], #restart")
+  document.querySelectorAll("#commands button, #mode-switch button, #faults button, #field-resets button, #instruments button, [data-level], #restart, #rcp-apply")
     .forEach((b) => { b.disabled = busy; });
   if (B) {
     $("latest").innerHTML = `<p class="latest busy"><span>RUNNING</span> ${esc(B.scenario)} on ${esc(B.runtime.split(" (")[0])}` +
@@ -535,6 +573,7 @@ async function poll() {
     renderState(s.state);
     renderManual(s);
     renderBins(s);
+    renderBatch(s);
     const why = [];
     if (s.fault_reason) why.push(`Fault reason: ${s.fault_reason}`);
     if ((s.state === "idle" || s.state === "manual") && s.last_start_refusal.length) why.push(`Last request refused: ${s.last_start_refusal.join("; ")}`);

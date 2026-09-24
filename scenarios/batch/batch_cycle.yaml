@@ -1,0 +1,64 @@
+name: A Batch -- Load From Two Bins, Hold, Discharge, Clean Out
+description: "Batch mode runs the master specification's sequence: Load (300 kg from bin A, then 200 kg from bin B, each fed until the hopper holds its weight), Process (a 5 s hold), Discharge (the hopper's outlet opens until it's empty), Cleanout (the belt runs empty and the outlet closes). Then the line is back at rest with one batch completed."
+title: "Start the batch: it loads from bin A first"
+
+given:
+  line_state: batch
+  recipe: {A: 300, B: 200}
+  hold_s: 5
+
+when:
+  start: true
+
+trigger: start
+
+expect:
+  line_state: loading
+  active_bin: A
+  gate_open: true
+  feeder_flowing: true
+
+within:
+  seconds: 3.0
+
+then:
+  - title: "Bin A done, bin B loading: A's gate closed, B's open"
+    expect:
+      line_state: loading
+      active_bin: B
+      gate_open: false
+      gate_b_open: true
+    within:
+      seconds: 90
+  - title: "Loaded and weighed within tolerance: every gate closed, the belt stopped, the hold begins"
+    expect:
+      line_state: processing
+      conveyor_run_commanded: false
+      gate_b_open_commanded: false
+      latched_alarm_ids: []
+      spilled: false
+    within:
+      seconds: 90
+  - title: "The hold ends: the outlet opens and the hopper discharges"
+    expect:
+      line_state: discharging
+      outlet_open_commanded: true
+    within:
+      seconds: 6
+  - title: "Empty: cleanout runs the belt while the outlet drains the rest"
+    expect:
+      line_state: cleaning
+      conveyor_run_commanded: true
+    within:
+      seconds: 90
+  - title: "Clean: the outlet closes and the line is back at rest, one batch done"
+    expect:
+      line_state: idle
+      mode: batch
+      batches_completed: 1
+      outlet_open: false
+      conveyor_run_commanded: false
+    within:
+      seconds: 10
+
+interlock: "Batch weighed in within tolerance"

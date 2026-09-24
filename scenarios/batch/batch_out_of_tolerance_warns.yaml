@@ -1,0 +1,30 @@
+name: A Batch Weighed In Out Of Tolerance Raises A Warning
+description: "While the last dose settles, extra material lands in the hopper (someone tips a bag in). The weigh-in is 100 kg over the recipe: a warning, and the batch carries on to its hold."
+title: "Loading from bin A"
+
+given:
+  line_state: batch
+  recipe: {A: 300}
+  hold_s: 5
+
+when:
+  start: true
+
+expect:
+  line_state: loading
+
+within:
+  seconds: 3.0
+
+then:
+  - title: "The hopper gains 100 kg it shouldn't: the weigh-in warns, the batch holds"
+    when:
+      hopper_level_pct: 20
+    expect:
+      latched_alarm_ids: ["BATCH.TOLERANCE"]
+      line_state: processing
+    within:
+      seconds: 90
+
+trigger: start
+interlock: "Batch weighed in within tolerance"

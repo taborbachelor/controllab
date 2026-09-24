@@ -36,6 +36,21 @@ function device(el, cmd, fb, trip) {
 
 // `animate`: whether belts show moving material (only while time is advancing).
 function renderMimic(v, animate) {
+  // The hopper's outlet gate (master specification, item 7); absent from older recordings.
+  const outletPresent = v["ZSO-106"] !== undefined;
+  $("outlet").style.display = outletPresent ? "" : "none";
+  if (outletPresent) {
+    const oOpen = v["ZSO-106"], oClosed = v["ZSC-106"], oCmd = v["XV-106.CMD_OPEN"];
+    const oFb = oOpen ? true : oClosed ? false : null;
+    $("xv106").setAttribute("fill", oOpen ? RUN : OFF);
+    $("xv106").setAttribute("stroke", oFb === oCmd ? LINE : WARN);
+    $("xv106").setAttribute("stroke-dasharray", oFb === oCmd ? "none" : "6 4");
+    $("xv106-txt").textContent = (oOpen ? "Open" : oClosed ? "Closed" : oCmd ? "Opening…" : "Closing…") +
+      (oFb !== null && oFb !== oCmd ? ` (told to ${oCmd ? "open" : "close"})` : "");
+    const draining = oOpen && v["WT-105"] > 0;
+    $("discharge-flow").setAttribute("opacity", draining ? 1 : 0);
+    $("discharge-flow").classList.toggle("flowing", draining && animate);
+  }
   let anyGateOpen = false;  // the feeder moves material only through an open gate
   // The three bins and their gates. A recording made before bins B and C
   // existed has no tags for them: those bins are hidden rather than drawn empty.

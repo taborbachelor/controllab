@@ -1,0 +1,57 @@
+name: A Batch Starts Only With A Recipe That Fits, Into An Empty Hopper
+description: "Each batch start permissive refuses in turn, and says why: no recipe, a recipe bigger than fits under the hopper's high switch, and a hopper that isn't empty."
+title: "No recipe: the start is refused"
+
+given:
+  line_state: batch
+
+when:
+  start: true
+
+trigger: start
+
+expect:
+  start_inhibit: ["RECIPE_EMPTY"]
+  line_state: idle
+
+within:
+  seconds: 0.3
+
+then:
+  # The recipe is entered in a stage of its own, then Start is pressed: a Start
+  # pressed in the very next scan after the last one would be held a scan by the
+  # HMI handshake (a press while its previous ack is up is held, never lost).
+  - title: "A recipe bigger than fits under the high switch is entered"
+    when:
+      recipe: {A: 1000, B: 700}
+    expect:
+      start_inhibit: ["RECIPE_EMPTY"]
+    within:
+      seconds: 0.3
+  - title: "Start: refused, the recipe doesn't fit the hopper"
+    when:
+      start: true
+    expect:
+      start_inhibit: ["RECIPE_TOO_LARGE"]
+      line_state: idle
+    within:
+      seconds: 0.3
+  - title: "A recipe that fits, but the hopper still holds material: refused"
+    when:
+      recipe: {A: 300}
+      hopper_level_pct: 10
+    expect:
+      hopper_level_kg: 200
+    within:
+      seconds: 0.3
+  - title: "Start: refused, the hopper isn't empty"
+    when:
+      start: true
+    expect:
+      start_inhibit: ["HOPPER_NOT_EMPTY"]
+      line_state: idle
+      conveyor_run_commanded: false
+    within:
+      seconds: 0.3
+
+interlock: "Batch start permissives"

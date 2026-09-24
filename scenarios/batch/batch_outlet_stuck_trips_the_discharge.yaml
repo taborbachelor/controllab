@@ -1,0 +1,32 @@
+name: A Hopper Outlet That Won't Open Trips The Discharge
+description: "The batch is loaded and held; the outlet gate's actuator sticks, so the discharge commands it open and it never gets there. The line trips on the outlet's travel fault."
+title: "A small batch loads and holds"
+
+given:
+  line_state: batch
+  recipe: {A: 50}
+  hold_s: 2
+
+when:
+  start: true
+
+expect:
+  line_state: processing
+
+within:
+  seconds: 30
+
+then:
+  - title: "The outlet sticks as the discharge begins: the line trips"
+    when:
+      outlet_stuck: true
+    expect:
+      line_state: faulted
+      fault_reason: "outlet travel fault"
+      first_out: "XV-106.TRAVEL_FAULT"
+      outlet_open_commanded: false
+    within:
+      seconds: 6
+
+trigger: start
+interlock: "Hopper discharges"

@@ -55,6 +55,9 @@ LINE_REGISTER_MAP = RegisterMap(
         Point("LSL-121", DISCRETE_INPUT, 16),
         Point("ZSO-122", DISCRETE_INPUT, 17),
         Point("ZSC-122", DISCRETE_INPUT, 18),
+        # Appended (master specification, item 7): the hopper outlet gate.
+        Point("ZSO-106", DISCRETE_INPUT, 19),
+        Point("ZSC-106", DISCRETE_INPUT, 20),
         # Input registers -- analog sensors (AI)
         Point("LT-101", INPUT_REGISTER, 0, scale=100, full_scale=100.0),
         # WT-105 range = the hopper's 2,000 kg capacity -- the transmitter's
@@ -73,6 +76,7 @@ LINE_REGISTER_MAP = RegisterMap(
         Point("M-104.RUN", COIL, 2),
         Point("XV-112.CMD_OPEN", COIL, 3),
         Point("XV-122.CMD_OPEN", COIL, 4),
+        Point("XV-106.CMD_OPEN", COIL, 5),
         # Holding registers -- analog outputs (AO); 1-6 follow below
         Point("SC-103", HOLDING_REGISTER, 0, scale=100, full_scale=100.0),
     ),
@@ -90,6 +94,10 @@ LINE_REGISTER_MAP = RegisterMap(
         HmiCoil("close_gate", 109, "Manual: close the gate"),
         HmiCoil("start_feeder", 110, "Manual: start the feeder (needs the conveyor proven running)"),
         HmiCoil("stop_feeder", 111, "Manual: stop the feeder"),
+        # Master specification, item 7: Batch mode and the hopper outlet (bits 12-14).
+        HmiCoil("select_batch", 112, "Select Batch mode (accepted only at rest)"),
+        HmiCoil("open_outlet", 113, "Manual: open the hopper outlet gate"),
+        HmiCoil("close_outlet", 114, "Manual: close the hopper outlet gate"),
     ),
     # Controller status (Phase 7 step 3b; moved from 200-204 in step 4 so
     # it sits in the controller's single write range). Codes in
@@ -127,9 +135,17 @@ LINE_REGISTER_MAP = dataclasses.replace(
         StatusRegister("alarms_unacked_2", 10, "Alarm bits 16-31: not yet acknowledged"),
         StatusRegister("source_bin", 11, "Source bin the next start draws from (1 = A, 2 = B, 3 = C)"),
         StatusRegister("active_bin", 12, "Bin the line is drawing from now (0 = none)"),
+        # Master specification, item 7: the batch.
+        StatusRegister("batch_loaded_kg", 13, "The current (or last) batch's weigh-in, kg"),
+        StatusRegister("batches_completed", 14, "Batches completed since the controller started"),
     ),
     # The HMI's setpoints, read by the controller with the request word (HR 100).
     hmi_setpoints=(
         HmiSetpoint("source_bin", 101, 1, "Source bin for the next start (1 = A, 2 = B, 3 = C)"),
+        # Master specification, item 7: the batch recipe.
+        HmiSetpoint("recipe_a_kg", 102, 0, "Batch recipe: kg from bin A"),
+        HmiSetpoint("recipe_b_kg", 103, 0, "Batch recipe: kg from bin B"),
+        HmiSetpoint("recipe_c_kg", 104, 0, "Batch recipe: kg from bin C"),
+        HmiSetpoint("hold_s", 105, 10, "Batch hold (PROCESSING) time, s"),
     ),
 )

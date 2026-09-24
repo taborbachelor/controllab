@@ -45,12 +45,17 @@ LINE_STATES: tuple[LineState, ...] = (
     LineState.FAULTED,   # 4
     LineState.ESTOPPED,  # 5
     LineState.MANUAL,    # 6  (Manual mode, completing Phase 2)
+    LineState.LOADING,      # 7  (Batch mode, master specification item 7)
+    LineState.PROCESSING,   # 8
+    LineState.DISCHARGING,  # 9
+    LineState.CLEANING,     # 10
 )
 
 # The `mode` register (Manual mode, completing Phase 2).
 MODES: tuple[LineMode, ...] = (
     LineMode.AUTO,    # 0
     LineMode.MANUAL,  # 1
+    LineMode.BATCH,   # 2  (master specification, item 7)
 )
 
 FAULT_REASONS: tuple[str | None, ...] = (
@@ -67,6 +72,9 @@ FAULT_REASONS: tuple[str | None, ...] = (
     "feeder jam",                        # 10  (Phase 4 completion)
     "hopper weight signal failed",       # 11  (Phase 4 completion)
     "conveyor jam",                      # 12  (motor current, master specification item 5)
+    "outlet travel fault",               # 13  (Batch mode, item 7)
+    "discharge timeout",                 # 14
+    "batch feed stalled",                # 15
 )
 
 # (id, description, is_warning) in AlarmManager's registration order.
@@ -90,6 +98,9 @@ ALARMS: tuple[tuple[str, str, bool], ...] = (
     ("XV-112.TRAVEL_FAULT", "Bin B gate travel fault", False),                      # bit 16 (second word)
     ("LSL-121.LOW", "Bin C low", True),                                             # bit 17
     ("XV-122.TRAVEL_FAULT", "Bin C gate travel fault", False),                      # bit 18
+    ("XV-106.TRAVEL_FAULT", "Hopper outlet gate travel fault", False),              # bit 19 (Batch mode)
+    ("HOP-105.NOT_EMPTYING", "Batch discharge didn't empty the hopper", False),     # bit 20
+    ("BATCH.TOLERANCE", "Batch weighed in out of tolerance", True),                 # bit 21
 )
 _ALARM_INDEX = {alarm_id: i for i, (alarm_id, _, _) in enumerate(ALARMS)}
 
@@ -97,6 +108,8 @@ REGISTER_NAMES = (
     "line_state", "fault_reason", "alarms_active", "alarms_unacked", "first_out", "start_inhibit", "mode",
     # Master specification, item 6: alarm bits 16-31, and the bins.
     "alarms_active_2", "alarms_unacked_2", "source_bin", "active_bin",
+    # Master specification, item 7: the batch.
+    "batch_loaded_kg", "batches_completed",
 )
 BIN_CODES = ("A", "B", "C")  # source_bin / active_bin: 1 + index; active_bin 0 = none
 UNKNOWN = 0xFFFF  # a reason/state this table doesn't know -- published rather than guessed
@@ -120,7 +133,8 @@ def encode(line) -> list[int]:
     source = 1 + BIN_CODES.index(line.source_bin)
     active_bin = 1 + BIN_CODES.index(line.active_bin) if line.active_bin else 0
     return [state, reason, active & 0xFFFF, unacked & 0xFFFF, first_out, int(line.start_inhibit), mode,
-            active >> 16, unacked >> 16, source, active_bin]
+            active >> 16, unacked >> 16, source, active_bin,
+            max(0, min(0xFFFF, round(line.batch_loaded_kg))), line.batches_completed & 0xFFFF]
 
 
 @dataclass
@@ -132,6 +146,8 @@ class ControllerStatus:
     mode: LineMode | None = LineMode.AUTO  # None: a code this table doesn't know
     source_bin: str = "A"
     active_bin: str | None = None
+    batch_loaded_kg: float = 0.0
+    batches_completed: int = 0
 
     @property
     def latched_alarms(self) -> list[Alarm]:
@@ -143,7 +159,7 @@ class ControllerStatus:
 
 def decode(registers: list[int]) -> ControllerStatus:
     (state_code, reason_code, active_lo, unacked_lo, first_out, inhibit, mode_code,
-     active_hi, unacked_hi, source_code, active_code) = registers
+     active_hi, unacked_hi, source_code, active_code, loaded_kg, batches) = registers
     active = active_lo | active_hi << 16
     unacked = unacked_lo | unacked_hi << 16
     state = LINE_STATES[state_code] if state_code < len(LINE_STATES) else None
@@ -167,7 +183,7 @@ def decode(registers: list[int]) -> ControllerStatus:
     mode = MODES[mode_code] if mode_code < len(MODES) else None
     source = BIN_CODES[source_code - 1] if 1 <= source_code <= len(BIN_CODES) else "A"
     active_bin = BIN_CODES[active_code - 1] if 1 <= active_code <= len(BIN_CODES) else None
-    return ControllerStatus(state, reason, alarms, known, mode, source, active_bin)
+    return ControllerStatus(state, reason, alarms, known, mode, source, active_bin, float(loaded_kg), batches)
 
 
 def render_markdown() -> str:

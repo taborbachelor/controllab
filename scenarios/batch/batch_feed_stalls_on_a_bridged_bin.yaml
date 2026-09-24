@@ -1,0 +1,32 @@
+name: A Batch Dose That Stops Flowing Trips The Batch
+description: "Bin A bridges while the batch feeds from it: the feeder turns, nothing reaches the belt scale, and the batch stops instead of waiting forever for a weight that will never come."
+title: "Loading from bin A"
+
+given:
+  line_state: batch
+  recipe: {A: 300}
+
+when:
+  start: true
+
+expect:
+  line_state: loading
+  feeder_flowing: true
+
+within:
+  seconds: 3.0
+
+then:
+  - title: "Bin A bridges: no flow at the belt scale, the batch trips"
+    when:
+      bin_bridged: true
+    expect:
+      line_state: faulted
+      fault_reason: "batch feed stalled"
+      feeder_run_commanded: false
+      gate_open_commanded: false
+    within:
+      seconds: 10
+
+trigger: start
+interlock: "Batch dose flows"

@@ -46,6 +46,10 @@ LABELS: dict[str, str] = {
     "mode": "Mode",
     "source_bin": "Source bin (next start)",
     "active_bin": "Bin in use",
+    "batch_loaded_kg": "Batch weigh-in (kg)",
+    "batches_completed": "Batches completed",
+    "outlet_open": "Hopper outlet open",
+    "outlet_open_commanded": "Hopper outlet open command",
     "gate_b_open": "Bin B gate open",
     "gate_c_open": "Bin C gate open",
     "gate_b_open_commanded": "Bin B gate open command",
@@ -72,11 +76,13 @@ LABELS: dict[str, str] = {
 # What each stimulus key IS, for the stage headings. A drift test keeps
 # this complete against vocabulary.APPLY_ACTIONS.
 _OPERATOR = {"start", "stop", "reset", "acknowledge", "select_manual", "select_auto", "start_conveyor",
-             "stop_conveyor", "open_gate", "close_gate", "start_feeder", "stop_feeder"}
+             "stop_conveyor", "open_gate", "close_gate", "start_feeder", "stop_feeder", "select_batch",
+             "open_outlet", "close_outlet"}
 _FAULTS = {"conveyor_trip", "feeder_trip", "conveyor_fail_to_start", "feeder_fail_to_start", "gate_stuck",
-           "gate_b_stuck", "gate_c_stuck",
+           "gate_b_stuck", "gate_c_stuck", "outlet_stuck", "outlet_plugged",
            "belt_slip", "feeder_jam", "conveyor_jam", "bin_bridged"}
-_FIELD_RESETS = {"feeder_drive_reset", "conveyor_overload_reset", "gate_reset", "gate_b_reset", "gate_c_reset"}
+_FIELD_RESETS = {"feeder_drive_reset", "conveyor_overload_reset", "gate_reset", "gate_b_reset", "gate_c_reset",
+                 "outlet_reset"}
 _PROCESS = {"hopper_level_pct", "bin_level_pct", "bin_b_level_pct", "bin_c_level_pct"}
 _SENSORS = {"sensor_stuck": "fault", "sensor_failed": "fault", "sensor_restored": "repair",
             "sensor_noise": "fault", "sensor_drift": "fault", "sensor_slow": "fault"}
@@ -87,7 +93,7 @@ KINDS = {"operator": "Operator action", "fault": "Fault injected", "repair": "Fi
 
 def classify(key: str, value: object) -> str:
     """operator / fault / repair / process."""
-    if key in _OPERATOR or key == "source_bin":
+    if key in _OPERATOR or key in ("source_bin", "recipe", "hold_s"):
         return "operator"
     if key == "estop":
         return "fault" if value == "tripped" else "repair"
@@ -119,6 +125,9 @@ _PHRASES: dict[str, tuple[str, str]] = {
     "close_gate": ("Operator closes the gate (Manual)", ""),
     "start_feeder": ("Operator starts the feeder (Manual)", ""),
     "stop_feeder": ("Operator stops the feeder (Manual)", ""),
+    "select_batch": ("Operator selects Batch mode", ""),
+    "open_outlet": ("Operator opens the hopper outlet (Manual)", ""),
+    "close_outlet": ("Operator closes the hopper outlet (Manual)", ""),
     "conveyor_trip": ("The conveyor motor's overload trips", "The cause of the conveyor overload is removed"),
     "feeder_trip": ("The feeder drive faults", "The cause of the feeder drive fault is removed"),
     "conveyor_fail_to_start": ("The conveyor motor will not start when told to", "The conveyor motor is repaired"),
@@ -135,6 +144,9 @@ _PHRASES: dict[str, tuple[str, str]] = {
     "conveyor_overload_reset": ("The conveyor overload is reset at the field", ""),
     "gate_reset": ("The gate actuator is reset at the field", ""),
     "gate_b_stuck": ("Bin B's gate actuator sticks", "Bin B's gate actuator is freed"),
+    "outlet_stuck": ("The hopper outlet gate's actuator sticks", "The hopper outlet gate's actuator is freed"),
+    "outlet_plugged": ("The hopper outlet plugs: open, but nothing drains", "The hopper outlet is cleared"),
+    "outlet_reset": ("The hopper outlet gate's actuator is reset at the field", ""),
     "gate_c_stuck": ("Bin C's gate actuator sticks", "Bin C's gate actuator is freed"),
     "gate_b_reset": ("Bin B's gate actuator is reset at the field", ""),
     "gate_c_reset": ("Bin C's gate actuator is reset at the field", ""),
@@ -165,6 +177,11 @@ def describe_action(key: str, value: object) -> str:
         return f"Bin {key[4].upper()} is at {value:g} % full"
     if key == "source_bin":
         return f"Operator selects bin {value} as the source"
+    if key == "recipe":
+        parts = [f"{value[b]:g} kg from bin {b}" for b in "ABC" if value.get(b)]
+        return "Operator enters the recipe: " + (", ".join(parts) if parts else "nothing")
+    if key == "hold_s":
+        return f"Operator sets the batch hold to {value:g} s"
     on, off = _PHRASES[key]
     return on if value or not off else off
 

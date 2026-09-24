@@ -104,6 +104,28 @@ class ObservedLine:
     def acknowledge(self) -> None:
         self._command("acknowledge")
 
+    def select_batch(self) -> None:
+        self._command("select_batch")
+
+    def open_outlet(self) -> None:
+        self._command("open_outlet")
+
+    def close_outlet(self) -> None:
+        self._command("close_outlet")
+
+    def _setpoint(self, name: str, raw: int, audit: str) -> None:
+        with self._lock:
+            changed = self.handshake.setpoints.get(name) != raw
+            self.handshake.set_setpoint(name, raw)
+        if changed and self.command_sink is not None:
+            self.command_sink(audit)
+
+    def set_recipe(self, bin_: str, kg: float) -> None:
+        self._setpoint(f"recipe_{bin_.lower()}_kg", round(kg), f"recipe {bin_} {kg:g} kg")
+
+    def set_hold(self, seconds: float) -> None:
+        self._setpoint("hold_s", round(seconds), f"hold {seconds:g} s")
+
     def select_source(self, bin_: str) -> None:
         """The source-bin setpoint, entered into the HMI's setpoint register
         (the controller reads it with the request word)."""
@@ -144,6 +166,14 @@ class ObservedLine:
         if status.state is None:
             raise RuntimeError("the controller published a line_state code the status table doesn't know")
         return status.state
+
+    @property
+    def batch_loaded_kg(self) -> float:
+        return self._published().batch_loaded_kg
+
+    @property
+    def batches_completed(self) -> int:
+        return self._published().batches_completed
 
     @property
     def source_bin(self) -> str:

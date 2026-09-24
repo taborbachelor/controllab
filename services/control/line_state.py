@@ -20,6 +20,7 @@ class LineMode(Enum):
 
     AUTO = auto()
     MANUAL = auto()
+    BATCH = auto()  # master specification, item 7: Load -> Process -> Discharge -> Cleanout
 
 
 class LineState(Enum):
@@ -32,6 +33,12 @@ class LineState(Enum):
     # Manual mode's one state: the operator commands each device, every
     # protection still enforced. Appended: state codes are published.
     MANUAL = auto()
+    # Batch mode (master specification, item 7), appended: a batch is
+    # LOADING -> PROCESSING -> DISCHARGING -> CLEANING, then back to IDLE.
+    LOADING = auto()
+    PROCESSING = auto()
+    DISCHARGING = auto()
+    CLEANING = auto()
 
 
 class StartStep(Enum):
@@ -41,6 +48,17 @@ class StartStep(Enum):
     CONVEYOR = auto()
     GATE = auto()
     FEEDER = auto()
+
+
+class BatchStep(Enum):
+    """Sub-steps of LOADING, for each bin in the recipe: prove the belt (the
+    first bin only), open the bin's gate, feed to its weight, then let the
+    belt's in-flight material land before the next bin or the weigh-in."""
+
+    CONVEYOR = auto()
+    GATE = auto()
+    FEED = auto()
+    SETTLE = auto()
 
 
 class StartInhibit(IntFlag):
@@ -73,6 +91,10 @@ class StartInhibit(IntFlag):
     HOPPER_HIGH = 128  # Manual feeder start at LSH-105 (Manual has no level control; the switch stands in)
     WRONG_MODE = 256  # a device command in Auto, or the line Start in Manual
     LINE_NOT_IDLE = 512  # a mode change away from rest (Auto not IDLE, or a Manual device still on)
+    # Batch mode (master specification, item 7):
+    RECIPE_EMPTY = 1024  # a batch start with no bin in the recipe
+    RECIPE_TOO_LARGE = 2048  # the recipe wouldn't fit under the hopper's high switch
+    HOPPER_NOT_EMPTY = 4096  # a batch starts only from an empty hopper
 
 
 def inhibit_names(inhibit: StartInhibit) -> list[str]:

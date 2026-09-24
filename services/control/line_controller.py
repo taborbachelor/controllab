@@ -45,7 +45,7 @@ from services.control.gate_control import GateControl
 from services.control.hopper_hysteresis import HopperHysteresis
 from services.control.interlocks import Interlocks
 from services.control.level_check import HopperLevelChecks
-from services.control.line_state import LineMode, LineState, StartInhibit, StartStep
+from services.control.line_state import BINS, BatchStep, LineMode, LineState, StartInhibit, StartStep
 from services.control.motor_control import MotorControl
 from services.simulation.engine.io_image import IOImage
 
@@ -60,8 +60,9 @@ CLEAR_BELT_ON = frozenset({
 
 # Manual mode's device pushbuttons (one-shot, like start()/stop()). A stop
 # and a start of the same device in one scan leaves it stopped.
-DEVICE_STARTS = frozenset({"start_conveyor", "open_gate", "start_feeder"})
-DEVICE_STOPS = frozenset({"stop_conveyor", "close_gate", "stop_feeder"})
+DEVICE_STARTS = frozenset({"start_conveyor", "open_gate", "start_feeder", "open_outlet"})
+DEVICE_STOPS = frozenset({"stop_conveyor", "close_gate", "stop_feeder", "close_outlet"})
+BATCH_STATES = frozenset({LineState.LOADING, LineState.PROCESSING, LineState.DISCHARGING, LineState.CLEANING})
 
 
 class LineController:
@@ -82,6 +83,11 @@ class LineController:
         no_flow_s: float = 15.0,
         gate_b_ctrl: GateControl | None = None,
         gate_c_ctrl: GateControl | None = None,
+        outlet_ctrl: GateControl | None = None,
+        batch_preact_kg: float = 50.0,
+        batch_empty_kg: float = 5.0,
+        batch_tolerance_kg: float = 10.0,
+        discharge_timeout_s: float = 900.0,
     ) -> None:
         self.io = io
         self.feeder_ctrl = feeder_ctrl
@@ -91,6 +97,17 @@ class LineController:
         # built without B and C is the original one-bin line.
         self.gates = {"A": gate_ctrl, **({"B": gate_b_ctrl} if gate_b_ctrl else {}),
                       **({"C": gate_c_ctrl} if gate_c_ctrl else {})}
+        # The hopper's outlet gate (master specification, item 7); a line
+        # without one has no Batch mode.
+        self.outlet_ctrl = outlet_ctrl
+        # Batch commissioning constants: stop feeding this much early (the
+        # belt's in-flight load), "empty" means at or under batch_empty_kg,
+        # a weigh-in this far off target is out of tolerance, and a discharge
+        # that hasn't emptied the hopper by discharge_timeout_s has failed.
+        self.batch_preact_kg = batch_preact_kg
+        self.batch_empty_kg = batch_empty_kg
+        self.batch_tolerance_kg = batch_tolerance_kg
+        self.discharge_timeout_s = discharge_timeout_s
         self.interlocks = Interlocks(
             io, feeder_ctrl, conveyor_ctrl, gate_ctrl, hopper_capacity_kg, hopper_high_high_pct=hopper_high_high_pct,
             conveyor_overcurrent_a=conveyor_overcurrent_a, no_flow_s=no_flow_s, gates=self.gates,
@@ -103,6 +120,12 @@ class LineController:
         # hardcodes this line's 9 alarms the same way Interlocks hardcodes
         # this line's tags, so it's not something a caller configures.
         self.alarms = AlarmManager(self.interlocks, self.level_checks)
+        # Batch mode's alarms, appended after the built-in set.
+        self.alarms.add("XV-106.TRAVEL_FAULT", "Hopper outlet gate travel fault",
+                        lambda: self.outlet_ctrl is not None and self.outlet_ctrl.travel_fault)
+        self.alarms.add("HOP-105.NOT_EMPTYING", "Batch discharge didn't empty the hopper", lambda: self._discharge_timed_out)
+        self.alarms.add("BATCH.TOLERANCE", "Batch weighed in out of tolerance", lambda: self._batch_out_of_tolerance,
+                        is_warning=True)
 
         self.feed_speed_pct = feed_speed_pct
         self.conveyor_proof_timeout_s = conveyor_proof_timeout_s
@@ -113,6 +136,19 @@ class LineController:
         # active_bin is the one the line is drawing from now (taken at Start).
         self.source_bin = "A"
         self.active_bin: str | None = None
+        # The batch recipe (HMI setpoints): kg from each bin, and the hold.
+        self.recipe = {b: 0.0 for b in BINS}
+        self.hold_s = 10.0
+        self.batch_step: BatchStep | None = None
+        self.batch_loaded_kg = 0.0  # this batch's (or the last one's) weigh-in so far
+        self.batches_completed = 0
+        self._batch_plan: list[tuple[str, float]] = []
+        self._batch_index = 0
+        self._batch_start_kg = 0.0
+        self._batch_conveyor_proven = False
+        self._batch_elapsed_s = 0.0
+        self._discharge_timed_out = False
+        self._batch_out_of_tolerance = False
         self.state = LineState.IDLE
         self.fault_reason: str | None = None
         self.last_start_refusal: list[str] = []
@@ -177,6 +213,33 @@ class LineController:
             self._emit_command(f"source_bin {bin_}")
         self.source_bin = bin_
 
+    def set_recipe(self, bin_: str, kg: float) -> None:
+        """A recipe setpoint: kg to load from that bin. Takes effect at the
+        next batch start; recorded like a command."""
+        if bin_ not in BINS or kg < 0:
+            raise ValueError(f"recipe: bin must be one of {', '.join(BINS)} and kg >= 0, got {bin_!r} {kg!r}")
+        if float(kg) != self.recipe[bin_]:
+            self._emit_command(f"recipe {bin_} {kg:g} kg")
+        self.recipe[bin_] = float(kg)
+
+    def set_hold(self, seconds: float) -> None:
+        """The batch's hold (PROCESSING) time setpoint."""
+        if seconds < 0:
+            raise ValueError(f"hold must be >= 0 s, got {seconds!r}")
+        if float(seconds) != self.hold_s:
+            self._emit_command(f"hold {seconds:g} s")
+        self.hold_s = float(seconds)
+
+    def select_batch(self) -> None:
+        self._emit_command("select_batch")
+        self._mode_request = LineMode.BATCH
+
+    def open_outlet(self) -> None:
+        self._device_command("open_outlet")
+
+    def close_outlet(self) -> None:
+        self._device_command("close_outlet")
+
     def select_auto(self) -> None:
         self._emit_command("select_auto")
         self._mode_request = LineMode.AUTO
@@ -223,6 +286,8 @@ class LineController:
         self.conveyor_ctrl.scan(dt)
         for gate in self.gates.values():
             gate.scan(dt)
+        if self.outlet_ctrl is not None:
+            self.outlet_ctrl.scan(dt)
         self.interlocks.scan(dt)
         self.level_checks.scan(self.interlocks, dt)
         self.alarms.scan()
@@ -252,6 +317,14 @@ class LineController:
             self._scan_estopped()
         elif self.state == LineState.MANUAL:
             self._scan_manual(dt)
+        elif self.state == LineState.LOADING:
+            self._scan_loading(dt)
+        elif self.state == LineState.PROCESSING:
+            self._scan_processing(dt)
+        elif self.state == LineState.DISCHARGING:
+            self._scan_discharging(dt)
+        elif self.state == LineState.CLEANING:
+            self._scan_cleaning(dt)
 
         self._start_requested = False
         self._stop_requested = False
@@ -270,6 +343,8 @@ class LineController:
             self.start_inhibit = StartInhibit.NONE
             self.last_start_refusal = []
             return
+        if mode == LineMode.BATCH and self.outlet_ctrl is None:
+            raise ValueError("this line has no hopper outlet gate, so no Batch mode")
         if self.state == LineState.IDLE or (self.state == LineState.MANUAL and not self._any_device_commanded()):
             self.mode = mode
             self._enter_rest()
@@ -282,15 +357,17 @@ class LineController:
 
     def _any_device_commanded(self) -> bool:
         return (self.feeder_ctrl.commanded_run or self.conveyor_ctrl.commanded_run
-                or any(g.commanded_open for g in self.gates.values()))
+                or any(g.commanded_open for g in self.gates.values())
+                or (self.outlet_ctrl is not None and self.outlet_ctrl.commanded_open))
 
     def _enter_rest(self) -> None:
         """The mode's rest state -- IDLE in Auto, MANUAL in Manual -- with
         nothing running: every state that enforces outputs off hands over
         with them already off, and MANUAL only runs what is started anew."""
-        self.state = LineState.IDLE if self.mode == LineMode.AUTO else LineState.MANUAL
+        self.state = LineState.MANUAL if self.mode == LineMode.MANUAL else LineState.IDLE
         self.fault_reason = None
         self.active_bin = None
+        self.batch_step = None
         self._manual_conveyor_proven = False
         self._manual_conveyor_elapsed_s = 0.0
 
@@ -301,7 +378,7 @@ class LineController:
         MANUAL are no-ops, like stop() while IDLE."""
         if not self._device_requests & DEVICE_STARTS:
             return
-        if self.mode == LineMode.AUTO:
+        if self.mode != LineMode.MANUAL:  # Auto or Batch (it read "== AUTO", so Batch said "faulted")
             self.start_inhibit = StartInhibit.WRONG_MODE
             self.last_start_refusal = ["device commands need Manual mode"]
         elif self.state == LineState.ESTOPPED:
@@ -318,8 +395,12 @@ class LineController:
         self.feeder_ctrl.command_run(False)
         self.conveyor_ctrl.command_run(False)
         self._close_gates()
+        self._close_outlet()
 
         if not self._start_requested:
+            return
+        if self.mode == LineMode.BATCH:
+            self._request_batch()
             return
 
         check = self.interlocks.start_permissives_ok(self.source_bin)
@@ -347,9 +428,17 @@ class LineController:
         if not reasons:
             self._begin_start_sequence()
 
-    def _close_gates(self) -> None:
+    def _close_gates(self, outlet: bool = True) -> None:
+        """Every bin gate -- and the hopper outlet, unless `outlet` is False
+        (Manual's close-gate pushbutton acts on the bin gates only)."""
         for gate in self.gates.values():
             gate.command_open(False)
+        if outlet:
+            self._close_outlet()
+
+    def _close_outlet(self) -> None:
+        if self.outlet_ctrl is not None:
+            self.outlet_ctrl.command_open(False)
 
     @property
     def _active_gate(self) -> GateControl:
@@ -435,6 +524,8 @@ class LineController:
             return "feeder failed to prove running"
         if self._gate_travel_fault:
             return "gate failed to prove open"
+        if self.outlet_ctrl is not None and self.outlet_ctrl.travel_fault:
+            return "outlet travel fault"
         return None
 
     def _enter_running(self) -> None:
@@ -496,6 +587,8 @@ class LineController:
             return self._motion_loss_reason()
         if self._gate_travel_fault:
             return "gate travel fault"
+        if self.outlet_ctrl is not None and self.outlet_ctrl.travel_fault:
+            return "outlet travel fault"
         return None
 
     def _motion_loss_reason(self) -> str:
@@ -542,6 +635,8 @@ class LineController:
             return "feeder jam"
         if self._gate_travel_fault:
             return "gate travel fault"
+        if self.outlet_ctrl is not None and self.outlet_ctrl.travel_fault:
+            return "outlet travel fault"
         return None
 
     # ---- FAULTED ------------------------------------------------------
@@ -620,6 +715,9 @@ class LineController:
         self.conveyor_ctrl.clear_fault()
         for gate in self.gates.values():
             gate.clear_fault()
+        if self.outlet_ctrl is not None:
+            self.outlet_ctrl.clear_fault()
+        self._discharge_timed_out = False
 
     # ---- ESTOPPED -------------------------------------------------------
 
@@ -680,7 +778,9 @@ class LineController:
         if "stop_feeder" in requests:
             self.feeder_ctrl.command_run(False)
         if "close_gate" in requests:
-            self._close_gates()
+            self._close_gates(outlet=False)
+        if "close_outlet" in requests:
+            self._close_outlet()
         if "stop_conveyor" in requests:
             self.conveyor_ctrl.command_run(False)
             self._manual_conveyor_proven = False
@@ -711,6 +811,11 @@ class LineController:
             # closes any other.
             for letter, gate in self.gates.items():
                 gate.command_open(letter == self.source_bin)
+        if "open_outlet" in requests and "close_outlet" not in requests and self.outlet_ctrl is not None:
+            # No permissive beyond the E-stop: draining the hopper by hand is a
+            # Manual-mode job (after an aborted batch, say).
+            evaluated = True
+            self.outlet_ctrl.command_open(True)
         if "start_feeder" in requests and "stop_feeder" not in requests:
             evaluated = True
             refused, why = self._manual_feeder_refusal()
@@ -773,6 +878,8 @@ class LineController:
             return "feeder failed to prove running"
         if self._gate_travel_fault:
             return "gate travel fault"
+        if self.outlet_ctrl is not None and self.outlet_ctrl.travel_fault:
+            return "outlet travel fault"
         return None
 
     def _manual_conveyor_refusal(self) -> tuple[StartInhibit, list[str]]:
@@ -813,3 +920,194 @@ class LineController:
             inhibit |= StartInhibit.UNACKNOWLEDGED_ALARM
             reasons = reasons + [f"unacknowledged alarm: {', '.join(unacked)}"]
         return inhibit, reasons
+
+    # ---- BATCH (master specification, item 7) ------------------------------------------
+
+    @property
+    def batch_target_kg(self) -> float:
+        return sum(kg for _, kg in self._batch_plan)
+
+    def _request_batch(self) -> None:
+        """A start in Batch mode: the batch permissives, then LOADING."""
+        plan = [(b, self.recipe[b]) for b in BINS if b in self.gates and self.recipe[b] > 0]
+        weight = self.interlocks.io.read("WT-105")
+        room = self.interlocks.hopper_capacity_kg * self.level_checks.lsh.switch_pct / 100.0
+        inhibit, reasons = StartInhibit.NONE, []
+        if not plan:
+            inhibit |= StartInhibit.RECIPE_EMPTY
+            reasons.append("recipe is empty")
+        elif sum(kg for _, kg in plan) > room:
+            inhibit |= StartInhibit.RECIPE_TOO_LARGE
+            reasons.append(f"recipe is more than fits under the high switch ({room:g} kg)")
+        if weight > self.batch_empty_kg:
+            inhibit |= StartInhibit.HOPPER_NOT_EMPTY
+            reasons.append("hopper not empty")
+        if any(self.interlocks.bin_low_of(b) for b, _ in plan):
+            inhibit |= StartInhibit.BIN_LOW
+            reasons.append("bin low")
+        if self.interlocks.hopper_high_high:
+            inhibit |= StartInhibit.HOPPER_HIGH_HIGH
+            reasons.append("hopper at high-high")
+        if self.interlocks.hopper_weight_failed:
+            inhibit |= StartInhibit.SENSOR_FAILED
+            reasons.append("hopper weight signal failed")
+        inhibit, reasons = self._unacked_refusal(inhibit, reasons)
+        self.start_inhibit = inhibit
+        self.last_start_refusal = reasons
+        if inhibit:
+            return
+        self._batch_plan = plan
+        self._batch_index = 0
+        self._batch_start_kg = weight
+        self.batch_loaded_kg = 0.0
+        self._batch_out_of_tolerance = False
+        self._batch_conveyor_proven = False
+        self._batch_elapsed_s = 0.0
+        self.active_bin = plan[0][0]
+        self.state = LineState.LOADING
+        self.batch_step = BatchStep.CONVEYOR
+        self.conveyor_ctrl.command_run(True)
+
+    def _batch_trip_reason(self) -> str | None:
+        """The trips of a running line, applied to whatever the batch has
+        running, plus the outlet gate's travel fault."""
+        feeding = self.feeder_ctrl.commanded_run
+        conveying = self.conveyor_ctrl.commanded_run
+        if self.interlocks.hopper_high_high:
+            return "hopper high-high"
+        if conveying and self.conveyor_ctrl.faulted:
+            return "conveyor trip"
+        if conveying and self.interlocks.conveyor_overcurrent:
+            return "conveyor jam"
+        if feeding and self.feeder_ctrl.faulted:
+            return "feeder trip"
+        if self.interlocks.feeder_plugged:
+            return "feeder jam"
+        if feeding and self.feeder_ctrl.start_proof_fault:
+            return "feeder failed to prove running"
+        if self.interlocks.hopper_weight_failed:
+            return "hopper weight signal failed"  # a batch is weighed: unknown weight, no batch
+        if conveying and self.conveyor_ctrl.start_proof_fault:
+            return "conveyor failed to prove running"
+        if conveying and self._batch_conveyor_proven and not self.interlocks.conveyor_confirmed_running:
+            return self._motion_loss_reason()
+        if self.state == LineState.LOADING and self.batch_step == BatchStep.FEED and self.interlocks.no_flow:
+            # A dose that stops flowing (a bin bridging mid-load) would leave the
+            # batch waiting forever for its weight: in a batch, no flow is a trip.
+            return "batch feed stalled"
+        if self._gate_travel_fault:
+            proving = self.state == LineState.LOADING and self.batch_step == BatchStep.GATE
+            return "gate failed to prove open" if proving else "gate travel fault"
+        if self.outlet_ctrl is not None and self.outlet_ctrl.travel_fault:
+            return "outlet travel fault"
+        return None
+
+    def _batch_prove_conveyor(self, dt: float) -> bool | None:
+        """True once the belt has proven running, None while it's still
+        within its proof window, False once the window has passed."""
+        if self.interlocks.conveyor_confirmed_running:
+            self._batch_conveyor_proven = True
+        if self._batch_conveyor_proven:
+            return True
+        self._batch_elapsed_s = round(self._batch_elapsed_s + dt, 9)
+        return None if self._batch_elapsed_s < self.conveyor_proof_timeout_s else False
+
+    def _batch_common(self) -> bool:
+        """Trips, then Stop (which aborts the batch). True if either acted."""
+        reason = self._batch_trip_reason()
+        if reason is not None:
+            self._enter_faulted(reason)
+            return True
+        if self._stop_requested:
+            self._begin_stop_sequence()
+            return True
+        return False
+
+    def _scan_loading(self, dt: float) -> None:
+        if self._batch_common():
+            return
+        weight = self.interlocks.io.read("WT-105")
+        self.batch_loaded_kg = max(0.0, weight - self._batch_start_kg)
+        bin_, _ = self._batch_plan[self._batch_index]
+        if self.batch_step == BatchStep.CONVEYOR:
+            proven = self._batch_prove_conveyor(dt)
+            if proven is False:
+                self._enter_faulted("conveyor failed to prove running")
+            elif proven:
+                self.batch_step = BatchStep.GATE
+                self.gates[bin_].command_open(True)
+        elif self.batch_step == BatchStep.GATE:
+            if self.gates[bin_].is_open:
+                self.batch_step = BatchStep.FEED
+                self.feeder_ctrl.command_run(True)
+                self.feeder_ctrl.command_speed(self.feed_speed_pct)
+        elif self.batch_step == BatchStep.FEED:
+            # Stop feeding when what's on the belt will make up the rest.
+            target = self._batch_start_kg + sum(kg for _, kg in self._batch_plan[: self._batch_index + 1])
+            if weight + self.batch_preact_kg >= target:
+                self.feeder_ctrl.command_run(False)
+                self._close_gates(outlet=False)
+                self.batch_step = BatchStep.SETTLE
+                self._batch_elapsed_s = 0.0
+        elif self.batch_step == BatchStep.SETTLE:
+            self._batch_elapsed_s = round(self._batch_elapsed_s + dt, 9)
+            if self._batch_elapsed_s >= self.purge_time_s:
+                self._batch_index += 1
+                if self._batch_index < len(self._batch_plan):
+                    self.active_bin = self._batch_plan[self._batch_index][0]
+                    self.batch_step = BatchStep.GATE
+                    self.gates[self.active_bin].command_open(True)
+                else:
+                    self._batch_out_of_tolerance = (
+                        abs(self.batch_loaded_kg - self.batch_target_kg) > self.batch_tolerance_kg
+                    )
+                    self.conveyor_ctrl.command_run(False)
+                    self._batch_conveyor_proven = False
+                    self.active_bin = None
+                    self.batch_step = None
+                    self.state = LineState.PROCESSING
+                    self._batch_elapsed_s = 0.0
+
+    def _scan_processing(self, dt: float) -> None:
+        if self._batch_common():
+            return
+        self._batch_elapsed_s = round(self._batch_elapsed_s + dt, 9)
+        if self._batch_elapsed_s >= self.hold_s:
+            self.state = LineState.DISCHARGING
+            self._batch_elapsed_s = 0.0
+            self.outlet_ctrl.command_open(True)
+
+    def _scan_discharging(self, dt: float) -> None:
+        if self._batch_common():
+            return
+        self._batch_elapsed_s = round(self._batch_elapsed_s + dt, 9)
+        if self.outlet_ctrl.is_open and self.interlocks.io.read("WT-105") <= self.batch_empty_kg:
+            # Empty: clean the belt out while the outlet drains the rest.
+            self.state = LineState.CLEANING
+            self._batch_elapsed_s = 0.0
+            self._batch_conveyor_proven = False
+            self.conveyor_ctrl.command_run(True)
+        elif self._batch_elapsed_s >= self.discharge_timeout_s:
+            self._discharge_timed_out = True
+            self._enter_faulted("discharge timeout")
+
+    def _scan_cleaning(self, dt: float) -> None:
+        if self._batch_common():
+            return
+        if self.conveyor_ctrl.commanded_run:
+            proven_before = self._batch_conveyor_proven
+            proven = self._batch_prove_conveyor(dt)
+            if proven is False:
+                self._enter_faulted("conveyor failed to prove running")
+                return
+            if proven:
+                if not proven_before:
+                    self._batch_elapsed_s = 0.0
+                self._batch_elapsed_s = round(self._batch_elapsed_s + dt, 9)
+                if self._batch_elapsed_s >= self.purge_time_s:
+                    self.conveyor_ctrl.command_run(False)
+                    self._batch_conveyor_proven = False
+                    self.outlet_ctrl.command_open(False)
+        elif self.outlet_ctrl.is_closed:
+            self.batches_completed += 1
+            self._enter_rest()

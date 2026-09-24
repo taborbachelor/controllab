@@ -42,7 +42,9 @@ class InvariantViolation(AssertionError):
 class Invariants:
     def __init__(self, rig: Rig, feeder_grace_ticks: int = 1) -> None:
         self.rig = rig
-        self.starting_mass_kg = rig.plant.total_mass_kg()
+        # The accounted total, as rebaseline() uses: a checker built on a plant
+        # that has already discharged or spilled material must count it.
+        self.starting_mass_kg = rig.plant.accounted_mass_kg()
         self.feeder_grace_ticks = feeder_grace_ticks
         self._feeder_unconfirmed_ticks = 0
 

@@ -74,4 +74,4 @@ def test_published_and_decoded_over_the_status_block():
 
 
 def test_unknown_bits_are_dropped_not_guessed():
-    assert decode([0, 0, 0, 0, 0, 0xFC00 | 1, 0, 0, 0, 1, 0]).start_inhibit == StartInhibit.BIN_LOW
+    assert decode([0, 0, 0, 0, 0, 0x8000 | 1, 0, 0, 0, 1, 0, 0, 0]).start_inhibit == StartInhibit.BIN_LOW

@@ -41,7 +41,9 @@ DEFAULT_PLANT_CONFIG = dict(
     conveyor_speed_m_s=2.0,
     conveyor_start_delay_s=0.2,
     hopper_capacity_kg=2_000.0,
-    hopper_draw_rate_kg_s=0.0,
+    # Downstream draw through the hopper's outlet gate, which only a batch
+    # discharge (or Manual) opens: with the outlet closed the hopper holds.
+    hopper_draw_rate_kg_s=10.0,
     hopper_high_pct=80.0,
     hopper_high_high_pct=95.0,
 )
@@ -52,6 +54,14 @@ DEFAULT_LINE_CONFIG = dict(
     conveyor_proof_timeout_s=1.0,
     purge_time_s=2.0,  # real default is 15.0 -- shortened so tests run fast
     no_flow_s=4.0,  # a belt transit (2 s here) plus margin; real default 15.0
+    # Batch commissioning for this rig: the belt carries 5 kg/s x 2 s = 10 kg
+    # in flight; empty is 2 kg; the discharge timeout must exceed the largest
+    # batch's discharge (1,600 kg under the high switch at 10 kg/s = 160 s).
+    # It was 120 s, and a 1,200 kg batch timed out: found by the accuracy test.
+    batch_preact_kg=10.0,
+    batch_empty_kg=2.0,
+    batch_tolerance_kg=5.0,
+    discharge_timeout_s=240.0,
 )
 
 DEFAULT_DEVICE_PROOF_TIMEOUT_S = 1.0
@@ -114,6 +124,7 @@ def build_line_controller(
     gate_ctrl = GateControl(io, "XV-102.CMD_OPEN", "ZSO-102", "ZSC-102", travel_timeout_s=DEFAULT_GATE_TRAVEL_TIMEOUT_S)
     gate_b_ctrl = GateControl(io, "XV-112.CMD_OPEN", "ZSO-112", "ZSC-112", travel_timeout_s=DEFAULT_GATE_TRAVEL_TIMEOUT_S)
     gate_c_ctrl = GateControl(io, "XV-122.CMD_OPEN", "ZSO-122", "ZSC-122", travel_timeout_s=DEFAULT_GATE_TRAVEL_TIMEOUT_S)
+    outlet_ctrl = GateControl(io, "XV-106.CMD_OPEN", "ZSO-106", "ZSC-106", travel_timeout_s=DEFAULT_GATE_TRAVEL_TIMEOUT_S)
 
     line_cfg = dict(DEFAULT_LINE_CONFIG)
     line_cfg.update(line_overrides or {})
@@ -125,6 +136,7 @@ def build_line_controller(
         hopper_capacity_kg=hopper_capacity_kg,
         gate_b_ctrl=gate_b_ctrl,
         gate_c_ctrl=gate_c_ctrl,
+        outlet_ctrl=outlet_ctrl,
         **line_cfg,
     )
 

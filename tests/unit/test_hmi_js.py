@@ -60,7 +60,26 @@ def test_the_line_picture_renders_a_recording_made_before_bins_b_and_c(tmp_path)
     bins B/C, motor-current and belt-scale tags."""
     values = LiveSession().snapshot()["values"]
     newer = ("LT-111", "LSL-111", "XV-112", "ZSO-112", "ZSC-112", "LT-121", "LSL-121", "XV-122", "ZSO-122", "ZSC-122",
-             "IT-104", "FT-104")
+             "IT-104", "FT-104", "XV-106", "ZSO-106", "ZSC-106")
     old = {k: v for k, v in values.items() if not k.startswith(newer)}
     result = run_js(old, tmp_path)
+    assert result.returncode == 0 and "rendered" in result.stdout, result.stderr
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_the_line_picture_renders_a_batch_discharging(tmp_path):
+    s = LiveSession()
+    s.command("select_batch")
+    s.step()
+    s.setpoint("recipe_a_kg", 50)
+    s.setpoint("hold_s", 1)
+    s.step()
+    s.command("start")
+    for _ in range(400):
+        s.step()
+        if s.snapshot()["state"] == "discharging":
+            break
+    snap = s.snapshot()
+    assert snap["state"] == "discharging" and snap["values"]["XV-106.CMD_OPEN"]
+    result = run_js(snap["values"], tmp_path)
     assert result.returncode == 0 and "rendered" in result.stdout, result.stderr

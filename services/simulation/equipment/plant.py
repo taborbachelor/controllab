@@ -74,6 +74,12 @@ class Plant:
             rated_load_kg=cfg.feeder_max_rate_kg_s * cfg.conveyor_length_m / cfg.conveyor_speed_m_s,
             jam_overload_s=cfg.conveyor_jam_overload_s,
         )
+        # The hopper's outlet gate (master specification, item 7): material
+        # leaves the hopper only through it, so a batch can be held and then
+        # discharged. De-energized it springs closed, like every gate here.
+        self.outlet = Gate("XV-106", cfg.gate_travel_time_s)
+        # Fault injection: the outlet plugs -- open, but nothing drains.
+        self.outlet_plugged = False
         self.hopper = Hopper(
             "HOP-105",
             cfg.hopper_capacity_kg,
@@ -127,6 +133,7 @@ class Plant:
             self.conveyor.motor.run_command = False
             for _, gate in self.bins.values():
                 gate.open_command = False
+            self.outlet.open_command = False
             self.feeder.motor.estop()
             self.conveyor.motor.estop()
         else:
@@ -168,4 +175,7 @@ class Plant:
         self.belt_flow_kg_s = delivered / dt if dt > 0 else 0.0
         self.spilled_kg += self.hopper.receive(delivered)
 
-        self.hopper.step(dt)
+        # The downstream draw happens only through the open outlet gate.
+        if self.outlet.is_open and not self.outlet_plugged:
+            self.hopper.step(dt)
+        self.outlet.step(dt)

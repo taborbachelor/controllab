@@ -52,6 +52,10 @@ _TAGS: list[tuple[str, TagType, str, str]] = [
     ("XV-122.CMD_OPEN", TagType.DO, "", "Bin C gate open command (de-energized = close)"),
     ("ZSO-122", TagType.DI, "", "Bin C gate open limit switch"),
     ("ZSC-122", TagType.DI, "", "Bin C gate closed limit switch"),
+    # The hopper's outlet gate (master specification, item 7).
+    ("XV-106.CMD_OPEN", TagType.DO, "", "Hopper outlet gate open command (de-energized = close)"),
+    ("ZSO-106", TagType.DI, "", "Hopper outlet gate open limit switch"),
+    ("ZSC-106", TagType.DI, "", "Hopper outlet gate closed limit switch"),
 ]
 
 
@@ -106,6 +110,8 @@ def publish_plant_inputs(plant: Plant, io: IOImage) -> None:
     publish("LSHH-105", not plant.hopper.high_high)
 
     publish("ES-001", plant.estop.healthy)
+    publish("ZSO-106", plant.outlet.is_open)
+    publish("ZSC-106", plant.outlet.is_closed)
 
 
 def apply_plant_commands(io: IOImage, plant: Plant) -> None:
@@ -117,6 +123,7 @@ def apply_plant_commands(io: IOImage, plant: Plant) -> None:
     plant.gate.command(io.read("XV-102.CMD_OPEN"))
     plant.gate_b.command(io.read("XV-112.CMD_OPEN"))
     plant.gate_c.command(io.read("XV-122.CMD_OPEN"))
+    plant.outlet.command(io.read("XV-106.CMD_OPEN"))
     plant.feeder.command(io.read("M-103.RUN"), io.read("SC-103"))
     plant.conveyor.command(io.read("M-104.RUN"))
 
