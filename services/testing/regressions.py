@@ -40,8 +40,10 @@ class JamTripRemoved(LineController):
             return "hopper weight signal failed"
         if self.conveyor_ctrl.faulted:
             return "conveyor trip"
+        if self.interlocks.conveyor_overcurrent:
+            return "conveyor jam"
         if not self.interlocks.conveyor_confirmed_running:
-            return "conveyor lost confirmation"
+            return self._motion_loss_reason()
         if self.gate_ctrl.travel_fault:
             return "gate travel fault"
         return None

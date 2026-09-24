@@ -130,6 +130,14 @@ def _apply_gate_stuck(rig: Rig, value: bool) -> None:
     rig.plant.gate.stuck = value
 
 
+def _apply_conveyor_jam(rig: Rig, value: bool) -> None:
+    rig.plant.conveyor.jammed = value
+
+
+def _apply_bin_bridged(rig: Rig, value: bool) -> None:
+    rig.plant.bin.bridged = value
+
+
 def _apply_belt_slip(rig: Rig, value: bool) -> None:
     rig.plant.conveyor.motion_switch_stuck_false = value
 
@@ -234,6 +242,8 @@ APPLY_ACTIONS: dict[str, Callable[[Rig, object], None]] = {
     "feeder_fail_to_start": _apply_feeder_fail_to_start,
     "gate_stuck": _apply_gate_stuck,
     "belt_slip": _apply_belt_slip,
+    "conveyor_jam": _apply_conveyor_jam,
+    "bin_bridged": _apply_bin_bridged,
     "feeder_jam": _apply_feeder_jam,
     "sensor_stuck": _instrument_action("stuck"),
     "sensor_failed": _instrument_action("failed"),
@@ -266,7 +276,7 @@ READ_FIELDS: dict[str, Callable[[Rig], object]] = {
     "gate_open_commanded": lambda rig: rig.io.read("XV-102.CMD_OPEN"),
     # Material actually leaving the feeder (field truth). With feeder_running
     # it tells a jam (running, not flowing) apart from a stopped feeder.
-    "feeder_flowing": lambda rig: rig.plant.feeder.current_rate_kg_s() > 0,
+    "feeder_flowing": lambda rig: rig.plant.feed_flow_kg_s > 0,
     "gate_open": lambda rig: rig.plant.gate.is_open,
     "estop_healthy": lambda rig: rig.plant.estop.healthy,
     "spilled_kg": lambda rig: rig.plant.spilled_kg,

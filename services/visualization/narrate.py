@@ -63,6 +63,12 @@ _FAULTS: dict[str, tuple[str, str]] = {
         "Free the gate (Engineer tools → Gate stuck, click it off), then reset it (Engineer tools → Reset "
         "gate actuator)",
     ),
+    "conveyor jam": (
+        "The conveyor belt jammed: it stopped moving while its motor strained against it (the motor current "
+        "said so), so the line stopped before the overload relay had to.",
+        "Clear the jam (Engineer tools → Conveyor jam, click it off); if the overload tripped, reset it "
+        "(Engineer tools → Reset conveyor overload)",
+    ),
     "conveyor lost confirmation": (
         "The conveyor motor was running but the belt stopped moving (a slipping or broken belt). Material "
         "would pile up at the feeder, so the line stopped.",
@@ -85,6 +91,7 @@ _CLEARED = {
     "gate failed to prove open": lambda v, inj: not inj.get("gate_stuck"),
     "gate travel fault": lambda v, inj: not inj.get("gate_stuck"),
     "conveyor lost confirmation": lambda v, inj: not inj.get("belt_slip"),
+    "conveyor jam": lambda v, inj: not inj.get("conveyor_jam") and not v["M-104.OL"],
 }
 
 # Why a start was refused (LineController.last_start_refusal), in plain

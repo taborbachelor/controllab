@@ -66,6 +66,7 @@ FAULT_REASONS: tuple[str | None, ...] = (
     "gate travel fault",                 # 9
     "feeder jam",                        # 10  (Phase 4 completion)
     "hopper weight signal failed",       # 11  (Phase 4 completion)
+    "conveyor jam",                      # 12  (motor current, master specification item 5)
 )
 
 # (id, description, is_warning) in AlarmManager's registration order.
@@ -83,6 +84,8 @@ ALARMS: tuple[tuple[str, str, bool], ...] = (
     ("WT-105.FAIL", "Hopper weight transmitter failed", False),       # bit 10 (Phase 4 completion)
     ("LSH-105.DISAGREE", "Hopper high switch disagrees with WT-105", True),         # bit 11 (level cross-check)
     ("LSHH-105.DISAGREE", "Hopper high-high switch disagrees with WT-105", False),  # bit 12 (level cross-check)
+    ("IT-104.HIGH", "Conveyor motor overcurrent (jam)", False),                     # bit 13 (motor current)
+    ("FT-104.NO_FLOW", "No flow on the belt while feeding", True),                  # bit 14 (belt scale)
 )
 _ALARM_INDEX = {alarm_id: i for i, (alarm_id, _, _) in enumerate(ALARMS)}
 

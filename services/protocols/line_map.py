@@ -52,6 +52,11 @@ LINE_REGISTER_MAP = RegisterMap(
         # WT-105 range = the hopper's 2,000 kg capacity -- the transmitter's
         # calibrated span is a design constant of the map, like on a real loop sheet.
         Point("WT-105", INPUT_REGISTER, 1, scale=10, full_scale=2000.0),
+        # Appended (master specification, item 5): conveyor motor current,
+        # 0.01 A over a 100 A range (starting inrush included), and the belt
+        # scale's flow, 0.01 kg/s over 10 kg/s.
+        Point("IT-104", INPUT_REGISTER, 2, scale=100, full_scale=100.0),
+        Point("FT-104", INPUT_REGISTER, 3, scale=100, full_scale=10.0),
         # Coils -- field outputs (DO)
         Point("XV-102.CMD_OPEN", COIL, 0),
         Point("M-103.RUN", COIL, 1),

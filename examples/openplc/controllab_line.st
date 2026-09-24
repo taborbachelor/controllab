@@ -16,8 +16,8 @@
   docs/MODBUS-MAP.md ("Controller view"):
       Discrete inputs      start 0    size 13   -> %IX100.0 .. %IX101.4
       Coils                start 0    size 3    -> %QX100.0 .. %QX100.2
-      Input registers      start 0    size 2    -> %IW100 .. %IW101
-      Holding - read       start 100  size 1    -> %IW102 (after the input registers)
+      Input registers      start 0    size 4    -> %IW100 .. %IW103
+      Holding - read       start 100  size 1    -> %IW104 (after the input registers)
       Holding - write      start 0    size 9    -> %QW100 .. %QW108
 
   Timings match ControlLab's test rig (services/testing/rig.py), so this
@@ -43,10 +43,12 @@ PROGRAM controllab_line
     LSH_103 AT %IX101.3 : BOOL;       (* feeder discharge chute plugged: a jam *)
     WT105_FLT AT %IX101.4 : BOOL;    (* hopper weight input channel fault: WT_105 is meaningless *)
 
-    (* ---- analog inputs (input registers 0-1) and the HMI request word (holding 100) ---- *)
+    (* ---- analog inputs (input registers 0-3) and the HMI request word (holding 100) ---- *)
     LT_101 AT %IW100 : INT;           (* bin level, % x100 *)
     WT_105 AT %IW101 : INT;           (* hopper weight, kg x10 *)
-    HMI_REQUEST AT %IW102 : WORD;     (* bit 0 start, 1 stop, 2 reset, 3 acknowledge, 4 select auto,
+    IT_104 AT %IW102 : INT;           (* conveyor motor current, A x100 *)
+    FT_104 AT %IW103 : INT;           (* belt scale flow, kg/s x100 *)
+    HMI_REQUEST AT %IW104 : WORD;     (* bit 0 start, 1 stop, 2 reset, 3 acknowledge, 4 select auto,
                                          5 select manual, 6/7 conveyor start/stop, 8/9 gate open/close,
                                          10/11 feeder start/stop *)
 
@@ -119,9 +121,9 @@ PROGRAM controllab_line
     refused : WORD;
 
     (* alarms, in controller_status.ALARMS bit order *)
-    alarm_cond : ARRAY[0..12] OF BOOL;
-    alarm_active : ARRAY[0..12] OF BOOL;
-    alarm_unacked : ARRAY[0..12] OF BOOL;
+    alarm_cond : ARRAY[0..14] OF BOOL;
+    alarm_active : ARRAY[0..14] OF BOOL;
+    alarm_unacked : ARRAY[0..14] OF BOOL;
     first_out_holder : INT := 0;      (* 1-based, 0 = none *)
     was_active : BOOL;
     unacked_trip : BOOL;
@@ -132,6 +134,11 @@ PROGRAM controllab_line
     hh_weight_scans : INT := 0;       (* how long it has been, for the vote's debounce *)
     hopper_hh_weight_vote : BOOL;     (* ... held for LIM_HH_DEBOUNCE scans: the transmitter's vote *)
     hopper_high_high : BOOL;          (* 1oo2: either of the two *)
+    conveyor_current_high : BOOL;     (* IT-104 at or above the overcurrent setpoint *)
+    oc_scans : INT := 0;              (* ... for how long, while proven running *)
+    conveyor_overcurrent : BOOL;      (* held LIM_OVERCURRENT scans: a jam *)
+    no_flow_scans : INT := 0;         (* feeder running, gate open, nothing on the belt scale *)
+    no_flow : BOOL;
     lsh_mismatch_scans : INT := 0;    (* LevelSwitchCheck delay counters *)
     lshh_mismatch_scans : INT := 0;
     lsh_disagree : BOOL;
@@ -153,6 +160,10 @@ PROGRAM controllab_line
     LIM_BAND_RAW : INT := 400;        (* cross-check deadband, 2 % of span = 40 kg *)
     LIM_DISAGREE : INT := 10;         (* cross-check delay, 1.0 s *)
     LIM_HH_DEBOUNCE : INT := 5;       (* the transmitter's high-high vote holds 0.5 s before it counts *)
+    LIM_OVERCURRENT_RAW : INT := 1500;  (* 15.00 A, 125 % of the conveyor motor's 12 A full load, in IT-104 raw *)
+    LIM_OVERCURRENT : INT := 10;      (* ... for 1.0 s *)
+    LIM_NO_FLOW_RAW : INT := 20;      (* 0.20 kg/s on the belt scale, in FT-104 raw *)
+    LIM_NO_FLOW : INT := 40;          (* 4.0 s: a belt transit plus margin (the test rig's) *)
   END_VAR
 
   (* ================= HMI request/acknowledge (4-phase) ================= *)
@@ -220,6 +231,22 @@ PROGRAM controllab_line
   hopper_hh_weight_vote := hopper_hh_weight AND hh_weight_scans >= LIM_HH_DEBOUNCE;
   hopper_high_high := hopper_hh_switch OR hopper_hh_weight_vote;
 
+  (* the motor current and the belt scale (Interlocks.scan): overcurrent while proven running, and no
+     flow while feeding, each an on-delay *)
+  conveyor_current_high := IT_104 >= LIM_OVERCURRENT_RAW;
+  IF M104_RUNNING AND conveyor_current_high THEN
+    IF oc_scans < LIM_OVERCURRENT THEN oc_scans := oc_scans + 1; END_IF;
+  ELSE
+    oc_scans := 0;
+  END_IF;
+  conveyor_overcurrent := M104_RUNNING AND conveyor_current_high AND oc_scans >= LIM_OVERCURRENT;
+  IF M103_RUNNING AND ZSO_102 AND FT_104 < LIM_NO_FLOW_RAW THEN
+    IF no_flow_scans < LIM_NO_FLOW THEN no_flow_scans := no_flow_scans + 1; END_IF;
+  ELSE
+    no_flow_scans := 0;
+  END_IF;
+  no_flow := no_flow_scans >= LIM_NO_FLOW;
+
   (* switch vs transmitter cross-check (LevelSwitchCheck): a gap wider than the
      deadband, lasting LIM_DISAGREE scans; not judged while WT-105 has failed *)
   IF NOT WT105_FLT AND ((hopper_high AND WT_105 < LIM_HIGH_RAW - LIM_BAND_RAW)
@@ -251,8 +278,10 @@ PROGRAM controllab_line
   alarm_cond[10] := WT105_FLT;                 (* WT-105.FAIL *)
   alarm_cond[11] := lsh_disagree;              (* LSH-105.DISAGREE (warning) *)
   alarm_cond[12] := lshh_disagree;             (* LSHH-105.DISAGREE *)
+  alarm_cond[13] := conveyor_overcurrent;      (* IT-104.HIGH *)
+  alarm_cond[14] := no_flow;                   (* FT-104.NO_FLOW (warning) *)
 
-  FOR i := 0 TO 12 DO
+  FOR i := 0 TO 14 DO
     was_active := alarm_active[i];
     alarm_active[i] := alarm_cond[i];
     IF alarm_active[i] AND NOT was_active THEN
@@ -263,15 +292,15 @@ PROGRAM controllab_line
   END_FOR;
 
   IF ack_req THEN
-    FOR i := 0 TO 12 DO
+    FOR i := 0 TO 14 DO
       alarm_unacked[i] := FALSE;
       IF NOT alarm_active[i] AND first_out_holder = i + 1 THEN first_out_holder := 0; END_IF;
     END_FOR;
   END_IF;
 
   unacked_trip := FALSE;
-  FOR i := 0 TO 12 DO
-    IF i <> 1 AND i <> 11 AND alarm_unacked[i] THEN unacked_trip := TRUE; END_IF;   (* bits 1 and 11 are the warnings *)
+  FOR i := 0 TO 14 DO
+    IF i <> 1 AND i <> 11 AND i <> 14 AND alarm_unacked[i] THEN unacked_trip := TRUE; END_IF;   (* bits 1, 11, 14: warnings *)
   END_FOR;
 
   (* ================= e-stop overrides every state ================= *)
@@ -325,6 +354,7 @@ PROGRAM controllab_line
       trip := 0;
       IF hopper_high_high THEN trip := 2;
       ELSIF M104_OL THEN trip := 4;
+      ELSIF conveyor_overcurrent THEN trip := 12;
       ELSIF M103_FAULT THEN trip := 3;
       ELSIF LSH_103 THEN trip := 10;
       ELSIF WT105_FLT THEN trip := 11;
@@ -364,7 +394,9 @@ PROGRAM controllab_line
       ELSIF feed_proof_fault THEN trip := 5;                (* a level-control restart that never ran *)
       ELSIF WT105_FLT THEN trip := 11;                      (* the feed decision reads WT_105 *)
       ELSIF M104_OL THEN trip := 4;
-      ELSIF NOT conveyor_confirmed THEN trip := 8;
+      ELSIF conveyor_overcurrent THEN trip := 12;
+      ELSIF NOT conveyor_confirmed THEN
+        IF conveyor_current_high THEN trip := 12; ELSE trip := 8; END_IF;   (* _motion_loss_reason: jam or slip *)
       ELSIF gate_travel_fault THEN trip := 9;
       END_IF;
       IF trip <> 0 THEN
@@ -388,6 +420,7 @@ PROGRAM controllab_line
       trip := 0;
       IF hopper_high_high THEN trip := 2;
       ELSIF M104_OL THEN trip := 4;
+      ELSIF conveyor_overcurrent THEN trip := 12;
       ELSIF M103_FAULT THEN trip := 3;
       ELSIF LSH_103 THEN trip := 10;
       ELSIF gate_travel_fault THEN trip := 9;
@@ -410,7 +443,8 @@ PROGRAM controllab_line
       M103_RUN := FALSE; XV102_CMD_OPEN := FALSE;
       IF clearing THEN
         purge_scans := purge_scans + 1;
-        IF purge_scans >= LIM_PURGE OR M104_OL OR NOT conveyor_confirmed OR hopper_high_high OR WT105_FLT THEN
+        IF purge_scans >= LIM_PURGE OR M104_OL OR conveyor_overcurrent OR NOT conveyor_confirmed OR hopper_high_high
+           OR WT105_FLT THEN
           clearing := FALSE;
         END_IF;
       END_IF;
@@ -459,6 +493,7 @@ PROGRAM controllab_line
       IF M103_RUN OR M104_RUN THEN
         IF hopper_high_high THEN trip := 2;
         ELSIF M104_OL THEN trip := 4;
+        ELSIF conveyor_overcurrent THEN trip := 12;
         ELSIF M103_FAULT THEN trip := 3;
         ELSIF LSH_103 THEN trip := 10;
         ELSIF WT105_FLT THEN trip := 11;
@@ -466,7 +501,8 @@ PROGRAM controllab_line
       END_IF;
       IF trip = 0 AND M104_RUN THEN
         IF conv_proof_fault OR (NOT man_conv_proven AND man_conv_scans >= LIM_CONV_PROOF) THEN trip := 6;
-        ELSIF man_conv_proven AND NOT conveyor_confirmed THEN trip := 8;
+        ELSIF man_conv_proven AND NOT conveyor_confirmed THEN
+          IF conveyor_current_high THEN trip := 12; ELSE trip := 8; END_IF;
         END_IF;
       END_IF;
       IF trip = 0 AND M103_RUN AND feed_proof_fault THEN trip := 5; END_IF;
@@ -518,7 +554,7 @@ PROGRAM controllab_line
   ST_FAULT_REASON := fault_reason;
   ST_ALARMS_ACTIVE := 16#0000;
   ST_ALARMS_UNACKED := 16#0000;
-  FOR i := 0 TO 12 DO
+  FOR i := 0 TO 14 DO
     bit := SHL(IN := WORD#1, N := i);
     IF alarm_active[i] THEN ST_ALARMS_ACTIVE := ST_ALARMS_ACTIVE OR bit; END_IF;
     IF alarm_unacked[i] THEN ST_ALARMS_UNACKED := ST_ALARMS_UNACKED OR bit; END_IF;

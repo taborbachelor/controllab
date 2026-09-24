@@ -62,6 +62,8 @@ VALUE_SHAPES: dict[str, str] = {
     "feeder_jam": "true/false (jam/clear the feeder discharge: flow stops, drive keeps running, plug switch LSH-103 makes after the screw pushes against it)",
     "gate_stuck": "true/false (gate never reaches its limit switch)",
     "belt_slip": "true/false (conveyor motion switch reads no motion)",
+    "conveyor_jam": "true/false (the belt jams: motion stops, the motor draws ~2.5x full-load current until its overload trips)",
+    "bin_bridged": "true/false (material bridges in the bin: level unchanged, nothing discharges; only the belt scale can tell)",
     "feeder_drive_reset": "true (field reset of the feeder drive's own fault latch)",
     "conveyor_overload_reset": "true (field reset of the conveyor overload relay)",
     "gate_reset": "true (field reset of the gate actuator fault)",

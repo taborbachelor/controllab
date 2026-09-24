@@ -139,6 +139,12 @@ class AlarmManager:
             "Hopper high-high switch disagrees with WT-105",
             lambda: self._level.lshh.disagree,
         )
+        # The motor current and the belt scale (master specification, item 5),
+        # appended for the same reason.
+        self._register("IT-104.HIGH", "Conveyor motor overcurrent (jam)", lambda: self._il.conveyor_overcurrent)
+        self._register(
+            "FT-104.NO_FLOW", "No flow on the belt while feeding", lambda: self._il.no_flow, is_warning=True,
+        )
 
     def _register(self, alarm_id: str, description: str, condition: AlarmCondition, is_warning: bool = False) -> None:
         alarm = Alarm(id=alarm_id, description=description, is_warning=is_warning)

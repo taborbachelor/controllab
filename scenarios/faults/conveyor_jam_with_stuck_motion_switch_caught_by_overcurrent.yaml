@@ -1,0 +1,24 @@
+name: A Conveyor Jam Behind A Stuck Motion Switch Is Caught By Overcurrent
+description: "The motion switch is seized reading 'moving', so it can't see the belt jam. The motor current can: overcurrent held for 1 s while running trips the line as a conveyor jam, well before the motor's thermal overload relay would."
+title: "The belt jams with its motion switch stuck: the overcurrent trips the line"
+
+given:
+  line_state: running
+
+when:
+  sensor_stuck: "ZSS-104"
+  conveyor_jam: true
+
+trigger: conveyor_jam
+
+expect:
+  line_state: faulted
+  fault_reason: "conveyor jam"
+  first_out: "IT-104.HIGH"
+  conveyor_run_commanded: false
+  feeder_run_commanded: false
+
+within:
+  seconds: 1.5
+
+interlock: "Conveyor motor current normal"

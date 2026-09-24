@@ -1,0 +1,22 @@
+name: Material Bridging In The Bin Is Caught By The Belt Scale
+description: "Material bridges over the bin outlet: the bin still reads full, the gate is open and the feeder turns, but nothing comes out. The level instruments can't see it; the belt scale sees nothing arrive and raises a no-flow warning."
+title: "The bin bridges: the level still reads full, and the belt scale sees no flow"
+
+given:
+  line_state: running
+
+when:
+  bin_bridged: true
+
+trigger: bin_bridged
+
+expect:
+  latched_alarm_ids: ["FT-104.NO_FLOW"]
+  feeder_running: true
+  feeder_flowing: false
+  line_state: running
+
+within:
+  seconds: 10
+
+interlock: "Material flowing on the belt"

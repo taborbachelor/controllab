@@ -65,7 +65,11 @@ function renderMimic(v, animate) {
   $("m104-l").setAttribute("fill", cRun || cTrip ? "#fff" : "var(--ink)");
   $("conv-belt").setAttribute("stroke", cTrip ? TRIP : cRun && !motion ? WARN : LINE);
   $("m104-txt").textContent = (cTrip ? "Overload trip" : cRun && !motion ? "Motor on, belt not moving" : cRun ? "Running" : "Stopped") +
-    (!cTrip && cCmd !== cRun ? ` (told to ${cCmd ? "run" : "stop"})` : "");
+    (!cTrip && cCmd !== cRun ? ` (told to ${cCmd ? "run" : "stop"})` : "") +
+    // The motor current (IT-104) and the belt scale (FT-104): a jam shows as a
+    // current far over the motor's rating with nothing on the scale.
+    (v["IT-104"] !== undefined ? ` · motor ${v["IT-104"].toFixed(1)} A` : "") +
+    (v["FT-104"] !== undefined ? ` · belt scale ${v["FT-104"].toFixed(1)} kg/s` : "");
   lamp("zss104", motion, RUN);
 
   // Material only visibly moves where it physically can.

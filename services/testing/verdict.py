@@ -68,7 +68,7 @@ LABELS: dict[str, str] = {
 _OPERATOR = {"start", "stop", "reset", "acknowledge", "select_manual", "select_auto", "start_conveyor",
              "stop_conveyor", "open_gate", "close_gate", "start_feeder", "stop_feeder"}
 _FAULTS = {"conveyor_trip", "feeder_trip", "conveyor_fail_to_start", "feeder_fail_to_start", "gate_stuck",
-           "belt_slip", "feeder_jam"}
+           "belt_slip", "feeder_jam", "conveyor_jam", "bin_bridged"}
 _FIELD_RESETS = {"feeder_drive_reset", "conveyor_overload_reset", "gate_reset"}
 _PROCESS = {"hopper_level_pct", "bin_level_pct"}
 _SENSORS = {"sensor_stuck": "fault", "sensor_failed": "fault", "sensor_restored": "repair",
@@ -118,6 +118,10 @@ _PHRASES: dict[str, tuple[str, str]] = {
     "feeder_fail_to_start": ("The feeder drive will not start when told to", "The feeder drive is repaired"),
     "gate_stuck": ("The gate actuator sticks", "The gate actuator is freed"),
     "belt_slip": ("The conveyor belt starts slipping (motor on, belt not moving)", "The belt slip is fixed"),
+    "conveyor_jam": ("The conveyor belt jams: it stops, and its motor strains against it",
+                     "The conveyor jam is cleared"),
+    "bin_bridged": ("Material bridges over the bin outlet: the bin is full, but nothing comes out",
+                    "The bridge in the bin is broken up"),
     "feeder_jam": ("The feeder jams: its drive keeps turning but the discharge chute plugs",
                    "The jam is cleared at the feeder"),
     "feeder_drive_reset": ("The feeder drive is reset at the field", ""),

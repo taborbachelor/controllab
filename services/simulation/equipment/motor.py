@@ -133,6 +133,13 @@ class Motor:
             self.state = MotorState.STOPPED
             self._elapsed_s = 0.0
 
+    def overload(self) -> None:
+        """The thermal overload relay trips (a sustained overcurrent, e.g. a
+        jammed load): a real trip, unlike trip_now, which is an injected
+        fault that persists until cleared. Only a running motor can trip."""
+        if self.state == MotorState.RUNNING:
+            self._trip()
+
     def _trip(self) -> None:
         self.fault = True
         self.state = MotorState.FAULT

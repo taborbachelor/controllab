@@ -78,13 +78,16 @@ class LineController:
         purge_time_s: float = 15.0,
         hopper_high_pct: float = 80.0,
         hopper_high_high_pct: float = 95.0,
+        conveyor_overcurrent_a: float = 15.0,
+        no_flow_s: float = 15.0,
     ) -> None:
         self.io = io
         self.feeder_ctrl = feeder_ctrl
         self.conveyor_ctrl = conveyor_ctrl
         self.gate_ctrl = gate_ctrl
         self.interlocks = Interlocks(
-            io, feeder_ctrl, conveyor_ctrl, gate_ctrl, hopper_capacity_kg, hopper_high_high_pct=hopper_high_high_pct
+            io, feeder_ctrl, conveyor_ctrl, gate_ctrl, hopper_capacity_kg, hopper_high_high_pct=hopper_high_high_pct,
+            conveyor_overcurrent_a=conveyor_overcurrent_a, no_flow_s=no_flow_s,
         )
         self.hysteresis = HopperHysteresis(restart_below_pct)
         # The switch-vs-transmitter cross-checks, set to the switches'
@@ -380,6 +383,8 @@ class LineController:
             return "hopper high-high"
         if self.conveyor_ctrl.faulted:
             return "conveyor trip"
+        if self.interlocks.conveyor_overcurrent:
+            return "conveyor jam"
         if self.feeder_ctrl.faulted:
             return "feeder trip"
         if self.interlocks.feeder_plugged:
@@ -447,11 +452,19 @@ class LineController:
             return "hopper weight signal failed"
         if self.conveyor_ctrl.faulted:
             return "conveyor trip"
+        if self.interlocks.conveyor_overcurrent:
+            return "conveyor jam"
         if not self.interlocks.conveyor_confirmed_running:
-            return "conveyor lost confirmation"
+            return self._motion_loss_reason()
         if self.gate_ctrl.travel_fault:
             return "gate travel fault"
         return None
+
+    def _motion_loss_reason(self) -> str:
+        """The belt stopped under a running motor: the motor current says
+        why. High current -- it's pushing against a jam; normal or low -- the
+        belt is slipping or broken."""
+        return "conveyor jam" if self.interlocks.conveyor_current_high else "conveyor lost confirmation"
 
     # ---- STOPPING (upstream first) -----------------------------------
 
@@ -482,6 +495,8 @@ class LineController:
             return "hopper high-high"
         if self.conveyor_ctrl.faulted:
             return "conveyor trip"
+        if self.interlocks.conveyor_overcurrent:
+            return "conveyor jam"
         if self.feeder_ctrl.faulted:
             return "feeder trip"
         if self.interlocks.feeder_plugged:
@@ -512,6 +527,7 @@ class LineController:
             self._purge_elapsed_s = round(self._purge_elapsed_s + dt, 9)
             if (self._purge_elapsed_s >= self.purge_time_s
                     or self.conveyor_ctrl.faulted
+                    or self.interlocks.conveyor_overcurrent
                     or not self.interlocks.conveyor_confirmed_running
                     or self.interlocks.hopper_high_high
                     or self.interlocks.hopper_weight_failed):
@@ -695,6 +711,8 @@ class LineController:
                 return "hopper high-high"
             if self.conveyor_ctrl.faulted:
                 return "conveyor trip"
+            if self.interlocks.conveyor_overcurrent:
+                return "conveyor jam"
             if self.feeder_ctrl.faulted:
                 return "feeder trip"
             if self.interlocks.feeder_plugged:
@@ -707,7 +725,7 @@ class LineController:
             ):
                 return "conveyor failed to prove running"
             if self._manual_conveyor_proven and not self.interlocks.conveyor_confirmed_running:
-                return "conveyor lost confirmation"
+                return self._motion_loss_reason()
         if feeding and self.feeder_ctrl.start_proof_fault:
             return "feeder failed to prove running"
         if self.gate_ctrl.travel_fault:

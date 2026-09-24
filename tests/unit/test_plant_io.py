@@ -28,6 +28,8 @@ EXPECTED_TAGS = {
     "M-104.RUNNING": TagType.DI,
     "M-104.OL": TagType.DI,
     "ZSS-104": TagType.DI,
+    "IT-104": TagType.AI,
+    "FT-104": TagType.AI,
     "WT-105": TagType.AI,
     "WT-105.FLT": TagType.DI,
     "LSH-105": TagType.DI,

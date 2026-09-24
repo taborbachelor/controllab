@@ -1,0 +1,23 @@
+name: A Conveyor Jam Trips The Line, Diagnosed From The Motor Current
+description: "The belt jams. Its motion switch sees the belt stop, and the motor current says why: a motor straining against a jam draws far more than its full-load current, where a slipping belt draws less. The line trips at once with the reason 'conveyor jam', before the motor's overload relay has to."
+title: "The belt jams: the line trips at once, and the current names it a jam"
+
+given:
+  line_state: running
+
+when:
+  conveyor_jam: true
+
+trigger: conveyor_jam
+
+expect:
+  line_state: faulted
+  fault_reason: "conveyor jam"
+  conveyor_run_commanded: false
+  feeder_run_commanded: false
+  gate_open_commanded: false
+
+within:
+  seconds: 0.5
+
+interlock: "Conveyor motor current normal"

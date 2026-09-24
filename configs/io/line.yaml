@@ -23,6 +23,8 @@ discrete_inputs:
 input_registers:
   0: {tag: LT-101, scale: 100, full_scale: 100}
   1: {tag: WT-105, scale: 10, full_scale: 2000}
+  2: {tag: IT-104, scale: 100, full_scale: 100}
+  3: {tag: FT-104, scale: 100, full_scale: 10}
 
 coils:
   0: XV-102.CMD_OPEN

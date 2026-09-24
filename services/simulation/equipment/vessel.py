@@ -21,6 +21,10 @@ class MaterialBin:
         self.capacity_kg = capacity_kg
         self.level_kg = capacity_kg if level_kg is None else level_kg
         self.low_pct = low_pct
+        # Fault injection: the material bridges (arches) over the outlet, so
+        # nothing discharges though the bin is full -- the classic bulk-solids
+        # flow failure. The level instruments can't see it: the level is real.
+        self.bridged = False
 
     @property
     def level_pct(self) -> float:
@@ -37,6 +41,8 @@ class MaterialBin:
     def discharge(self, requested_kg: float) -> float:
         """Remove up to requested_kg. Returns the amount actually removed
         (less than requested once the bin runs low)."""
+        if self.bridged:
+            return 0.0
         available = max(0.0, self.level_kg)
         actual = min(requested_kg, available)
         self.level_kg -= actual

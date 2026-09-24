@@ -49,6 +49,7 @@ DEFAULT_LINE_CONFIG = dict(
     restart_below_pct=60.0,
     conveyor_proof_timeout_s=1.0,
     purge_time_s=2.0,  # real default is 15.0 -- shortened so tests run fast
+    no_flow_s=4.0,  # a belt transit (2 s here) plus margin; real default 15.0
 )
 
 DEFAULT_DEVICE_PROOF_TIMEOUT_S = 1.0

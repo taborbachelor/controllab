@@ -11,7 +11,7 @@ Everything a controller needs is five contiguous ranges, one per table — exact
 | Table | Direction | Start | Size | Contents |
 |---|---|---:|---:|---|
 | Discrete inputs (FC 02) | read | 0 | 13 | field sensors |
-| Input registers (FC 04) | read | 0 | 2 | analog sensors |
+| Input registers (FC 04) | read | 0 | 4 | analog sensors |
 | Holding registers (FC 03) | read | 100 | 1 | HMI request word |
 | Coils (FC 15) | write | 0 | 3 | field outputs |
 | Holding registers (FC 16) | write | 0 | 9 | analog outputs, controller status, HMI ack word |
@@ -40,6 +40,8 @@ Everything a controller needs is five contiguous ranges, one per table — exact
 |---:|---:|---|---|---|---:|---:|
 | 0 | 30001 | `LT-101` | Bin level | % | ×100 | 100 → 10000 |
 | 1 | 30002 | `WT-105` | Hopper weight | kg | ×10 | 2000 → 20000 |
+| 2 | 30003 | `IT-104` | Conveyor motor current | A | ×100 | 100 → 10000 |
+| 3 | 30004 | `FT-104` | Belt scale flow rate at the conveyor head | kg/s | ×100 | 10 → 1000 |
 
 ## Coils — field outputs (FC 01 read; FC 05/15 write in external-controller mode only)
 
@@ -133,6 +135,7 @@ Kept apart from field I/O and outside the controller view: writing 1 issues the 
 | 9 | gate travel fault |
 | 10 | feeder jam |
 | 11 | hopper weight signal failed |
+| 12 | conveyor jam |
 
 ### Alarm bits (`alarms_active`, `alarms_unacked`; `first_out` = bit + 1)
 
@@ -151,6 +154,8 @@ Kept apart from field I/O and outside the controller view: writing 1 issues the 
 | 10 | `WT-105.FAIL` | Hopper weight transmitter failed | trip |
 | 11 | `LSH-105.DISAGREE` | Hopper high switch disagrees with WT-105 | warning |
 | 12 | `LSHH-105.DISAGREE` | Hopper high-high switch disagrees with WT-105 | trip |
+| 13 | `IT-104.HIGH` | Conveyor motor overcurrent (jam) | trip |
+| 14 | `FT-104.NO_FLOW` | No flow on the belt while feeding | warning |
 
 ### `start_inhibit` bits (why the most recent start or mode request was refused; 0 = NONE)
 

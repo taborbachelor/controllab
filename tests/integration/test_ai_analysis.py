@@ -129,7 +129,7 @@ def test_analog_drift_is_summarized_not_listed_tick_by_tick(failed):
     scenario, result = failed
     digest = build_digest(scenario, result)
     assert all(isinstance(c["to"], bool) for c in digest["tag_changes_in_window"])
-    assert set(digest["analog_in_window"]) == {"LT-101", "SC-103", "WT-105"}
+    assert set(digest["analog_in_window"]) == {"LT-101", "SC-103", "WT-105", "IT-104", "FT-104"}
     assert set(digest["analog_in_window"]["LT-101"]) == {"start", "end", "min", "max"}
     stop = [c for c in digest["tag_changes_in_window"] if c["tag"] == "M-103.RUN" and c["to"] is False]
     assert stop, "the discrete transition that explains this failure must survive"

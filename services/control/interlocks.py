@@ -38,6 +38,10 @@ class Interlocks:
         hopper_capacity_kg: float,
         hopper_high_high_pct: float = 95.0,
         hh_weight_debounce_s: float = 0.5,
+        conveyor_overcurrent_a: float = 15.0,
+        overcurrent_s: float = 1.0,
+        no_flow_s: float = 15.0,
+        no_flow_below_kg_s: float = 0.2,
     ) -> None:
         self.io = io
         self.feeder_ctrl = feeder_ctrl
@@ -50,13 +54,56 @@ class Interlocks:
         # How long the transmitter must read high-high before it votes.
         self.hh_weight_debounce_s = hh_weight_debounce_s
         self._hh_weight_held_s = 0.0
+        # Conveyor motor protection on IT-104 (commissioned: 125 % of the
+        # motor's 12 A full-load current, for 1 s while proven running, so the
+        # starting inrush -- before RUNNING -- never counts).
+        self.conveyor_overcurrent_a = conveyor_overcurrent_a
+        self.overcurrent_s = overcurrent_s
+        self._overcurrent_held_s = 0.0
+        # Flow verification on FT-104 (commissioned: longer than a belt
+        # transit, so material fed has had time to reach the belt scale).
+        self.no_flow_s = no_flow_s
+        self.no_flow_below_kg_s = no_flow_below_kg_s
+        self._no_flow_held_s = 0.0
 
     def scan(self, dt: float) -> None:
-        """Advance the weight vote's on-delay by one tick."""
-        if self.hopper_high_high_weight:
-            self._hh_weight_held_s = round(self._hh_weight_held_s + dt, 9)
-        else:
-            self._hh_weight_held_s = 0.0
+        """Advance the on-delays by one tick: the weight vote, the conveyor
+        overcurrent, and no flow while feeding."""
+        self._hh_weight_held_s = round(self._hh_weight_held_s + dt, 9) if self.hopper_high_high_weight else 0.0
+        self._overcurrent_held_s = (
+            round(self._overcurrent_held_s + dt, 9) if self.conveyor_ctrl.running and self.conveyor_current_high else 0.0
+        )
+        feeding = self.feeder_ctrl.running and self.gate_ctrl.is_open
+        self._no_flow_held_s = (
+            round(self._no_flow_held_s + dt, 9) if feeding and self.belt_flow_kg_s < self.no_flow_below_kg_s else 0.0
+        )
+
+    @property
+    def conveyor_current_a(self) -> float:
+        return self.io.read("IT-104")
+
+    @property
+    def conveyor_current_high(self) -> bool:
+        """IT-104 at or above the overcurrent setpoint, right now."""
+        return self.conveyor_current_a >= self.conveyor_overcurrent_a
+
+    @property
+    def conveyor_overcurrent(self) -> bool:
+        """The motor has drawn overcurrent for overcurrent_s while proven
+        running: a jammed belt, even one whose motion switch says it moves."""
+        return (self.conveyor_ctrl.running and self.conveyor_current_high
+                and self._overcurrent_held_s >= self.overcurrent_s - 1e-9)
+
+    @property
+    def belt_flow_kg_s(self) -> float:
+        return self.io.read("FT-104")
+
+    @property
+    def no_flow(self) -> bool:
+        """The feeder has run with the gate open for no_flow_s and the belt
+        scale saw nothing arrive: material bridged in the bin, or a plugged
+        gate. A warning, not a trip: nothing is being harmed."""
+        return self._no_flow_held_s >= self.no_flow_s - 1e-9
 
     @property
     def estop_healthy(self) -> bool:

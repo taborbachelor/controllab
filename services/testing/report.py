@@ -79,6 +79,9 @@ INTERLOCKS: list[InterlockRow] = [
     InterlockRow("Gate travel timeout", "Trip"),
     InterlockRow("Feeder jam", "Trip"),
     InterlockRow("Hopper weight signal healthy", "Permissive + trip"),
+    # Master specification, item 5: the conveyor motor current and the belt scale.
+    InterlockRow("Conveyor motor current normal", "Trip"),
+    InterlockRow("Material flowing on the belt", "Alarm"),
 ]
 
 

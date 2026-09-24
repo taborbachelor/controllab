@@ -34,7 +34,7 @@ def test_the_committed_line_map_file_is_exactly_the_built_in_map():
 def test_the_relocated_map_is_five_ranges_at_its_own_offsets():
     loaded, _ = load_map(RELOCATED, build_line_io_image())
     assert loaded.controller_ranges() == ControllerRanges(
-        discrete_inputs=(1000, 13), input_registers=(2000, 2), holding_read=(4100, 1),
+        discrete_inputs=(1000, 13), input_registers=(2000, 4), holding_read=(4100, 1),
         coils=(3000, 3), holding_write=(4000, 9),
     )
 

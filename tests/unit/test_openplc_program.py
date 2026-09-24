@@ -121,3 +121,16 @@ def test_the_transmitter_high_high_debounce_matches_the_python_controller():
     default = inspect.signature(Interlocks).parameters["hh_weight_debounce_s"].default
     assert re.search(rf"LIM_HH_DEBOUNCE : INT := {round(default / DT)};", ST)
     assert "hopper_high_high := hopper_hh_switch OR hopper_hh_weight_vote;" in ST
+
+
+def test_the_motor_current_and_belt_scale_limits_match_the_python_controller():
+    import inspect
+
+    from services.control.interlocks import Interlocks
+    from services.testing.rig import DEFAULT_LINE_CONFIG, DT
+
+    params = inspect.signature(Interlocks).parameters
+    assert re.search(rf"LIM_OVERCURRENT_RAW : INT := {round(params['conveyor_overcurrent_a'].default * 100)};", ST)
+    assert re.search(rf"LIM_OVERCURRENT : INT := {round(params['overcurrent_s'].default / DT)};", ST)
+    assert re.search(rf"LIM_NO_FLOW_RAW : INT := {round(params['no_flow_below_kg_s'].default * 100)};", ST)
+    assert re.search(rf"LIM_NO_FLOW : INT := {round(DEFAULT_LINE_CONFIG['no_flow_s'] / DT)};", ST)

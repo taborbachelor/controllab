@@ -1235,6 +1235,13 @@ issue and propose the change"):
   `Interlocks.scan()` + `hopper_high_high_weight_vote`: the transmitter's
   high-high vote holds 0.5 s (`hh_weight_debounce_s`); `LineController.scan()`
   calls it after the device modules. The PLC mirrors it (`LIM_HH_DEBOUNCE`).
+- **Motor current and belt scale** (item 5) — `Conveyor.current_a`, `.jammed`,
+  `Motor.overload()`; `MaterialBin.bridged`; `Plant.belt_flow_kg_s` (FT-104)
+  and `Plant.feed_flow_kg_s` (what really left the bin). `Interlocks`:
+  `conveyor_current_high`, `conveyor_overcurrent` (1 s on-delay while proven
+  running), `no_flow` (on-delay); `LineController._motion_loss_reason()` names a
+  motion loss a jam or a slip from the current. Alarms `IT-104.HIGH`,
+  `FT-104.NO_FLOW`; §6.3 rows 12-13 in `report.py`.
 
 ## The self-explaining replay (readable cold)
 

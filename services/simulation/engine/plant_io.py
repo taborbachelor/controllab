@@ -34,6 +34,8 @@ _TAGS: list[tuple[str, TagType, str, str]] = [
     ("M-104.RUNNING", TagType.DI, "", "Conveyor motor running feedback (contactor aux)"),
     ("M-104.OL", TagType.DI, "", "Conveyor motor overload tripped"),
     ("ZSS-104", TagType.DI, "", "Conveyor motion (zero-speed) switch"),
+    ("IT-104", TagType.AI, "A", "Conveyor motor current"),
+    ("FT-104", TagType.AI, "kg/s", "Belt scale flow rate at the conveyor head"),
     ("WT-105", TagType.AI, "kg", "Hopper weight"),
     ("WT-105.FLT", TagType.DI, "", "Hopper weight input channel fault (wire break / transmitter failed)"),
     ("LSH-105", TagType.DI, "", "Hopper high level switch (80%; 1 = below, fail-safe polarity)"),
@@ -71,6 +73,8 @@ def publish_plant_inputs(plant: Plant, io: IOImage) -> None:
     publish("M-104.RUNNING", plant.conveyor.motor.running)
     publish("M-104.OL", plant.conveyor.motor.fault)
     publish("ZSS-104", plant.conveyor.motion_confirmed)
+    publish("IT-104", plant.conveyor.current_a)
+    publish("FT-104", plant.belt_flow_kg_s)
 
     publish("WT-105", plant.hopper.level_kg)
     # The input card's own diagnostic for WT-105, not an instrument reading.
