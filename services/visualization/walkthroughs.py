@@ -279,6 +279,77 @@ WALKTHROUGHS: tuple[Walkthrough, ...] = (
             RESET,
         ),
     ),
+    Walkthrough(
+        id="manual",
+        title="Drive the line by hand (Manual mode)",
+        summary="Start each device yourself, and see which protections still hold when the sequence is bypassed.",
+        steps=(
+            Step(
+                say="Select Manual mode (Operator panel, next to Mode).",
+                do=(("select_manual", True),),
+                target='[data-cmd="select_manual"]',
+                until=state_is("manual"),
+                then="The line is in Manual. Nothing moved: every device waits for its own button. The mode can "
+                "only change at rest, so this works because the line was stopped.",
+            ),
+            Step(
+                say="Try the wrong order first: press the feeder's Start while the conveyor is stopped.",
+                do=(("start_feeder", True),),
+                target='[data-cmd="start_feeder"]',
+                until=lambda s, ev: pressed("start_feeder")(s, ev)
+                and "conveyor not proven running" in s["last_start_refusal"],
+                then="Refused, and the card says why: the feeder may only feed onto a moving belt. Manual mode "
+                "bypasses the start sequence, not the protection.",
+            ),
+            Step(
+                say="Start the conveyor.",
+                do=(("start_conveyor", True),),
+                target='[data-cmd="start_conveyor"]',
+                until=lambda s, ev: s["values"]["M-104.RUNNING"] and s["values"]["ZSS-104"],
+                then="The motor runs and the motion switch proves the belt is moving. From now on, losing that "
+                "proof while the motor runs would trip the line, exactly as in Auto.",
+            ),
+            Step(
+                say="Open the gate.",
+                do=(("open_gate", True),),
+                target='[data-cmd="open_gate"]',
+                until=lambda s, ev: s["values"]["ZSO-102"],
+                then="The gate is open. On its own it moves nothing: the feeder has to run for material to "
+                "leave the bin. (Stroking a gate to check its limit switches is a classic Manual-mode job.)",
+            ),
+            Step(
+                say="Now start the feeder.",
+                do=(("start_feeder", True),),
+                target='[data-cmd="start_feeder"]',
+                until=lambda s, ev: s["values"]["M-103.RUNNING"],
+                then="Accepted this time: the belt is proven running. Material flows from the bin up into the "
+                "hopper.",
+            ),
+            Step(
+                say="Stop the conveyor while the feeder is still running.",
+                do=(("stop_conveyor", True),),
+                target='[data-cmd="stop_conveyor"]',
+                until=lambda s, ev: pressed("stop_conveyor")(s, ev) and not s["values"]["M-103.RUN"]
+                and s["state"] == "manual",
+                then="The feeder stopped in the same scan, so it never fed a stopped belt, and nothing tripped: "
+                "stopping the conveyor was your command. A belt that stops on its own would have tripped the line.",
+            ),
+            Step(
+                say="Close the gate.",
+                do=(("close_gate", True),),
+                target='[data-cmd="close_gate"]',
+                until=lambda s, ev: s["values"]["ZSC-102"],
+                then="Every device is off, so the line is at rest in Manual.",
+            ),
+            Step(
+                say="Select Auto to hand the line back to the automatic sequence.",
+                do=(("select_auto", True),),
+                target='[data-cmd="select_auto"]',
+                until=lambda s, ev: s["state"] == "idle" and s["line_mode"] == "auto",
+                then="Back in Auto, stopped and ready: Start now runs the whole sequence again.",
+            ),
+        ),
+    ),
 )
 
 BY_ID = {w.id: w for w in WALKTHROUGHS}

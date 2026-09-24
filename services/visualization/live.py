@@ -49,6 +49,7 @@ from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
+from services.protocols.line_map import LINE_REGISTER_MAP
 from services.protocols.register_map import HmiHandshake
 from services.telemetry.events import Event, EventLog
 from services.telemetry.tag_history import TagHistory
@@ -63,7 +64,9 @@ from services.visualization.narrate import narrate
 from services.visualization.page import assemble
 from services.visualization.replay import build_replay, render_html
 
-COMMANDS = ("start", "stop", "reset", "acknowledge")
+# Every operator command, in the HMI request word's bit order: the four line
+# commands, then Manual mode's mode select and device pushbuttons.
+COMMANDS = tuple(LINE_REGISTER_MAP.commands)
 
 # The fault/condition half of the scenario vocabulary, with the value
 # shape each accepts. Operator commands are deliberately not in here --
@@ -384,12 +387,15 @@ class LiveSession:
             if self.external:
                 controller = {
                     "mode": "external", "state": "external", "fault_reason": None,
-                    "last_start_refusal": [], "alarms": [], "start_step": None,
+                    "last_start_refusal": [], "alarms": [], "start_step": None, "line_mode": None,
                 }
             else:
                 controller = {
                     "mode": "builtin",
                     "state": line.state.name.lower(),
+                    # Auto / Manual (docs/CONTROL-LAB.md §6.1). "mode" above is
+                    # which controller runs the line, built-in or external.
+                    "line_mode": line.mode.name.lower(),
                     "fault_reason": line.fault_reason,
                     "last_start_refusal": list(line.last_start_refusal),
                     "start_step": line.start_step.name.lower() if line.start_step else None,

@@ -120,3 +120,79 @@ def test_every_explained_fault_says_how_to_tell_its_cause_is_gone():
 
     assert set(_CLEARED) == set(_FAULTS)
 
+
+
+# ---- Manual mode ---------------------------------------------------------
+
+
+def manual_session() -> LiveSession:
+    s = LiveSession()
+    s.command("select_manual")
+    s.step()
+    assert s.snapshot()["state"] == "manual"
+    return s
+
+
+def test_manual_with_everything_off_says_so_and_lists_the_order_that_moves_material():
+    st = story(manual_session())
+    assert st["headline"] == "Manual mode: every device is off. You drive each one."
+    assert "bypasses the start sequence, not the protection" in st["detail"]
+    assert [x["done"] for x in st["steps"]] == [False, False, False]
+
+
+def test_manual_ticks_off_each_device_from_the_field_and_says_when_material_flows():
+    s = manual_session()
+    s.command("start_conveyor")
+    steps(s, 6)
+    assert [x["done"] for x in story(s)["steps"]] == [True, False, False]
+    s.command("open_gate")
+    s.command("start_feeder")
+    steps(s, 15)
+    st = story(s)
+    assert st["headline"] == "Manual mode: material is flowing."
+    assert all(x["done"] for x in st["steps"])
+
+
+def test_a_refused_manual_feeder_start_says_why_and_what_to_do():
+    s = manual_session()
+    s.command("start_feeder")
+    s.step()
+    st = story(s)
+    assert st["tone"] == "warn" and st["headline"] == "Manual mode. The last request was refused."
+    assert "only feed onto a moving belt" in st["detail"]
+    assert st["steps"] == [{"text": "Start the conveyor first and wait for it to show running", "done": False}]
+
+
+def test_the_high_switch_stopping_a_manual_feeder_is_explained():
+    s = manual_session()
+    s.command("start_conveyor")
+    steps(s, 6)
+    s.command("open_gate")
+    s.command("start_feeder")
+    steps(s, 15)
+    s.stimulus("hopper_level_pct", 85)
+    steps(s, 3)
+    assert story(s)["detail"].startswith("The hopper is at its high switch, so the feeder is stopped.")
+
+
+def test_a_device_command_in_auto_is_a_refused_request_not_a_refused_start():
+    s = LiveSession()
+    s.command("start_conveyor")
+    s.step()
+    st = story(s)
+    assert st["headline"] == "Stopped. That request was refused."
+    assert "only work in Manual mode" in st["detail"]
+    assert all(x["text"] != "Press Start again" for x in st["steps"])
+
+
+def test_every_refusal_the_controller_can_give_has_plain_words():
+    """Each reason LineController puts in last_start_refusal matches a prefix
+    here, so no refusal ever reaches the card unexplained."""
+    from services.visualization.narrate import _REFUSALS
+    reasons = [
+        "bin low", "hopper at high-high", "hopper weight signal failed", "unacknowledged alarm: M-104.OL",
+        "conveyor not proven running", "hopper at the high switch", "device commands need Manual mode",
+        "line Start is an Auto command; in Manual start each device", "mode change to manual refused: the line is running",
+    ]
+    for r in reasons:
+        assert any(r.startswith(prefix) for prefix, _, _ in _REFUSALS), r

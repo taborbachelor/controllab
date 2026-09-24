@@ -97,7 +97,19 @@ _REFUSALS: list[tuple[str, str, str]] = [
      "Restore it (Engineer tools → Instrument faults → WT-105 → Restore)"),
     ("unacknowledged alarm", "an alarm hasn't been acknowledged yet (someone has to confirm they've seen it)",
      "Press Acknowledge"),
+    # Manual mode (docs/CONTROL-LAB.md §6.1)
+    ("conveyor not proven running", "the conveyor isn't proven running, and the feeder may only feed onto a moving belt",
+     "Start the conveyor first and wait for it to show running"),
+    ("hopper at the high switch", "the hopper is at its high level switch (80 %), where Manual stops the feeder",
+     "Let the hopper draw down, or lower it (Engineer tools → Set hopper level, e.g. 50 %)"),
+    ("device commands need Manual mode", "the device buttons only work in Manual mode; in Auto the sequence drives "
+     "the devices", "Select Manual (with the line stopped) to drive each device yourself"),
+    ("line Start is an Auto command", "Start runs the automatic sequence, and Manual mode bypasses it",
+     "Start each device with its own button, or select Auto"),
+    ("mode change to", "the mode only changes at rest: with the line stopped in Auto, or with every device off "
+     "in Manual", "Stop the line (or every device) first, then select the mode again"),
 ]
+_START_PERMISSIVES = ("bin low", "hopper at high-high", "hopper weight signal failed", "unacknowledged alarm")
 
 _START_STEPS = {
     "conveyor": "Step 1 of 3: starting the conveyor, and waiting for its motion switch to prove the belt is moving.",
@@ -140,6 +152,52 @@ def _verifying(s: dict, busy: dict) -> dict:
                   "test suite does: it sets up the precondition, applies each stage's actions, and checks every "
                   f"expectation against its time limit. {where} Manual controls are locked until the result is in.",
         "steps": [],
+    }
+
+
+def _refusal(reasons: list[str]) -> tuple[list[str], list[dict]]:
+    """Plain words and a fix for each refusal reason (matched by prefix)."""
+    why, steps = [], []
+    for reason in reasons:
+        for prefix, plain, fix in _REFUSALS:
+            if reason.startswith(prefix):
+                why.append(plain)
+                steps.append({"text": fix, "done": False})
+    return why, steps
+
+
+def _manual(s: dict, v: dict, alarms: list[dict], notes: list[str]) -> dict:
+    """Manual mode: the operator drives each device; the checklist is the
+    order that moves material, ticked off from what the field reports."""
+    conveyor = v["M-104.RUNNING"] and v["ZSS-104"]
+    gate = v["ZSO-102"]
+    feeder = v["M-103.RUNNING"]
+    base = ("Manual mode bypasses the start sequence, not the protection: the feeder only runs onto a moving "
+            "belt and stops at the hopper's high switch, and every trip still works. Select Auto (with every "
+            "device off) to go back to the automatic sequence.")
+    refusal = s.get("last_start_refusal") or []
+    if refusal:
+        why, steps = _refusal(refusal)
+        return {"tone": "warn", "headline": "Manual mode. The last request was refused.",
+                "detail": "It refused because " + " and ".join(why) + ". " + base, "steps": steps}
+    if v["M-104.RUN"] and conveyor and gate and feeder:
+        headline = "Manual mode: material is flowing."
+    elif not (v["M-104.RUN"] or v["XV-102.CMD_OPEN"] or v["M-103.RUN"]):
+        headline = "Manual mode: every device is off. You drive each one."
+    else:
+        headline = "Manual mode: you're driving the devices."
+    detail = base
+    if v["M-104.RUN"] and not v["M-103.RUN"] and not v["LSH-105"]:
+        detail = "The hopper is at its high switch, so the feeder is stopped. " + detail
+    return {
+        "tone": "warn" if _unacked(alarms) else "info",
+        "headline": headline,
+        "detail": " ".join([detail] + notes),
+        "steps": [
+            {"text": "Start the conveyor, and wait for it to show running", "done": bool(conveyor)},
+            {"text": "Open the gate", "done": bool(gate)},
+            {"text": "Start the feeder (only once the belt is moving)", "done": bool(feeder)},
+        ],
     }
 
 
@@ -222,6 +280,8 @@ def narrate(s: dict) -> dict:
                                                    "Engineer tools to see how the controller reacts."]),
             "steps": [],
         }
+    elif state == "manual":
+        out = _manual(s, v, alarms, notes)
     elif state == "stopping":
         out = {
             "tone": "info",
@@ -233,18 +293,15 @@ def narrate(s: dict) -> dict:
     else:  # idle
         refusal = s.get("last_start_refusal") or []
         if refusal:
-            why, steps = [], []
-            for reason in refusal:
-                for prefix, plain, fix in _REFUSALS:
-                    if reason.startswith(prefix):
-                        why.append(plain)
-                        steps.append({"text": fix, "done": False})
-            steps.append({"text": "Press Start again", "done": False})
+            why, steps = _refusal(refusal)
+            start = all(r.startswith(_START_PERMISSIVES) for r in refusal)
+            if start:
+                steps.append({"text": "Press Start again", "done": False})
             out = {
                 "tone": "warn",
-                "headline": "Stopped. The last Start was refused.",
-                "detail": "The controller checks that it's safe to start before it moves anything. It refused because "
-                + " and ".join(why) + ".",
+                "headline": "Stopped. The last Start was refused." if start else "Stopped. That request was refused.",
+                "detail": ("The controller checks that it's safe to start before it moves anything. " if start else "")
+                + "It refused because " + " and ".join(why) + ".",
                 "steps": steps,
             }
         else:

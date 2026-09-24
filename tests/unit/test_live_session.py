@@ -161,3 +161,29 @@ def test_instrument_faults_from_the_dashboard_show_the_level_protection():
     s.stimulus("sensor_restored", "LSHH-105")
     s.step()
     assert s.snapshot()["injected"]["instruments"] == {}
+
+
+def test_manual_mode_through_the_dashboard_commands():
+    from services.protocols.line_map import LINE_REGISTER_MAP
+    from services.visualization.live import COMMANDS
+
+    assert list(COMMANDS) == LINE_REGISTER_MAP.commands  # the HMI request word's bit order
+    s = LiveSession()
+    assert s.snapshot()["line_mode"] == "auto"
+    s.command("select_manual")
+    s.step()
+    s.command("start_conveyor")
+    for _ in range(6):
+        s.step()
+    snap = s.snapshot()
+    assert (snap["state"], snap["line_mode"]) == ("manual", "manual")
+    assert snap["values"]["M-104.RUN"] and snap["values"]["ZSS-104"]
+    assert [e["command"] for e in snap["events"] if e["type"] == "command_issued"] == ["select_manual", "start_conveyor"]
+
+
+def test_an_external_session_hands_manual_commands_to_the_controller():
+    s = LiveSession(external=True)
+    assert s.snapshot()["line_mode"] is None  # the mode lives in the external controller
+    s.command("select_manual")
+    s.step()
+    assert "select_manual" in s.handshake.outstanding()

@@ -21,7 +21,7 @@ within:
   seconds: 1.0
 
 then:
-  - title: "Gate opened and feeder started by hand: material flows"
+  - title: "Gate opened by hand: it reaches its open limit; nothing flows until the feeder runs"
     when:
       open_gate: true
     expect:

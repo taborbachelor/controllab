@@ -26,7 +26,7 @@
       switches and weigh-scale a real one has. Its control program sees only that I/O, as a PLC would.</li>
     <li><strong>Scenarios</strong> (right) are the tests. Press <em>Run &amp; verify</em>: the test operates the line,
       injects its fault, and checks the controller's response stage by stage against time limits.</li>
-    <li><strong>Or drive it yourself:</strong> Start/Stop below, a guided walkthrough, or <em>Engineer tools</em> to
+    <li><strong>Or drive it yourself:</strong> Start/Stop below (or Manual mode, one device at a time), a guided walkthrough, or <em>Engineer tools</em> to
       break it on purpose. The status card always says what's happening, and why.</li>
   </ol>
   <details class="intro-more">
@@ -46,6 +46,9 @@
         production code) to show a regression being caught.</li>
       <li><strong>What's happening</strong> narrates the line in plain words. <strong>Guided walkthroughs</strong> let
         you operate it by hand, step by step. <strong>Engineer tools</strong> break the plant manually.</li>
+      <li><strong>Operator</strong> holds the pushbuttons. In <em>Auto</em>, Start runs the whole sequence. In
+        <em>Manual</em> you start and stop each device yourself: the sequence is bypassed, the protection isn't (the
+        feeder only runs onto a moving belt, and every trip still works). The mode only changes with the line at rest.</li>
       <li><strong>Alarms</strong> and the <strong>event log</strong> record what the controller noticed and did.</li>
     </ul>
   </details>
@@ -81,8 +84,27 @@
     </section>
     <section aria-label="Operator commands">
       <h2>Operator</h2>
+      <div class="mode-row">
+        <span class="label" id="mode-label">Mode</span>
+        <div class="seg" role="group" aria-labelledby="mode-label" id="mode-switch">
+          <button type="button" data-cmd="select_auto" aria-pressed="true">Auto</button>
+          <button type="button" data-cmd="select_manual" aria-pressed="false">Manual</button>
+        </div>
+      </div>
       <div class="buttons" id="commands"></div>
       <p class="note">Acknowledge and reset are separate on purpose: acknowledging says an operator has seen the alarm; reset says the cause is fixed.</p>
+      <div class="devices" id="devices" role="group" aria-label="Manual device controls">
+        <span class="dev">Conveyor</span>
+        <button type="button" data-cmd="start_conveyor">Start</button><button type="button" data-cmd="stop_conveyor">Stop</button>
+        <span class="dev-state" id="dev-conveyor"></span>
+        <span class="dev">Gate</span>
+        <button type="button" data-cmd="open_gate">Open</button><button type="button" data-cmd="close_gate">Close</button>
+        <span class="dev-state" id="dev-gate"></span>
+        <span class="dev">Feeder</span>
+        <button type="button" data-cmd="start_feeder">Start</button><button type="button" data-cmd="stop_feeder">Stop</button>
+        <span class="dev-state" id="dev-feeder"></span>
+      </div>
+      <p class="note" id="devices-note"></p>
     </section>
     <section aria-label="Event log">
       <h2>Event log</h2>
@@ -170,8 +192,35 @@ async function post(path, body) {
   if (!r.ok) console.error(path, (await r.json()).error);
 }
 
-$("commands").innerHTML = CFG.commands.map((c) => `<button type="button" data-cmd="${c}">${c[0].toUpperCase() + c.slice(1)}</button>`).join("");
-$("commands").addEventListener("click", (e) => { const c = e.target.dataset.cmd; if (c) post("/api/command", { name: c }); });
+// The four line commands as buttons; the mode switch and Manual's device
+// pushbuttons are their own controls below them.
+const LINE_COMMANDS = ["start", "stop", "reset", "acknowledge"];
+$("commands").innerHTML = LINE_COMMANDS.map((c) => `<button type="button" data-cmd="${c}">${c[0].toUpperCase() + c.slice(1)}</button>`).join("");
+for (const id of ["commands", "mode-switch", "devices"]) {
+  $(id).addEventListener("click", (e) => { const c = e.target.dataset.cmd; if (c) post("/api/command", { name: c }); });
+}
+
+// Manual mode (docs/CONTROL-LAB.md §6.1): the switch shows the controller's
+// mode; the device buttons work only in Manual, and say so otherwise.
+function renderManual(s) {
+  const v = s.values, ext = s.mode === "external", manual = s.line_mode === "manual";
+  document.querySelectorAll("#mode-switch button").forEach((b) => {
+    b.setAttribute("aria-pressed", String(!ext && b.dataset.cmd === "select_" + s.line_mode));
+  });
+  const shown = [
+    ["dev-conveyor", v["M-104.RUNNING"] && v["ZSS-104"], "running", v["M-104.RUN"] ? "starting" : "stopped"],
+    ["dev-gate", v["ZSO-102"], "open", v["ZSC-102"] ? "closed" : "moving"],
+    ["dev-feeder", v["M-103.RUNNING"], "running", "stopped"],
+  ];
+  for (const [id, on, yes, no] of shown) { $(id).textContent = on ? yes : no; $(id).classList.toggle("on", !!on); }
+  const usable = ext || manual;
+  document.querySelectorAll("#devices button").forEach((b) => { b.disabled = !usable || verificationBusy; });
+  $("devices-note").textContent = ext
+    ? "External-controller mode: device commands go to the external controller, which decides whether to act."
+    : manual
+      ? "Manual: start and stop each device yourself. The feeder only runs onto a moving belt, and stops at the hopper's high switch."
+      : "Device buttons work in Manual mode. In Auto, Start runs the whole sequence. Select Manual with the line stopped to drive each device.";
+}
 
 $("faults").innerHTML = FAULTS.map(([k, label]) => `<button type="button" data-fault="${k}" aria-pressed="false">${label}</button>`).join("");
 let injected = {};
@@ -333,12 +382,14 @@ function showResult(L, open) {
 }
 
 let lastVer = null;
+let verificationBusy = false;
 function renderVerification(ver, t) {
   lastVer = ver;
   const B = ver.busy, L = ver.latest;
   const busy = !!B;
+  verificationBusy = busy;
   document.querySelectorAll("[data-verify],[data-compare]").forEach((b) => { b.disabled = busy; });
-  document.querySelectorAll("#commands button, #faults button, #field-resets button, #instruments button, [data-level], #restart")
+  document.querySelectorAll("#commands button, #mode-switch button, #faults button, #field-resets button, #instruments button, [data-level], #restart")
     .forEach((b) => { b.disabled = busy; });
   if (B) {
     $("latest").innerHTML = `<p class="latest busy"><span>RUNNING</span> ${esc(B.scenario)} on ${esc(B.runtime.split(" (")[0])}` +
@@ -438,9 +489,10 @@ async function poll() {
     $("speed").value = String(s.speed);
     $("clock").textContent = `t = ${s.t.toFixed(1)} s`;
     renderState(s.state);
+    renderManual(s);
     const why = [];
     if (s.fault_reason) why.push(`Fault reason: ${s.fault_reason}`);
-    if (s.state === "idle" && s.last_start_refusal.length) why.push(`Last start refused: ${s.last_start_refusal.join("; ")}`);
+    if ((s.state === "idle" || s.state === "manual") && s.last_start_refusal.length) why.push(`Last request refused: ${s.last_start_refusal.join("; ")}`);
     $("reason").textContent = why.join(" · ");
     renderMimic(s.values, running);
     renderTags(CFG.tags, s.values, prev);

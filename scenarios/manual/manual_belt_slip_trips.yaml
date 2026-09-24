@@ -1,6 +1,6 @@
 name: Belt Slip In Manual Trips The Line
 description: "Manual bypasses the sequence, not the protection: a belt that stops moving under a running motor trips the line exactly as it does in Auto."
-title: "Conveyor, gate and feeder started by hand: material flows"
+title: "Conveyor started by hand and proven running"
 
 given:
   line_state: manual

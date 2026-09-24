@@ -113,6 +113,25 @@ Then **Overfill protection: failed level switch**:
   switch and the weight.
 - A second alarm names the switch that disagreed.
 
+## Optional: Manual mode (1 minute)
+
+Open **Guided walkthroughs** and start **Drive the line by hand (Manual
+mode)**, pressing **Do it for me** at each step (or the real buttons in the
+Operator panel):
+
+- Select **Manual**. Nothing moves: every device waits for its own button.
+- Press the feeder's **Start** first. It's refused, and the status card says
+  why: the feeder may only feed onto a moving belt.
+- Start the conveyor, open the gate, start the feeder: material flows.
+- Stop the conveyor under the running feeder. The feeder stops in the same
+  scan and nothing trips: it was the operator's command. A belt that stopped
+  on its own would have tripped the line.
+- Close the gate and select **Auto**. The mode only changes at rest.
+
+Say: *"Manual bypasses the sequence, not the protection. The same interlocks
+are enforced per device, and nine Manual scenarios check it on every runtime,
+the PLC included."*
+
 ## 5. The same scenario on a real PLC runtime (3 minutes, needs OpenPLC)
 
 On **Feeder jam recovery**, click **Compare runtimes**. The same scenario
