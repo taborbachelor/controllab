@@ -35,7 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from services.control.alarms import Alarm
-from services.control.line_state import LineState, StartInhibit
+from services.control.line_state import LineMode, LineState, StartInhibit
 
 LINE_STATES: tuple[LineState, ...] = (
     LineState.IDLE,      # 0
@@ -45,6 +45,12 @@ LINE_STATES: tuple[LineState, ...] = (
     LineState.FAULTED,   # 4
     LineState.ESTOPPED,  # 5
     LineState.MANUAL,    # 6  (Manual mode, completing Phase 2)
+)
+
+# The `mode` register (Manual mode, completing Phase 2).
+MODES: tuple[LineMode, ...] = (
+    LineMode.AUTO,    # 0
+    LineMode.MANUAL,  # 1
 )
 
 FAULT_REASONS: tuple[str | None, ...] = (
@@ -80,12 +86,14 @@ ALARMS: tuple[tuple[str, str, bool], ...] = (
 )
 _ALARM_INDEX = {alarm_id: i for i, (alarm_id, _, _) in enumerate(ALARMS)}
 
-REGISTER_NAMES = ("line_state", "fault_reason", "alarms_active", "alarms_unacked", "first_out", "start_inhibit")
+REGISTER_NAMES = (
+    "line_state", "fault_reason", "alarms_active", "alarms_unacked", "first_out", "start_inhibit", "mode",
+)
 UNKNOWN = 0xFFFF  # a reason/state this table doesn't know -- published rather than guessed
 
 
 def encode(line) -> list[int]:
-    """A LineController's status, as the five register values."""
+    """A LineController's status, as the register values in REGISTER_NAMES order."""
     active = unacked = 0
     first_out = 0
     for alarm in line.alarms.all_alarms:
@@ -98,7 +106,8 @@ def encode(line) -> list[int]:
             first_out = _ALARM_INDEX[alarm.id] + 1
     state = LINE_STATES.index(line.state) if line.state in LINE_STATES else UNKNOWN
     reason = FAULT_REASONS.index(line.fault_reason) if line.fault_reason in FAULT_REASONS else UNKNOWN
-    return [state, reason, active, unacked, first_out, int(line.start_inhibit)]
+    mode = MODES.index(line.mode) if line.mode in MODES else UNKNOWN
+    return [state, reason, active, unacked, first_out, int(line.start_inhibit), mode]
 
 
 @dataclass
@@ -107,6 +116,7 @@ class ControllerStatus:
     fault_reason: str | None
     alarms: list[Alarm]
     start_inhibit: StartInhibit = StartInhibit.NONE
+    mode: LineMode | None = LineMode.AUTO  # None: a code this table doesn't know
 
     @property
     def latched_alarms(self) -> list[Alarm]:
@@ -117,7 +127,7 @@ class ControllerStatus:
 
 
 def decode(registers: list[int]) -> ControllerStatus:
-    state_code, reason_code, active, unacked, first_out, inhibit = registers
+    state_code, reason_code, active, unacked, first_out, inhibit, mode_code = registers
     state = LINE_STATES[state_code] if state_code < len(LINE_STATES) else None
     reason = FAULT_REASONS[reason_code] if reason_code < len(FAULT_REASONS) else f"unknown reason code {reason_code}"
     alarms = [
@@ -136,22 +146,25 @@ def decode(registers: list[int]) -> ControllerStatus:
     for member in StartInhibit:
         if member and inhibit & member:
             known |= member
-    return ControllerStatus(state, reason, alarms, known)
+    mode = MODES[mode_code] if mode_code < len(MODES) else None
+    return ControllerStatus(state, reason, alarms, known, mode)
 
 
 def render_markdown() -> str:
     """The code tables, for the register-map document."""
     lines = ["### `line_state` codes", "", "| Code | State |", "|---:|---|"]
     lines += [f"| {i} | {s.name} |" for i, s in enumerate(LINE_STATES)]
+    lines += ["", "### `mode` codes", "", "| Code | Mode |", "|---:|---|"]
+    lines += [f"| {i} | {m.name} |" for i, m in enumerate(MODES)]
     lines += ["", "### `fault_reason` codes", "", "| Code | Reason |", "|---:|---|"]
     lines += [f"| {i} | {r or '(none)'} |" for i, r in enumerate(FAULT_REASONS)]
     lines += ["", "### Alarm bits (`alarms_active`, `alarms_unacked`; `first_out` = bit + 1)", "",
               "| Bit | Alarm | Description | Class |", "|---:|---|---|---|"]
     lines += [f"| {i} | `{a}` | {d} | {'warning' if w else 'trip'} |" for i, (a, d, w) in enumerate(ALARMS)]
-    lines += ["", "### `start_inhibit` bits (why the most recent start request was refused; 0 = NONE)", "",
+    lines += ["", "### `start_inhibit` bits (why the most recent start or mode request was refused; 0 = NONE)", "",
               "| Bit value | Reason |", "|---:|---|"]
     lines += [f"| {int(m)} | {m.name} |" for m in StartInhibit if m]
-    lines += ["", "Set only when a start command is evaluated: NONE after an accepted start, unchanged when no "
-              "start is requested -- so it proves a start was actually issued.", ""]
+    lines += ["", "Set only when a start (line or Manual device) or a mode change is evaluated: NONE after an "
+              "accepted one, unchanged when none is requested -- so it proves the request was actually issued.", ""]
     lines += ["", f"A value this table doesn't know is published as {UNKNOWN} rather than guessed.", ""]
     return "\n".join(lines)

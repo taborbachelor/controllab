@@ -1,0 +1,20 @@
+name: Manual Feeder Start Refused Without The Conveyor Proven
+description: "In Manual the operator can start the feeder only onto a proven running belt: pressed with the conveyor stopped, the start is refused and says why."
+
+given:
+  line_state: manual
+
+when:
+  start_feeder: true
+
+trigger: start_feeder
+
+expect:
+  line_state: manual
+  start_inhibit: ["CONVEYOR_NOT_RUNNING"]
+  feeder_run_commanded: false
+
+within:
+  seconds: 0.3
+
+interlock: "Conveyor proven running"

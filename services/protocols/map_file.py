@@ -197,7 +197,7 @@ def _status(section: object, problems: list[str]) -> tuple[StatusRegister, ...]:
     if unknown:
         problems.append(f"status: unknown register(s) {sorted(unknown)} (known: {list(STATUS_NAMES)})")
     if missing:
-        problems.append(f"status: all six registers or none -- missing {sorted(missing)}")
+        problems.append(f"status: all {len(STATUS_NAMES)} registers or none -- missing {sorted(missing)}")
     out = []
     for name in STATUS_NAMES:
         address = section.get(name)

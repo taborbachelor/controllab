@@ -20,6 +20,7 @@ class FakeScenario:
     interlock: str | None = None
     path: Path = ROOT / "faults" / "fake.yaml"
     then: tuple = ()
+    given: dict = field(default_factory=dict)
 
 
 @dataclass

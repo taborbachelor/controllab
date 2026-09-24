@@ -100,6 +100,7 @@ def render_markdown(
     if realtime is not None and realtime.passes > 1:
         lines += _spread_table(report, scenarios_root, realtime)
     lines += _coverage_table(report)
+    lines += _modes_table(report)
     if report.unknown_tags:
         lines += ["## Unrecognized interlock tags", ""]
         lines += [f"- `{tag}` — matches no §6.3 row (likely a typo)" for tag in report.unknown_tags]
@@ -210,6 +211,23 @@ def _coverage_table(report: CoverageReport) -> list[str]:
             f"| {STATUS_LABEL[row_cov.status]} | {row_cov.row.name} | {row_cov.row.kind} | {names} "
             f"| {_cell(row_cov.row.note) or '—'} |"
         )
+    lines.append("")
+    return lines
+
+
+MODE_MARK = {"validated": "✅ validated", "failing": "❌ failing", "not observable": "👁️ not observable",
+             "not run": "— not run"}
+
+
+def _modes_table(report: CoverageReport) -> list[str]:
+    lines = [
+        "## Operating modes validated (docs/CONTROL-LAB.md §6.1)",
+        "",
+        "| Status | Mode | Scenarios run | Passed | Not observable |",
+        "|---|---|---:|---:|---:|",
+    ]
+    for m in report.mode_counts():
+        lines.append(f"| {MODE_MARK[m.status]} | {m.mode} | {m.run} | {m.passed} | {m.not_observable} |")
     lines.append("")
     return lines
 

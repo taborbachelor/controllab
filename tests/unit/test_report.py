@@ -2,7 +2,7 @@
 Scenario/ScenarioResult rather than real YAML files or a real rig --
 build_report() only ever reads .interlock/.name and .passed.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from services.testing.report import INTERLOCKS, CoverageReport, InterlockRow, RowCoverage, build_report
@@ -13,6 +13,7 @@ class FakeScenario:
     name: str
     interlock: str | None = None
     path: Path = Path("fake.yaml")
+    given: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -169,3 +170,21 @@ def test_verdict_is_partial_when_nothing_failed_but_something_went_unobserved():
     assert build_report(partly).verdict == "PARTIAL"
     failing = every_row[:-1] + [(every_row[-1][0], FakeResult(False))]
     assert build_report(failing).verdict == "FAIL"
+
+
+def test_modes_are_counted_by_the_mode_each_scenario_runs_in():
+    report = build_report([
+        (FakeScenario("auto ok"), FakeResult(True)),
+        (FakeScenario("manual ok", given={"line_state": "manual"}), FakeResult(True)),
+        (FakeScenario("manual bad", given={"line_state": "manual"}), FakeResult(False)),
+    ])
+    auto, manual = report.mode_counts()
+    assert (auto.mode, auto.run, auto.passed, auto.status) == ("Auto", 1, 1, "validated")
+    assert (manual.mode, manual.run, manual.passed, manual.status) == ("Manual", 2, 1, "failing")
+
+
+def test_a_mode_with_no_scenarios_is_not_run_and_one_seen_only_blind_is_not_observable():
+    report = build_report([(FakeScenario("m", given={"line_state": "manual"}), FakeResult(False, not_observable=True))])
+    auto, manual = report.mode_counts()
+    assert auto.status == "not run"
+    assert manual.status == "not observable"

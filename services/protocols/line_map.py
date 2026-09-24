@@ -64,6 +64,15 @@ LINE_REGISTER_MAP = RegisterMap(
         HmiCoil("stop", 101, "Normal stop -- upstream first, then purge"),
         HmiCoil("reset", 102, "Reset a FAULTED/ESTOPPED line once the cause is cleared"),
         HmiCoil("acknowledge", 103, "Acknowledge all latched alarms"),
+        # Manual mode (completing Phase 2): appended, request bits 4-11.
+        HmiCoil("select_auto", 104, "Select Auto mode (accepted only at rest)"),
+        HmiCoil("select_manual", 105, "Select Manual mode (accepted only at rest)"),
+        HmiCoil("start_conveyor", 106, "Manual: start the conveyor"),
+        HmiCoil("stop_conveyor", 107, "Manual: stop the conveyor (the feeder stops with it)"),
+        HmiCoil("open_gate", 108, "Manual: open the gate"),
+        HmiCoil("close_gate", 109, "Manual: close the gate"),
+        HmiCoil("start_feeder", 110, "Manual: start the feeder (needs the conveyor proven running)"),
+        HmiCoil("stop_feeder", 111, "Manual: stop the feeder"),
     ),
     # Controller status (Phase 7 step 3b; moved from 200-204 in step 4 so
     # it sits in the controller's single write range). Codes in
@@ -83,5 +92,12 @@ LINE_REGISTER_MAP = RegisterMap(
 LINE_REGISTER_MAP = dataclasses.replace(
     LINE_REGISTER_MAP,
     status_registers=LINE_REGISTER_MAP.status_registers
-    + (StatusRegister("start_inhibit", 7, "Why the most recent start request was refused (bits; 0 = none)"),),
+    + (StatusRegister("start_inhibit", 7, "Why the most recent start or mode request was refused (bits; 0 = none)"),),
+)
+# Manual mode (completing Phase 2): the mode register, APPENDED at 8 for the
+# same reason; the controller write range grows to 0-8.
+LINE_REGISTER_MAP = dataclasses.replace(
+    LINE_REGISTER_MAP,
+    status_registers=LINE_REGISTER_MAP.status_registers
+    + (StatusRegister("mode", 8, "Operator-selected mode (0 = AUTO, 1 = MANUAL)"),),
 )

@@ -44,6 +44,14 @@ hmi:
     stop: 3101
     reset: 3102
     acknowledge: 3103
+    select_auto: 3104
+    select_manual: 3105
+    start_conveyor: 3106
+    stop_conveyor: 3107
+    open_gate: 3108
+    close_gate: 3109
+    start_feeder: 3110
+    stop_feeder: 3111
 
 status:
   line_state: 4001
@@ -52,3 +60,4 @@ status:
   alarms_unacked: 4004
   first_out: 4005
   start_inhibit: 4007
+  mode: 4008

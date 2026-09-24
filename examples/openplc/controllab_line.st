@@ -17,7 +17,7 @@
       Coils                start 0    size 3    -> %QX100.0 .. %QX100.2
       Input registers      start 0    size 2    -> %IW100 .. %IW101
       Holding - read       start 100  size 1    -> %IW102 (after the input registers)
-      Holding - write      start 0    size 8    -> %QW100 .. %QW107
+      Holding - write      start 0    size 9    -> %QW100 .. %QW108
 
   Timings match ControlLab's test rig (services/testing/rig.py), so this
   program and the reference controller answer the same scenarios alike:
@@ -62,6 +62,7 @@ PROGRAM controllab_line
     HMI_ACK AT %QW106 : WORD;
     ST_START_INHIBIT AT %QW107 : WORD; (* why the last start was refused: 1 bin low, 2 hopper HH,
                                           4 unacked alarm, 8 e-stop, 16 faulted, 32 sensor failed; 0 = none *)
+    ST_MODE AT %QW108 : INT;          (* controller_status.MODES code: 0 AUTO, 1 MANUAL *)
   END_VAR
 
   (* IEC 61131-3: a VAR block holds either located variables or ordinary
@@ -392,6 +393,7 @@ PROGRAM controllab_line
   ST_FIRST_OUT := first_out_holder;
   HMI_ACK := ack_bits;
   ST_START_INHIBIT := start_inhibit;
+  ST_MODE := 0;  (* AUTO: this program has no Manual mode yet, and ignores the Manual request bits *)
 END_PROGRAM
 
 

@@ -10,9 +10,10 @@ typo'd key in a YAML file should fail loudly at setup time, not produce
 a scenario that silently checks nothing.
 
 `given.line_state` is handled separately by the runner, not through
-APPLY_ACTIONS here — reaching "running" means actually driving the
-sequence (ticking), not a one-shot attribute set, so it doesn't fit the
-apply(rig, value) -> None shape everything else in this module has.
+APPLY_ACTIONS here — reaching "running" (or "manual") means actually
+driving the controller there (ticking), not a one-shot attribute set, so
+it doesn't fit the apply(rig, value) -> None shape everything else in this
+module has.
 """
 from __future__ import annotations
 
@@ -42,7 +43,7 @@ class StatusWithheld:
     def __init__(self, line) -> None:
         self._line = line
 
-    def __getattr__(self, name):  # start/stop/reset/acknowledge/scan
+    def __getattr__(self, name):  # the pushbuttons and scan
         return getattr(self._line, name)
 
     @property
@@ -57,6 +58,7 @@ class StatusWithheld:
         raise NotObservable("the controller's status block is withheld")
 
     state = property(_withheld)
+    mode = property(_withheld)
     fault_reason = property(_withheld)
     alarms = property(_withheld)
     start_inhibit = property(_withheld)
@@ -88,6 +90,15 @@ def _apply_reset(rig: Rig, value: bool) -> None:
 def _apply_acknowledge(rig: Rig, value: bool) -> None:
     if value:
         rig.line.acknowledge()
+
+
+def _pushbutton(name: str):
+    """A Manual-mode pushbutton (docs/CONTROL-LAB.md §6.1): one-shot, like
+    start/stop -- `true` presses it."""
+    def apply(rig: Rig, value: bool) -> None:
+        if value:
+            getattr(rig.line, name)()
+    return apply
 
 
 def _apply_estop(rig: Rig, value: str) -> None:
@@ -187,6 +198,14 @@ APPLY_ACTIONS: dict[str, Callable[[Rig, object], None]] = {
     "stop": _apply_stop,
     "reset": _apply_reset,
     "acknowledge": _apply_acknowledge,
+    "select_manual": _pushbutton("select_manual"),
+    "select_auto": _pushbutton("select_auto"),
+    "start_conveyor": _pushbutton("start_conveyor"),
+    "stop_conveyor": _pushbutton("stop_conveyor"),
+    "open_gate": _pushbutton("open_gate"),
+    "close_gate": _pushbutton("close_gate"),
+    "start_feeder": _pushbutton("start_feeder"),
+    "stop_feeder": _pushbutton("stop_feeder"),
     "estop": _apply_estop,
     "conveyor_trip": _apply_conveyor_trip,
     "feeder_trip": _apply_feeder_trip,
@@ -209,6 +228,8 @@ APPLY_ACTIONS: dict[str, Callable[[Rig, object], None]] = {
 READ_FIELDS: dict[str, Callable[[Rig], object]] = {
     "line_state": lambda rig: rig.line.state.name.lower(),
     "fault_reason": lambda rig: rig.line.fault_reason,
+    # The operator-selected mode, "auto" or "manual" (docs/CONTROL-LAB.md §6.1).
+    "mode": lambda rig: rig.line.mode.name.lower(),
     "conveyor_running": lambda rig: rig.plant.conveyor.motor.running,
     "feeder_running": lambda rig: rig.plant.feeder.motor.running,
     # What the controller is COMMANDING the field to do: its output coils,
@@ -253,7 +274,7 @@ READ_FIELDS: dict[str, Callable[[Rig], object]] = {
 # (tests/unit/test_observability.py), so a new controller field can't
 # silently be treated as always observable.
 CONTROLLER_FIELDS = frozenset(
-    {"line_state", "fault_reason", "any_unacknowledged_trip", "latched_alarm_ids", "first_out", "start_inhibit"}
+    {"line_state", "mode", "fault_reason", "any_unacknowledged_trip", "latched_alarm_ids", "first_out", "start_inhibit"}
 )
 
 

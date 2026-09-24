@@ -1,0 +1,50 @@
+name: E-Stop In Manual -- Everything Off, Reset Returns To Manual With Nothing Running
+description: "The mode survives an E-stop: after release, acknowledge and reset the line is back in Manual, and nothing restarts on its own."
+title: "Conveyor started by hand and proven running"
+
+given:
+  line_state: manual
+
+when:
+  start_conveyor: true
+
+expect:
+  conveyor_running: true
+
+within:
+  seconds: 1.0
+
+then:
+  - title: "E-stop: everything off"
+    when:
+      estop: tripped
+    expect:
+      line_state: estopped
+      conveyor_run_commanded: false
+      feeder_run_commanded: false
+      gate_open_commanded: false
+    within:
+      seconds: 0.5
+  - title: "E-stop released and alarm acknowledged"
+    when:
+      estop: healthy
+      acknowledge: true
+    expect:
+      estop_healthy: true
+      any_unacknowledged_trip: false
+    within:
+      seconds: 0.5
+  - title: "Reset: back in Manual, nothing running"
+    when:
+      reset: true
+    expect:
+      line_state: manual
+      mode: manual
+      conveyor_run_commanded: false
+      feeder_run_commanded: false
+      gate_open_commanded: false
+    within:
+      seconds: 0.5
+
+trigger: start_conveyor
+interlock: "E-stop healthy"

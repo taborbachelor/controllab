@@ -21,6 +21,7 @@ from dataclasses import dataclass
 
 from services.control.interlocks import Interlocks
 from services.control.line_controller import LineController
+from services.control.line_state import StartInhibit
 
 
 class JamTripRemoved(LineController):
@@ -103,6 +104,34 @@ class PurgeTooShort(LineController):
         self.purge_time_s = self.purge_time_s / 4
 
 
+class ManualFeederBeforeBelt(LineController):
+    """Manual mode lets the feeder run before the belt proves running: "let
+    operators prime the screw first". Production's _manual_feeder_refusal
+    and _manual_feed_permitted, each minus its conveyor condition."""
+
+    def _manual_feeder_refusal(self):
+        inhibit, reasons = StartInhibit.NONE, []
+        # REGRESSION: the conveyor-proven check was removed here.
+        if self.interlocks.bin_low:
+            inhibit |= StartInhibit.BIN_LOW
+            reasons.append("bin low")
+        if self.interlocks.hopper_high:
+            inhibit |= StartInhibit.HOPPER_HIGH
+            reasons.append("hopper at the high switch")
+        if self.interlocks.hopper_high_high:
+            inhibit |= StartInhibit.HOPPER_HIGH_HIGH
+            reasons.append("hopper at high-high")
+        if self.interlocks.hopper_weight_failed:
+            inhibit |= StartInhibit.SENSOR_FAILED
+            reasons.append("hopper weight signal failed")
+        inhibit, reasons = self._unacked_refusal(inhibit, reasons)
+        return inhibit, reasons
+
+    def _manual_feed_permitted(self) -> bool:
+        # REGRESSION: the proven-belt condition was removed here.
+        return not self.interlocks.hopper_high
+
+
 @dataclass(frozen=True)
 class Regression:
     name: str
@@ -144,6 +173,12 @@ REGRESSIONS: dict[str, Regression] = {
             "The stop sequence's belt purge was cut to a quarter, shorter than the belt's transit time.",
             "startup/normal_operation.yaml",
             "Stop -> the conveyor runs on until the belt is empty",
+        ),
+        Regression(
+            "manual-feeder-before-belt", ManualFeederBeforeBelt,
+            "Manual mode lets the feeder start and run before the conveyor proves running.",
+            "manual/manual_feeder_refused_without_conveyor.yaml",
+            "Manual feeder start with the conveyor stopped -> refused (CONVEYOR_NOT_RUNNING), feeder stays off",
         ),
     )
 }

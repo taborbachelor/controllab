@@ -1,0 +1,18 @@
+name: Mode Change Refused While The Line Runs
+description: "The mode changes only at rest: selecting Manual during an Auto run is refused, reported, and the line runs on in Auto."
+
+given:
+  line_state: running
+
+when:
+  select_manual: true
+
+trigger: select_manual
+
+expect:
+  start_inhibit: ["LINE_NOT_IDLE"]
+  line_state: running
+  mode: auto
+
+within:
+  seconds: 0.3

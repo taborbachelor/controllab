@@ -667,8 +667,11 @@ class LineController:
         # proven belt (an operator stopping the conveyor takes the feeder with
         # it, no trip -- an uncommanded loss is a trip, above), and stops at
         # the high switch.
-        if not self._manual_conveyor_proven or self.interlocks.hopper_high:
+        if not self._manual_feed_permitted():
             self.feeder_ctrl.command_run(False)
+
+    def _manual_feed_permitted(self) -> bool:
+        return self._manual_conveyor_proven and not self.interlocks.hopper_high
 
     def _supervise_manual_conveyor(self, dt: float) -> None:
         if not self.conveyor_ctrl.commanded_run:

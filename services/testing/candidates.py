@@ -47,7 +47,7 @@ from services.testing.scenario import Scenario, ScenarioLoadError
 from services.testing.vocabulary import APPLY_ACTIONS, CONTROLLER_FIELDS, READ_FIELDS
 
 ERROR, WARNING, JUDGMENT, OK = "error", "warning", "judgment", "ok"
-LINE_STATES = {"idle", "running"}
+LINE_STATES = {"idle", "running", "manual"}
 REJECTED, NEEDS_JUDGMENT, READY = "REJECTED", "NEEDS JUDGMENT", "READY FOR REVIEW"
 
 

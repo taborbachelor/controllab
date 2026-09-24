@@ -43,6 +43,14 @@ COMMANDS = {
     "stop": LineController.stop,
     "reset": LineController.reset,
     "acknowledge": LineController.acknowledge,
+    "select_auto": LineController.select_auto,
+    "select_manual": LineController.select_manual,
+    "start_conveyor": LineController.start_conveyor,
+    "stop_conveyor": LineController.stop_conveyor,
+    "open_gate": LineController.open_gate,
+    "close_gate": LineController.close_gate,
+    "start_feeder": LineController.start_feeder,
+    "stop_feeder": LineController.stop_feeder,
 }
 
 

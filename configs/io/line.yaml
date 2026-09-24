@@ -40,6 +40,14 @@ hmi:
     stop: 101
     reset: 102
     acknowledge: 103
+    select_auto: 104
+    select_manual: 105
+    start_conveyor: 106
+    stop_conveyor: 107
+    open_gate: 108
+    close_gate: 109
+    start_feeder: 110
+    stop_feeder: 111
 
 status:
   line_state: 1
@@ -48,3 +56,4 @@ status:
   alarms_unacked: 4
   first_out: 5
   start_inhibit: 7
+  mode: 8

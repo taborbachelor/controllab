@@ -347,8 +347,12 @@ def _apply_given(rig: Rig, scenario: Scenario, invariants: Invariants, step: Cal
 
     if line_state == "idle":
         return None
+    if line_state == "manual":
+        return _reach_manual(rig, scenario, invariants, step)
     if line_state != "running":
-        raise ScenarioLoadError(f"{scenario.path}: unsupported given.line_state: {line_state!r} (known: idle, running)")
+        raise ScenarioLoadError(
+            f"{scenario.path}: unsupported given.line_state: {line_state!r} (known: idle, running, manual)"
+        )
 
     rig.line.start()
     for i in range(1, round(MAX_GIVEN_RUNUP_S / DT) + 1):
@@ -361,6 +365,32 @@ def _apply_given(rig: Rig, scenario: Scenario, invariants: Invariants, step: Cal
             return None
 
     raise GivenUnreachable(f"{scenario.path}: given.line_state=running was never reached within {MAX_GIVEN_RUNUP_S}s")
+
+
+def _reach_manual(rig: Rig, scenario: Scenario, invariants: Invariants, step: Callable[[], None]) -> ScenarioResult | None:
+    """Selects Manual from IDLE and waits for the controller to confirm it.
+    Only the controller can confirm it: selecting a mode moves nothing in
+    the field. So against a controller that publishes no status the whole
+    scenario is not observable -- not run on an unconfirmed mode, where a
+    manual pushbutton refused in Auto would look exactly like one refused
+    by a Manual-mode permissive."""
+    rig.line.select_manual()
+    for i in range(1, round(MAX_GIVEN_RUNUP_S / DT) + 1):
+        step()
+        try:
+            invariants.check()
+        except InvariantViolation as e:
+            return ScenarioResult(scenario, False, i * DT, f"invariant violated reaching given.line_state=manual: {e}")
+        try:
+            if rig.line.state.name == "MANUAL":
+                return None
+        except NotObservable:
+            return ScenarioResult(
+                scenario, False, 0.0,
+                "not observable: given.line_state=manual needs the controller's status block to confirm the mode",
+                not_observable=True,
+            )
+    raise GivenUnreachable(f"{scenario.path}: given.line_state=manual was never reached within {MAX_GIVEN_RUNUP_S}s")
 
 
 def _line_running(rig: Rig) -> bool:

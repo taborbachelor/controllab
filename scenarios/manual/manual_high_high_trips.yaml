@@ -1,0 +1,31 @@
+name: Hopper High-High In Manual Trips The Line
+description: "The overfill trip is enforced in Manual exactly as in Auto: with material moving, high-high trips the line and stops the conveyor at once."
+title: "Conveyor started by hand and proven running"
+
+given:
+  line_state: manual
+
+when:
+  start_conveyor: true
+
+expect:
+  conveyor_running: true
+
+within:
+  seconds: 1.0
+
+then:
+  - title: "High-high: the line trips, the conveyor stops at once"
+    when:
+      hopper_level_pct: 97
+    expect:
+      line_state: faulted
+      fault_reason: "hopper high-high"
+      conveyor_run_commanded: false
+      feeder_run_commanded: false
+      gate_open_commanded: false
+    within:
+      seconds: 0.5
+
+trigger: start_conveyor
+interlock: "Hopper high-high"

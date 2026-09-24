@@ -35,7 +35,7 @@ import threading
 from collections.abc import Callable
 from contextlib import nullcontext
 
-from services.control.line_state import LineState
+from services.control.line_state import LineMode, LineState
 from services.protocols import controller_status
 from services.protocols.external_controller import ExternalController
 from services.protocols.line_map import LINE_REGISTER_MAP
@@ -44,7 +44,7 @@ from services.protocols.register_map import HmiHandshake, IOImageDataStore, Modb
 from services.testing.rig import DT, Rig, build_rig
 from services.testing.vocabulary import NotObservable
 
-COMMANDS = ("start", "stop", "reset", "acknowledge")
+COMMANDS = ("start", "stop", "reset", "acknowledge", "select_auto", "select_manual", "start_conveyor", "stop_conveyor", "open_gate", "close_gate", "start_feeder", "stop_feeder")
 
 
 class ObservedLine:
@@ -104,12 +104,43 @@ class ObservedLine:
     def acknowledge(self) -> None:
         self._command("acknowledge")
 
+    def select_auto(self) -> None:
+        self._command("select_auto")
+
+    def select_manual(self) -> None:
+        self._command("select_manual")
+
+    def start_conveyor(self) -> None:
+        self._command("start_conveyor")
+
+    def stop_conveyor(self) -> None:
+        self._command("stop_conveyor")
+
+    def open_gate(self) -> None:
+        self._command("open_gate")
+
+    def close_gate(self) -> None:
+        self._command("close_gate")
+
+    def start_feeder(self) -> None:
+        self._command("start_feeder")
+
+    def stop_feeder(self) -> None:
+        self._command("stop_feeder")
+
     @property
     def state(self) -> LineState:
         status = self._published()
         if status.state is None:
             raise RuntimeError("the controller published a line_state code the status table doesn't know")
         return status.state
+
+    @property
+    def mode(self) -> LineMode:
+        status = self._published()
+        if status.mode is None:
+            raise RuntimeError("the controller published a mode code the status table doesn't know")
+        return status.mode
 
     @property
     def fault_reason(self) -> str | None:

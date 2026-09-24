@@ -5,11 +5,16 @@ Driven through LineController's own pushbuttons against the real simulated
 Plant, with the continuous invariants checked on every tick wherever
 material moves -- the same three a scenario run checks.
 """
+from pathlib import Path
+
 import pytest
 
+from services.control.line_controller import LineController
 from services.control.line_state import LineMode, LineState, StartInhibit
 from services.testing.invariants import Invariants
 from services.testing.rig import DT, build_rig, run, tick
+from services.testing.runner import run_scenario
+from services.testing.scenario import GivenUnreachable, Scenario
 
 
 def manual_rig(**plant_overrides):
@@ -483,3 +488,32 @@ def test_every_manual_pushbutton_reaches_the_command_sink():
         "select_manual", "start_conveyor", "open_gate", "start_feeder",
         "stop_feeder", "close_gate", "stop_conveyor", "select_auto",
     ]
+
+
+# ---- the scenario runner: given.line_state: manual ------------------------
+
+MANUAL_OPERATION = Path(__file__).resolve().parents[2] / "scenarios" / "manual" / "manual_operation.yaml"
+
+
+def test_given_manual_is_confirmed_by_the_controller_before_when():
+    result = run_scenario(Scenario.load(MANUAL_OPERATION))
+    assert result.passed
+    setup = [e for e in result.events if e.t < result.when_applied_t]
+    assert [e.data for e in setup if e.type == "state_changed"] == [{"from": "idle", "to": "manual", "fault_reason": None}]
+
+
+def test_given_manual_without_a_status_block_is_not_observable_not_run_blind():
+    result = run_scenario(Scenario.load(MANUAL_OPERATION), status=False)
+    assert result.not_observable and not result.passed
+    assert "needs the controller's status block" in result.detail
+    assert result.when_applied_t is None  # nothing was run on an unconfirmed mode
+
+
+class _NoManualMode(LineController):
+    def _change_mode(self, mode):
+        pass  # a controller that never leaves Auto
+
+
+def test_given_manual_never_reached_is_a_load_error_not_a_verdict():
+    with pytest.raises(GivenUnreachable, match="given.line_state=manual was never reached"):
+        run_scenario(Scenario.load(MANUAL_OPERATION), line_cls=_NoManualMode)

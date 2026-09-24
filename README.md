@@ -33,17 +33,19 @@ still plugged.
 
 **What's verified:**
 
-- 29 scenarios covering all 11 interlocks in the spec: trips, recoveries,
-  E-stop, and instrument faults (stuck and failed sensors, a 1oo2 overfill
-  trip with a switch/transmitter disagreement alarm).
+- 38 scenarios covering all 11 interlocks in the spec, in both Auto and
+  Manual mode: trips, recoveries, E-stop, and instrument faults (stuck and
+  failed sensors, a 1oo2 overfill trip with a switch/transmitter
+  disagreement alarm).
 - The same scenario files run unchanged against **OpenPLC** executing an
   IEC 61131-3 Structured Text port of the controller over Modbus TCP, in
-  real time: **29/29 scenarios, 87/87 runs**
-  ([commissioning report](examples/openplc/COMMISSIONING-REPORT.md)).
+  real time: **29/29 scenarios, 87/87 runs** for the Auto suite
+  ([commissioning report](examples/openplc/COMMISSIONING-REPORT.md));
+  Manual mode is being ported to the PLC program.
 - Mass is conserved to the milligram and checked on every scan, and every
   run is deterministic, so the same scenario gives the same result every
   time.
-- 710 automated tests, run on every push (Python 3.12 and 3.13; the badge
+- 743 automated tests, run on every push (Python 3.12 and 3.13; the badge
   above is the latest run). The demo site is rebuilt from the current code
   on every push too, so it can't drift from the repository.
 
@@ -168,8 +170,8 @@ E-stop. The result is an engineering record:
 
 Nothing in that record is inferred beyond what the runner observed.
 
-The repository has 29 scenarios covering all 11 interlock rows of the
-specification. New scenarios, hand-written or AI-generated, go through a
+The repository has 38 scenarios covering all 11 interlock rows of the
+specification, in Auto and Manual mode. New scenarios, hand-written or AI-generated, go through a
 deterministic review gate that rejects a scenario that is vacuous (it still
 passes with its fault removed), non-deterministic, or disagrees between
 the in-process and Modbus runs.
@@ -207,7 +209,7 @@ Structured Text port of the controller. Against a PLC, scenarios run in real
 time, with limits in plant time and a stated I/O latency allowance. Every
 scenario starts from a cold PLC restart.
 
-**Result on OpenPLC: 29/29 scenarios over 3 passes (87/87 runs), none needing the latency
+**Result on OpenPLC (the Auto suite; Manual is being ported to the PLC program): 29/29 scenarios over 3 passes (87/87 runs), none needing the latency
 allowance, 11/11 interlock rows covered**
 ([`examples/openplc/COMMISSIONING-REPORT.md`](examples/openplc/COMMISSIONING-REPORT.md)).
 
@@ -324,7 +326,7 @@ Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md).
 
 ## Status
 
-All roadmap phases are complete, and 710 tests pass.
+All roadmap phases are complete, and 743 tests pass.
 
 | Phase | Focus | Status |
 |---|---|---|

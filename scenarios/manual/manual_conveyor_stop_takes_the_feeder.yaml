@@ -1,0 +1,39 @@
+name: Stopping The Conveyor In Manual Stops The Feeder With It, Without A Trip
+description: "The feeder never runs onto a stopped belt, in Manual too: when the operator stops the conveyor, the feeder stops in the same scan. It's the operator's command, so the line doesn't trip."
+title: "Conveyor started by hand and proven running"
+
+given:
+  line_state: manual
+
+when:
+  start_conveyor: true
+
+trigger: start_conveyor
+
+expect:
+  conveyor_running: true
+
+within:
+  seconds: 1.0
+
+then:
+  - title: "Gate opened and feeder started: material flows"
+    when:
+      open_gate: true
+      start_feeder: true
+    expect:
+      feeder_flowing: true
+    within:
+      seconds: 2.0
+  - title: "Operator stops the conveyor: the feeder stops in the same scan, no trip"
+    when:
+      stop_conveyor: true
+    expect:
+      conveyor_run_commanded: false
+      feeder_run_commanded: false
+      line_state: manual
+      fault_reason: null
+    within:
+      seconds: 0.2
+
+interlock: "Conveyor proven running"

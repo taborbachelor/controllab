@@ -1,0 +1,18 @@
+name: A Manual Device Command During An Auto Run Is Refused
+description: "An operator can't override the automatic sequence from the device pushbuttons: pressed while the line runs in Auto, a device start is refused, reported as the wrong mode, and the line runs on."
+
+given:
+  line_state: running
+
+when:
+  start_feeder: true
+
+trigger: start_feeder
+
+expect:
+  start_inhibit: ["WRONG_MODE"]
+  line_state: running
+  mode: auto
+
+within:
+  seconds: 0.3

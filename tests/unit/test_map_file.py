@@ -35,7 +35,7 @@ def test_the_relocated_map_is_five_ranges_at_its_own_offsets():
     loaded, _ = load_map(RELOCATED, build_line_io_image())
     assert loaded.controller_ranges() == ControllerRanges(
         discrete_inputs=(1000, 13), input_registers=(2000, 2), holding_read=(4100, 1),
-        coils=(3000, 3), holding_write=(4000, 8),
+        coils=(3000, 3), holding_write=(4000, 9),
     )
 
 
@@ -61,7 +61,7 @@ def test_leaving_out_the_status_block_declares_a_controller_without_one(tmp_path
 
 def test_a_partial_status_block_is_refused(tmp_path):
     path = relocated_with(tmp_path, "  start_inhibit: 4007\n", "")
-    with pytest.raises(MapFileError, match=r"all six registers or none -- missing \['start_inhibit'\]"):
+    with pytest.raises(MapFileError, match=r"all 7 registers or none -- missing \['start_inhibit'\]"):
         load_map(path, build_line_io_image())
 
 

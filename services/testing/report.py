@@ -71,10 +71,10 @@ INTERLOCKS: list[InterlockRow] = [
         "Conveyor proven running",
         "Permissive + trip for feeder",
         note="the permissive half (feeder cannot run onto a stopped belt) is proven "
-        "structurally, not by a declarative scenario -- LineController's public API "
-        "has no way to even attempt the wrong order; see tests/integration/"
-        "test_line_controller.py::test_wrong_order_spillage_is_structurally_"
-        "unreachable_through_control",
+        "declaratively in Manual mode, the one place an operator can attempt the wrong "
+        "order (manual_feeder_refused_without_conveyor); in Auto the sequence has no way "
+        "to attempt it, see tests/integration/test_line_controller.py::"
+        "test_wrong_order_spillage_is_structurally_unreachable_through_control",
     ),
     InterlockRow("Hopper high-high", "Trip"),
     InterlockRow("Hopper level instruments agree", "Alarm"),
@@ -152,6 +152,50 @@ class CoverageReport:
         not_covered or covered_but_failing both count; a row whose only
         scenario is failing is not meaningfully "covered.\""""
         return sum(1 for row in self.rows if row.status in ("not_covered", "covered_but_failing"))
+
+
+    def mode_counts(self) -> list["ModeCount"]:
+        """Operating modes validated (docs/CONTROL-LAB.md §6.1): each mode's
+        scenarios, by the mode each one runs in."""
+        counts = []
+        for mode in MODES:
+            results = [r for s, r in self.results if scenario_mode(s) == mode]
+            counts.append(ModeCount(
+                mode,
+                run=len(results),
+                passed=sum(1 for r in results if r.passed),
+                not_observable=sum(1 for r in results if r.not_observable),
+            ))
+        return counts
+
+
+MODES = ("Auto", "Manual")
+
+
+def scenario_mode(scenario: Scenario) -> str:
+    """The mode a scenario runs in: Manual when its `given` selects it,
+    otherwise Auto (the default mode). A scenario that asks for a mode
+    change from Auto -- and is refused -- runs in Auto."""
+    return "Manual" if scenario.given.get("line_state") == "manual" else "Auto"
+
+
+@dataclass(frozen=True)
+class ModeCount:
+    mode: str
+    run: int
+    passed: int
+    not_observable: int
+
+    @property
+    def status(self) -> str:
+        """validated / failing / not observable / not run."""
+        if self.run == 0:
+            return "not run"
+        if self.passed + self.not_observable < self.run:
+            return "failing"
+        if self.passed == 0:
+            return "not observable"
+        return "validated"
 
 
 def build_report(results: list[tuple[Scenario, ScenarioResult]]) -> CoverageReport:

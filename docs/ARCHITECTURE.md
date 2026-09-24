@@ -1184,9 +1184,23 @@ issue and propose the change"):
 - **`StartInhibit`** — now the outcome of the most recent start *or mode*
   request; four bits appended (`CONVEYOR_NOT_RUNNING`, `HOPPER_HIGH`,
   `WRONG_MODE`, `LINE_NOT_IDLE`). `docs/MODBUS-MAP.md` regenerated.
-- **`tests/integration/test_manual_mode.py`** — 32 tests: mode selection
-  and refusals, wrong-mode commands, a manual cycle with the invariants on
-  every tick, each permissive, each trip, E-stop, and the audit trail.
+- **`tests/integration/test_manual_mode.py`** — mode selection and
+  refusals, wrong-mode commands, a manual cycle with the invariants on
+  every tick, each permissive, each trip, E-stop, the audit trail, and
+  the runner's `given.line_state: manual`.
+- **Step 2 — Testing and Modbus.** `vocabulary.py`: the eight pushbuttons
+  (`_pushbutton()`), the `mode` read field (in `CONTROLLER_FIELDS`;
+  `StatusWithheld` withholds it). `runner._reach_manual()`: selects Manual
+  and waits for the controller's word; not observable without a status
+  block. `candidates.LINE_STATES` gains `manual`; `verdict.py` and
+  `services/ai/context.py` describe every new key. `controller_status.py`:
+  `MODES` and a seventh register, `mode`; `line_map.py`: HMI coils 104-111
+  (request bits 4-11) and the `mode` register at HR 8, both appended;
+  `configs/io/*.yaml` match. `ObservedLine`/`RemoteLine` and
+  `external_controller.COMMANDS` carry the pushbuttons and the mode.
+  `regressions.ManualFeederBeforeBelt`. `report.py`: `scenario_mode()`,
+  `CoverageReport.mode_counts()`; the console and Markdown reports print
+  *Operating modes validated*. Scenarios: `scenarios/manual/`.
 
 ## The self-explaining replay (readable cold)
 
@@ -1227,7 +1241,7 @@ controller at 4× against the wall clock) run there too.
 |---|---|---|
 | 0 | Foundation | done |
 | 1 | Simulation core | done |
-| 2 | Control | done — Auto sequences, interlocks, E-stop, fault state; Manual mode being completed (2026-09-23): controller done, testing surface / Modbus + OpenPLC / dashboard to follow |
+| 2 | Control | done — Auto sequences, interlocks, E-stop, fault state; Manual mode being completed (2026-09-23): controller, testing surface and Modbus done; the PLC port and the dashboard to follow |
 | 3 | Testing / commissioning scenarios | done |
 | 4 | Fault injection, alarms | done — alarm core (latch, first-out, acknowledge); every §5.4 fault injectable, including the feeder jam (plug switch) and sensor failure (stuck / failed with channel diagnostic); multi-stage scenarios; 10/10 interlocks; verified on OpenPLC |
 | 5 | Telemetry | done — generic sampled tag history; state/alarm diffing observer; optional command sink; generated Markdown commissioning report |

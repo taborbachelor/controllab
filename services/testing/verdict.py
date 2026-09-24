@@ -43,6 +43,7 @@ RUNTIMES: dict[str, str] = {
 LABELS: dict[str, str] = {
     "line_state": "Line state",
     "fault_reason": "Trip reason",
+    "mode": "Mode",
     "conveyor_running": "Conveyor running",
     "feeder_running": "Feeder running",
     "feeder_run_commanded": "Feeder run command",
@@ -64,7 +65,8 @@ LABELS: dict[str, str] = {
 
 # What each stimulus key IS, for the stage headings. A drift test keeps
 # this complete against vocabulary.APPLY_ACTIONS.
-_OPERATOR = {"start", "stop", "reset", "acknowledge"}
+_OPERATOR = {"start", "stop", "reset", "acknowledge", "select_manual", "select_auto", "start_conveyor",
+             "stop_conveyor", "open_gate", "close_gate", "start_feeder", "stop_feeder"}
 _FAULTS = {"conveyor_trip", "feeder_trip", "conveyor_fail_to_start", "feeder_fail_to_start", "gate_stuck",
            "belt_slip", "feeder_jam"}
 _FIELD_RESETS = {"feeder_drive_reset", "conveyor_overload_reset", "gate_reset"}
@@ -101,6 +103,14 @@ _PHRASES: dict[str, tuple[str, str]] = {
     "stop": ("Operator presses Stop", ""),
     "reset": ("Operator presses Reset", ""),
     "acknowledge": ("Operator acknowledges the alarm", ""),
+    "select_manual": ("Operator selects Manual mode", ""),
+    "select_auto": ("Operator selects Auto mode", ""),
+    "start_conveyor": ("Operator starts the conveyor (Manual)", ""),
+    "stop_conveyor": ("Operator stops the conveyor (Manual)", ""),
+    "open_gate": ("Operator opens the gate (Manual)", ""),
+    "close_gate": ("Operator closes the gate (Manual)", ""),
+    "start_feeder": ("Operator starts the feeder (Manual)", ""),
+    "stop_feeder": ("Operator stops the feeder (Manual)", ""),
     "conveyor_trip": ("The conveyor motor's overload trips", "The cause of the conveyor overload is removed"),
     "feeder_trip": ("The feeder drive faults", "The cause of the feeder drive fault is removed"),
     "conveyor_fail_to_start": ("The conveyor motor will not start when told to", "The conveyor motor is repaired"),

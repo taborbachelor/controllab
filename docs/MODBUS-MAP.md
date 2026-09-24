@@ -14,7 +14,7 @@ Everything a controller needs is five contiguous ranges, one per table — exact
 | Input registers (FC 04) | read | 0 | 2 | analog sensors |
 | Holding registers (FC 03) | read | 100 | 1 | HMI request word |
 | Coils (FC 15) | write | 0 | 3 | field outputs |
-| Holding registers (FC 16) | write | 0 | 8 | analog outputs, controller status, HMI ack word |
+| Holding registers (FC 16) | write | 0 | 9 | analog outputs, controller status, HMI ack word |
 
 ## Discrete inputs (FC 02, read-only)
 
@@ -62,12 +62,13 @@ Written by the controller in external-controller mode (FC 16); read-only with th
 | 4 | 40005 | `alarms_unacked` | Bit per alarm: not yet acknowledged (latched = active or unacked) | | |
 | 5 | 40006 | `first_out` | 1 + bit number of the first-out alarm (0 = none) | | |
 | 6 | 40007 | `hmi_ack` | HMI acknowledge word (controller → ControlLab) | | |
-| 7 | 40008 | `start_inhibit` | Why the most recent start request was refused (bits; 0 = none) | | |
+| 7 | 40008 | `start_inhibit` | Why the most recent start or mode request was refused (bits; 0 = none) | | |
+| 8 | 40009 | `mode` | Operator-selected mode (0 = AUTO, 1 = MANUAL) | | |
 | 100 | 40101 | `hmi_request` | HMI request word (ControlLab → controller; read-only to clients) | | |
 
 ## HMI commands to an external controller — request/acknowledge
 
-Bits of `hmi_request` / `hmi_ack`: bit 0 = `start`, bit 1 = `stop`, bit 2 = `reset`, bit 3 = `acknowledge`. A 4-phase handshake, so each command is taken exactly once:
+Bits of `hmi_request` / `hmi_ack`: bit 0 = `start`, bit 1 = `stop`, bit 2 = `reset`, bit 3 = `acknowledge`, bit 4 = `select_auto`, bit 5 = `select_manual`, bit 6 = `start_conveyor`, bit 7 = `stop_conveyor`, bit 8 = `open_gate`, bit 9 = `close_gate`, bit 10 = `start_feeder`, bit 11 = `stop_feeder`. A 4-phase handshake, so each command is taken exactly once:
 
 1. ControlLab sets the request bit.
 2. The controller sees request = 1, ack = 0: it executes the command and sets the ack bit.
@@ -86,6 +87,14 @@ Kept apart from field I/O and outside the controller view: writing 1 issues the 
 | 101 | 00102 | `stop` | Normal stop -- upstream first, then purge |
 | 102 | 00103 | `reset` | Reset a FAULTED/ESTOPPED line once the cause is cleared |
 | 103 | 00104 | `acknowledge` | Acknowledge all latched alarms |
+| 104 | 00105 | `select_auto` | Select Auto mode (accepted only at rest) |
+| 105 | 00106 | `select_manual` | Select Manual mode (accepted only at rest) |
+| 106 | 00107 | `start_conveyor` | Manual: start the conveyor |
+| 107 | 00108 | `stop_conveyor` | Manual: stop the conveyor (the feeder stops with it) |
+| 108 | 00109 | `open_gate` | Manual: open the gate |
+| 109 | 00110 | `close_gate` | Manual: close the gate |
+| 110 | 00111 | `start_feeder` | Manual: start the feeder (needs the conveyor proven running) |
+| 111 | 00112 | `stop_feeder` | Manual: stop the feeder |
 
 ## Controller status codes
 
@@ -100,6 +109,13 @@ Kept apart from field I/O and outside the controller view: writing 1 issues the 
 | 4 | FAULTED |
 | 5 | ESTOPPED |
 | 6 | MANUAL |
+
+### `mode` codes
+
+| Code | Mode |
+|---:|---|
+| 0 | AUTO |
+| 1 | MANUAL |
 
 ### `fault_reason` codes
 
@@ -136,7 +152,7 @@ Kept apart from field I/O and outside the controller view: writing 1 issues the 
 | 11 | `LSH-105.DISAGREE` | Hopper high switch disagrees with WT-105 | warning |
 | 12 | `LSHH-105.DISAGREE` | Hopper high-high switch disagrees with WT-105 | trip |
 
-### `start_inhibit` bits (why the most recent start request was refused; 0 = NONE)
+### `start_inhibit` bits (why the most recent start or mode request was refused; 0 = NONE)
 
 | Bit value | Reason |
 |---:|---|
@@ -151,7 +167,7 @@ Kept apart from field I/O and outside the controller view: writing 1 issues the 
 | 256 | WRONG_MODE |
 | 512 | LINE_NOT_IDLE |
 
-Set only when a start command is evaluated: NONE after an accepted start, unchanged when no start is requested -- so it proves a start was actually issued.
+Set only when a start (line or Manual device) or a mode change is evaluated: NONE after an accepted one, unchanged when none is requested -- so it proves the request was actually issued.
 
 
 A value this table doesn't know is published as 65535 rather than guessed.

@@ -1,0 +1,44 @@
+name: The Hopper High Switch Stops A Manual Feeder Without A Trip
+description: "Manual has no level control, so the hopper high switch (LSH-105) stands in for it: it stops a running manual feeder and refuses its restart, and the line stays in Manual. High-high remains the protection behind it."
+title: "Conveyor started by hand and proven running"
+
+given:
+  line_state: manual
+
+when:
+  start_conveyor: true
+
+expect:
+  conveyor_running: true
+
+within:
+  seconds: 1.0
+
+then:
+  - title: "Gate opened and feeder started"
+    when:
+      open_gate: true
+      start_feeder: true
+    expect:
+      feeder_flowing: true
+    within:
+      seconds: 2.0
+  - title: "The hopper reaches the high switch: the feeder stops, the conveyor runs on, no trip"
+    when:
+      hopper_level_pct: 85
+    expect:
+      feeder_run_commanded: false
+      conveyor_run_commanded: true
+      line_state: manual
+    within:
+      seconds: 0.5
+  - title: "A feeder restart at the high switch is refused, and says why"
+    when:
+      start_feeder: true
+    expect:
+      start_inhibit: ["HOPPER_HIGH"]
+      feeder_run_commanded: false
+    within:
+      seconds: 0.3
+
+trigger: start_conveyor

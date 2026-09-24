@@ -1,0 +1,71 @@
+name: Manual Operation -- Each Device By Hand, Material Flows, Nothing Spilled
+description: "Manual mode bypasses the sequence, not the protection: the operator starts the conveyor, opens the gate and starts the feeder one by one, material reaches the hopper, then stops them upstream-first by hand and returns to Auto."
+title: "Conveyor started by hand: it proves running, nothing else moves"
+
+given:
+  line_state: manual
+
+when:
+  start_conveyor: true
+
+trigger: start_conveyor
+
+expect:
+  line_state: manual
+  conveyor_running: true
+  conveyor_run_commanded: true
+  gate_open_commanded: false
+  feeder_run_commanded: false
+
+within:
+  seconds: 1.0
+
+then:
+  - title: "Gate opened and feeder started by hand: material flows"
+    when:
+      open_gate: true
+    expect:
+      gate_open: true
+    within:
+      seconds: 2.0
+  - title: "Feeder started by hand onto the proven belt: material flows, nothing spilled"
+    when:
+      start_feeder: true
+    expect:
+      feeder_running: true
+      feeder_flowing: true
+      start_inhibit: ["NONE"]
+      spilled: false
+    within:
+      seconds: 1.0
+  - title: "Feeder stopped and gate closed by hand; the conveyor keeps running to clear the belt"
+    when:
+      stop_feeder: true
+      close_gate: true
+    expect:
+      feeder_run_commanded: false
+      gate_open_commanded: false
+      conveyor_run_commanded: true
+      belt_empty: true
+    within:
+      seconds: 4.0
+  - title: "Conveyor stopped by hand: everything off, still Manual, nothing spilled"
+    when:
+      stop_conveyor: true
+    expect:
+      line_state: manual
+      conveyor_running: false
+      feeder_running: false
+      gate_open: false
+      spilled: false
+    within:
+      seconds: 2.0
+  - title: "Auto selected at rest: the line is idle in Auto"
+    when:
+      select_auto: true
+    expect:
+      line_state: idle
+      mode: auto
+      start_inhibit: ["NONE"]
+    within:
+      seconds: 0.3

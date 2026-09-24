@@ -40,6 +40,14 @@ VALUE_SHAPES: dict[str, str] = {
     "stop": "true (one-shot operator command)",
     "reset": "true (one-shot operator command)",
     "acknowledge": "true (one-shot operator command: acknowledge all alarms)",
+    "select_manual": "true (one-shot: select Manual mode; accepted only at rest)",
+    "select_auto": "true (one-shot: select Auto mode; accepted only at rest, every Manual device off)",
+    "start_conveyor": "true (one-shot Manual pushbutton; refused in Auto)",
+    "stop_conveyor": "true (one-shot Manual pushbutton; also drops the feeder)",
+    "open_gate": "true (one-shot Manual pushbutton; refused in Auto)",
+    "close_gate": "true (one-shot Manual pushbutton)",
+    "start_feeder": "true (one-shot Manual pushbutton; needs the conveyor proven running; refused in Auto)",
+    "stop_feeder": "true (one-shot Manual pushbutton)",
     "estop": '"tripped" or "healthy"',
     "conveyor_trip": "true/false (inject/clear a conveyor overload trip; trips only a running motor)",
     "feeder_trip": "true/false (inject/clear a feeder VFD trip; trips only a running motor)",
@@ -57,7 +65,8 @@ VALUE_SHAPES: dict[str, str] = {
     "hopper_level_pct": "number 0-100 (set the hopper level directly)",
     "bin_level_pct": "number 0-100 (set the bin level directly)",
     # expect (observations)
-    "line_state": '"idle" | "starting" | "running" | "stopping" | "faulted" | "estopped"',
+    "line_state": '"idle" | "starting" | "running" | "stopping" | "faulted" | "estopped" | "manual"',
+    "mode": '"auto" | "manual"',
     "fault_reason": "string (see fault_reasons) or null",
     "conveyor_running": "true/false",
     "feeder_running": "true/false",
@@ -82,7 +91,8 @@ RULES = [
     "A scenario has `given` (preconditions), `when` (the stimulus under test), `expect` (conditions that must all "
     "hold), and `within` (a time limit in seconds). The runner applies `given`, lets it settle, applies `when`, then "
     "polls `expect` every 0.1 s scan until all hold or the limit passes.",
-    "`given` may include line_state: \"idle\" or \"running\" (running means the full start sequence is driven first).",
+    "`given` may include line_state: \"idle\", \"running\" (the full start sequence is driven first) or \"manual\" "
+    "(Manual mode selected from idle, every device off; then the device pushbuttons apply).",
     "`expect` must describe the RESPONSE to `when`: a scenario whose expectations would already hold without the "
     "`when` stimulus is rejected as vacuous by the review gate. Assert something only the stimulus causes.",
     "Name the stimulus under test in `trigger` (one or more `when` keys). The review gate removes exactly those keys "

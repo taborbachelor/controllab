@@ -95,6 +95,13 @@ def render(report: CoverageReport) -> str:
         lines.append(f"  [{label:7}] {row.name:32} {detail}")
     lines.append("")
 
+    lines.append("Operating Modes Validated (docs/CONTROL-LAB.md, section 6.1)")
+    lines.append("=" * 44)
+    for m in report.mode_counts():
+        observed = f", {m.not_observable} not observable" if m.not_observable else ""
+        lines.append(f"  [{m.status:14}] {m.mode:8} {m.passed}/{m.run} scenario(s) passed{observed}")
+    lines.append("")
+
     if report.unknown_tags:
         lines.append("WARNING -- interlock: tags matching no known section 6.3 row (likely a typo):")
         for tag in report.unknown_tags:

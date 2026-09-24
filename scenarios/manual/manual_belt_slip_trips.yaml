@@ -1,0 +1,39 @@
+name: Belt Slip In Manual Trips The Line
+description: "Manual bypasses the sequence, not the protection: a belt that stops moving under a running motor trips the line exactly as it does in Auto."
+title: "Conveyor, gate and feeder started by hand: material flows"
+
+given:
+  line_state: manual
+
+when:
+  start_conveyor: true
+
+expect:
+  conveyor_running: true
+
+within:
+  seconds: 1.0
+
+then:
+  - title: "Gate opened and feeder started"
+    when:
+      open_gate: true
+      start_feeder: true
+    expect:
+      feeder_flowing: true
+    within:
+      seconds: 2.0
+  - title: "The belt slips: the line trips, everything commanded off"
+    when:
+      belt_slip: true
+    expect:
+      line_state: faulted
+      fault_reason: "conveyor lost confirmation"
+      feeder_run_commanded: false
+      conveyor_run_commanded: false
+      gate_open_commanded: false
+    within:
+      seconds: 0.5
+
+trigger: start_conveyor
+interlock: "Conveyor proven running"
