@@ -1201,6 +1201,11 @@ issue and propose the change"):
   `regressions.ManualFeederBeforeBelt`. `report.py`: `scenario_mode()`,
   `CoverageReport.mode_counts()`; the console and Markdown reports print
   *Operating modes validated*. Scenarios: `scenarios/manual/`.
+- **Step 3 — the PLC.** `examples/openplc/controllab_line.st`: request
+  bits 0-11, the mode request and wrong-mode refusal after the E-stop
+  check, state `6` (MANUAL) mirroring `_scan_manual()`, rest-state resets,
+  `ST_MODE` on `%QW108`. `tests/unit/test_openplc_program.py` ties the
+  request `CASE` to `LINE_REGISTER_MAP.commands`.
 
 ## The self-explaining replay (readable cold)
 
@@ -1241,7 +1246,7 @@ controller at 4× against the wall clock) run there too.
 |---|---|---|
 | 0 | Foundation | done |
 | 1 | Simulation core | done |
-| 2 | Control | done — Auto sequences, interlocks, E-stop, fault state; Manual mode being completed (2026-09-23): controller, testing surface and Modbus done; the PLC port and the dashboard to follow |
+| 2 | Control | done — Auto sequences, interlocks, E-stop, fault state; Manual mode being completed (2026-09-23): controller, testing surface, Modbus and the OpenPLC port done (38/38 on the PLC); the dashboard to follow |
 | 3 | Testing / commissioning scenarios | done |
 | 4 | Fault injection, alarms | done — alarm core (latch, first-out, acknowledge); every §5.4 fault injectable, including the feeder jam (plug switch) and sensor failure (stuck / failed with channel diagnostic); multi-stage scenarios; 10/10 interlocks; verified on OpenPLC |
 | 5 | Telemetry | done — generic sampled tag history; state/alarm diffing observer; optional command sink; generated Markdown commissioning report |

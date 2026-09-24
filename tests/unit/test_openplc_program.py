@@ -80,7 +80,8 @@ def test_alarm_table_matches_the_published_alarm_bits():
     last = len(ALARMS) - 1
     assert set(re.findall(r"alarm_\w+ : ARRAY\[0\.\.(\d+)\] OF BOOL", ST)) == {str(last)}
     loops = re.findall(r"FOR i := 0 TO (\d+) DO", ST)
-    assert loops.count(str(last)) == 4 and set(loops) <= {"3", str(last)}  # 3 is the HMI request loop
+    hmi_last = str(len(LINE_REGISTER_MAP.commands) - 1)  # the HMI request loop
+    assert loops.count(str(last)) == 4 and set(loops) <= {hmi_last, str(last)}
     assigned = sorted(int(i) for i in re.findall(r"^\s*alarm_cond\[(\d+)\] :=", ST, re.M))
     assert assigned == list(range(len(ALARMS)))
     for i, (alarm_id, _, _) in enumerate(ALARMS):
@@ -97,5 +98,14 @@ def test_the_belt_clearing_trips_match_the_python_controller():
     from services.protocols.controller_status import FAULT_REASONS
 
     lists = re.findall(r"clearing := M104_RUN AND \(([^)]*)\)", ST)
-    assert len(lists) == 3 and len(set(lists)) == 1  # the STARTING, RUNNING and STOPPING trip entries
+    assert len(lists) == 4 and len(set(lists)) == 1  # the STARTING, RUNNING, STOPPING and MANUAL trip entries
     assert {FAULT_REASONS[int(c)] for c in re.findall(r"trip = (\d+)", lists[0])} == set(CLEAR_BELT_ON)
+
+
+def test_every_hmi_command_bit_is_decoded_in_bit_order():
+    """The request word's CASE takes one bit per command, 0..n-1, n being the
+    register map's command count: a command appended to the map and not to
+    the program would be requested and never acknowledged."""
+    assert re.search(rf"FOR i := 0 TO {len(LINE_REGISTER_MAP.commands) - 1} DO\s+bit := SHL", ST)
+    cases = [int(n) for n in re.findall(r"^\s*(\d+): \w+_req := TRUE;", ST, re.M)]
+    assert cases == list(range(len(LINE_REGISTER_MAP.commands)))

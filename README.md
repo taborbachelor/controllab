@@ -39,13 +39,12 @@ still plugged.
   disagreement alarm).
 - The same scenario files run unchanged against **OpenPLC** executing an
   IEC 61131-3 Structured Text port of the controller over Modbus TCP, in
-  real time: **29/29 scenarios, 87/87 runs** for the Auto suite
-  ([commissioning report](examples/openplc/COMMISSIONING-REPORT.md));
-  Manual mode is being ported to the PLC program.
+  real time, Auto and Manual mode alike: **38/38 scenarios, 114/114 runs**
+  ([commissioning report](examples/openplc/COMMISSIONING-REPORT.md)).
 - Mass is conserved to the milligram and checked on every scan, and every
   run is deterministic, so the same scenario gives the same result every
   time.
-- 743 automated tests, run on every push (Python 3.12 and 3.13; the badge
+- 744 automated tests, run on every push (Python 3.12 and 3.13; the badge
   above is the latest run). The demo site is rebuilt from the current code
   on every push too, so it can't drift from the repository.
 
@@ -209,7 +208,7 @@ Structured Text port of the controller. Against a PLC, scenarios run in real
 time, with limits in plant time and a stated I/O latency allowance. Every
 scenario starts from a cold PLC restart.
 
-**Result on OpenPLC (the Auto suite; Manual is being ported to the PLC program): 29/29 scenarios over 3 passes (87/87 runs), none needing the latency
+**Result on OpenPLC: 38/38 scenarios over 3 passes (114/114 runs), Auto and Manual mode, none needing the latency
 allowance, 11/11 interlock rows covered**
 ([`examples/openplc/COMMISSIONING-REPORT.md`](examples/openplc/COMMISSIONING-REPORT.md)).
 
@@ -326,7 +325,7 @@ Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md).
 
 ## Status
 
-All roadmap phases are complete, and 743 tests pass.
+All roadmap phases are complete, and 744 tests pass.
 
 | Phase | Focus | Status |
 |---|---|---|
