@@ -1,0 +1,55 @@
+name: Alarm Lifecycle -- Start Refused Until Acknowledged, Even After The Cause Clears
+description: "An alarm stays latched until its cause is gone and someone acknowledges it. With the hopper back to normal but the high-high alarm not yet acknowledged, a start is refused for that reason alone; once acknowledged, the same start is accepted."
+title: "The hopper overfills: the high-high alarm latches"
+
+given:
+  line_state: idle
+
+when:
+  hopper_level_pct: 97.5
+
+trigger: hopper_level_pct
+
+expect:
+  latched_alarm_ids: ["WT-105.HIGH_HIGH"]
+  any_unacknowledged_trip: true
+  line_state: idle
+
+within:
+  seconds: 0.5
+
+then:
+  - title: "The hopper is lowered: the cause is gone, the alarm stays latched"
+    when:
+      hopper_level_pct: 50
+    expect:
+      latched_alarm_ids: ["WT-105.HIGH_HIGH"]
+      any_unacknowledged_trip: true
+    within:
+      seconds: 0.5
+  - title: "Start is refused on the unacknowledged alarm alone"
+    when:
+      start: true
+    expect:
+      start_inhibit: ["UNACKNOWLEDGED_ALARM"]
+      line_state: idle
+    within:
+      seconds: 0.3
+  - title: "Acknowledged: the alarm leaves the board"
+    when:
+      acknowledge: true
+    expect:
+      latched_alarm_ids: []
+      any_unacknowledged_trip: false
+    within:
+      seconds: 0.3
+  - title: "The same start is accepted now"
+    when:
+      start: true
+    expect:
+      start_inhibit: ["NONE"]
+      line_state: starting
+    within:
+      seconds: 0.3
+
+interlock: "No active latched alarms"

@@ -33,18 +33,18 @@ still plugged.
 
 **What's verified:**
 
-- 38 scenarios covering all 11 interlocks in the spec, in both Auto and
+- 40 scenarios covering all 11 interlocks in the spec, in both Auto and
   Manual mode: trips, recoveries, E-stop, and instrument faults (stuck and
   failed sensors, a 1oo2 overfill trip with a switch/transmitter
   disagreement alarm).
 - The same scenario files run unchanged against **OpenPLC** executing an
   IEC 61131-3 Structured Text port of the controller over Modbus TCP, in
   real time, Auto and Manual mode alike: **38/38 scenarios, 114/114 runs**
-  ([commissioning report](examples/openplc/COMMISSIONING-REPORT.md)).
+  at its last full run ([commissioning report](examples/openplc/COMMISSIONING-REPORT.md)).
 - Mass is conserved to the milligram and checked on every scan, and every
   run is deterministic, so the same scenario gives the same result every
   time.
-- 754 automated tests, run on every push (Python 3.12 and 3.13; the badge
+- 760 automated tests, run on every push (Python 3.12 and 3.13; the badge
   above is the latest run). The demo site is rebuilt from the current code
   on every push too, so it can't drift from the repository.
 
@@ -169,7 +169,7 @@ E-stop. The result is an engineering record:
 
 Nothing in that record is inferred beyond what the runner observed.
 
-The repository has 38 scenarios covering all 11 interlock rows of the
+The repository has 40 scenarios covering all 11 interlock rows of the
 specification, in Auto and Manual mode. New scenarios, hand-written or AI-generated, go through a
 deterministic review gate that rejects a scenario that is vacuous (it still
 passes with its fault removed), non-deterministic, or disagrees between
@@ -325,7 +325,7 @@ Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md).
 
 ## Status
 
-All roadmap phases are complete, and 754 tests pass.
+All roadmap phases are complete, and 760 tests pass.
 
 | Phase | Focus | Status |
 |---|---|---|

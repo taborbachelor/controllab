@@ -1,0 +1,38 @@
+name: An Unacknowledged Warning Never Blocks A Start
+description: "Only trip-class alarms gate a start. A bin-low warning that has recovered but not been acknowledged stays on the alarm board, and the line still starts."
+title: "The bin runs low: the bin-low warning latches"
+
+given:
+  line_state: idle
+
+when:
+  bin_level_pct: 5
+
+trigger: bin_level_pct
+
+expect:
+  latched_alarm_ids: ["LSL-101.LOW"]
+  any_unacknowledged_trip: false
+
+within:
+  seconds: 0.5
+
+then:
+  - title: "The bin is refilled: the warning stays latched, unacknowledged"
+    when:
+      bin_level_pct: 50
+    expect:
+      latched_alarm_ids: ["LSL-101.LOW"]
+    within:
+      seconds: 0.5
+  - title: "Start is accepted anyway: a warning is not a trip"
+    when:
+      start: true
+    expect:
+      start_inhibit: ["NONE"]
+      line_state: starting
+      latched_alarm_ids: ["LSL-101.LOW"]
+    within:
+      seconds: 0.3
+
+interlock: "No active latched alarms"

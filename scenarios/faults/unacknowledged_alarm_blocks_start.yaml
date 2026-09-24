@@ -17,7 +17,7 @@ expect:
   latched_alarm_ids: ["WT-105.HIGH_HIGH"]
   # high-high is still present in `given`, so it refuses too; UNACKNOWLEDGED_ALARM
   # being reported is this scenario's row. The isolated case (condition cleared,
-  # alarm still unacknowledged) is proven at the pytest level -- see report.py.
+  # alarm still unacknowledged) is alarm_lifecycle_start_refused_until_acknowledged.
   start_inhibit: ["HOPPER_HIGH_HIGH", "UNACKNOWLEDGED_ALARM"]
 
 within:
