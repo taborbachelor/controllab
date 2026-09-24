@@ -97,9 +97,39 @@ def test_no_existing_scenario_is_vacuous():
     (start_inhibit in the vocabulary); this keeps the whole suite honest."""
     flagged = sorted(
         s.path.name for s in EXISTING
-        if levels(review(s.path, [o for o in EXISTING if o.path != s.path])).get("vacuous") == "error"
+        if {"vacuous", "stages"} & {
+            f.check for f in review(s.path, [o for o in EXISTING if o.path != s.path]).findings if f.level == "error"
+        }
     )
     assert flagged == []
+
+
+def test_a_later_stage_whose_stimulus_changes_nothing_is_rejected(tmp_path):
+    """The first-stage checks can't see this: stage 2 acknowledges, but a
+    faulted line is still faulted without it, so the stage tests nothing."""
+    text = """
+name: Belt Slip Trips, Then An Acknowledge That Proves Nothing
+given: {line_state: running}
+when: {belt_slip: true}
+trigger: belt_slip
+expect: {line_state: faulted}
+within: {seconds: 1.0}
+then:
+  - when: {acknowledge: true}
+    expect: {line_state: faulted}
+    within: {seconds: 0.5}
+interlock: "Conveyor proven running"
+"""
+    r = review(candidate(tmp_path, text), EXISTING)
+    assert (r.verdict, levels(r)["stages"]) == (REJECTED, "error")
+    assert levels(r)["vacuous"] == "ok" and levels(r)["trigger"] == "ok"  # the first stage is sound
+    assert "stage 2 (acknowledge)" in next(f.message for f in r.findings if f.check == "stages")
+
+
+def test_a_multi_stage_scenario_whose_every_stage_matters_passes_the_stages_check(tmp_path):
+    original = SCENARIOS_DIR / "faults" / "feeder_jam_recovery.yaml"
+    r = review(candidate(tmp_path, original.read_text(encoding="utf-8")), EXISTING)
+    assert levels(r)["stages"] == "ok"
 
 
 def test_report_is_deterministic_and_relative(tmp_path):

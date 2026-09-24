@@ -1213,6 +1213,12 @@ issue and propose the change"):
   `_refusal()`, and the Manual refusal phrases. `walkthroughs.py`: the
   `manual` walkthrough. `hmi.css`: `.state.manual`, `.seg`, `.devices`.
 
+## Module responsibilities (completing the master specification)
+
+- **`candidates._stages_check()`** (item 2) — the vacuity check for every
+  later acting stage: the scenario re-run with that stage's `when`
+  emptied must fail; reported as the `stages` finding.
+
 ## The self-explaining replay (readable cold)
 
 A replay of a scenario run carries the run's summary

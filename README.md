@@ -44,7 +44,7 @@ still plugged.
 - Mass is conserved to the milligram and checked on every scan, and every
   run is deterministic, so the same scenario gives the same result every
   time.
-- 760 automated tests, run on every push (Python 3.12 and 3.13; the badge
+- 762 automated tests, run on every push (Python 3.12 and 3.13; the badge
   above is the latest run). The demo site is rebuilt from the current code
   on every push too, so it can't drift from the repository.
 
@@ -172,8 +172,8 @@ Nothing in that record is inferred beyond what the runner observed.
 The repository has 40 scenarios covering all 11 interlock rows of the
 specification, in Auto and Manual mode. New scenarios, hand-written or AI-generated, go through a
 deterministic review gate that rejects a scenario that is vacuous (it still
-passes with its fault removed), non-deterministic, or disagrees between
-the in-process and Modbus runs.
+passes with its fault, or any later stage's actions, removed),
+non-deterministic, or disagrees between the in-process and Modbus runs.
 
 ```bash
 controllab test                         # all of them
@@ -325,7 +325,7 @@ Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md).
 
 ## Status
 
-All roadmap phases are complete, and 760 tests pass.
+All roadmap phases are complete, and 762 tests pass.
 
 | Phase | Focus | Status |
 |---|---|---|

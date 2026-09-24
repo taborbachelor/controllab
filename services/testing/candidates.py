@@ -28,6 +28,10 @@ since nothing after it can run):
   vacuous      with `when` removed it must NOT still pass -- a test whose
                expectations hold without its stimulus proves nothing,
                the classic failure mode of generated tests
+  trigger      with exactly the declared trigger removed it must fail too
+  stages       the same for every later stage (`then:`) that acts: with that
+               stage's actions removed the scenario must fail, so each
+               stage's stimulus is part of what's tested, not decoration
   margin       passes with more than one scan to spare (else brittle)
 
 Verdicts: REJECTED (any error), NEEDS JUDGMENT (clean, but fails against
@@ -173,6 +177,7 @@ def review(path: Path, existing: list[Scenario]) -> Review:
                     r.add("trigger", OK, f"fails without its declared trigger ({names}), so the trigger is what it tests")
         else:
             r.add("vacuous", WARNING, "no `when` -- it checks a steady state, not a response")
+        _stages_check(r, scenario)
 
         margin = scenario.within_s - first.elapsed_s
         if margin < DT - 1e-9:
@@ -181,6 +186,25 @@ def review(path: Path, existing: list[Scenario]) -> Review:
             r.add("margin", OK, f"{margin:.2f} s of margin under the {scenario.within_s:g} s limit")
         _field_check(r, scenario)
     return r
+
+
+def _stages_check(r: Review, scenario: Scenario) -> None:
+    """The vacuity check, for every later stage that acts. Removing a stage's
+    actions can only change that stage or a later one, so the scenario
+    failing anywhere means the stage's stimulus matters."""
+    acting = [i for i, st in enumerate(scenario.then) if st.when]
+    if not acting:
+        return
+    idle = []
+    for i in acting:
+        then = tuple(dataclasses.replace(st, when={}) if j == i else st for j, st in enumerate(scenario.then))
+        if run_scenario(dataclasses.replace(scenario, then=then)).passed:
+            idle.append(f"stage {i + 2} ({', '.join(sorted(scenario.then[i].when))})")
+    if idle:
+        r.add("stages", ERROR, f"still passes without the actions of {'; '.join(idle)} -- those stimuli aren't tested")
+    else:
+        r.add("stages", OK, f"fails without the actions of any of its {len(acting)} later acting stage(s), "
+                            "so every stage's stimulus is tested")
 
 
 def _field_check(r: Review, scenario: Scenario) -> None:
