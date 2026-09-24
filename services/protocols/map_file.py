@@ -57,6 +57,7 @@ from services.protocols.register_map import (
     HOLDING_REGISTER,
     INPUT_REGISTER,
     HmiCoil,
+    HmiSetpoint,
     Point,
     RegisterMap,
     StatusRegister,
@@ -122,9 +123,31 @@ def _parse(raw: object, problems: list[str]) -> tuple[RegisterMap, str]:
                 points.append(point)
 
     hmi_coils, request, ack = _hmi(raw.get("hmi"), problems)
+    hmi = raw.get("hmi")
+    setpoints = _setpoints(hmi.get("setpoints") if isinstance(hmi, dict) else None, problems)
     status = _status(raw.get("status"), problems)
     return RegisterMap(points=tuple(points), hmi_coils=hmi_coils, status_registers=status,
-                       hmi_request=request, hmi_ack=ack), name
+                       hmi_request=request, hmi_ack=ack, hmi_setpoints=setpoints), name
+
+
+def _setpoints(section: object, problems: list[str]) -> tuple[HmiSetpoint, ...]:
+    """hmi.setpoints: {name: address}; each name one of the line map's, whose
+    default and meaning it keeps (the meaning doesn't move with the address)."""
+    if section is None:
+        return ()
+    if not isinstance(section, dict):
+        problems.append("hmi.setpoints: must map each setpoint name to its holding register")
+        return ()
+    known = {sp.name: sp for sp in LINE_REGISTER_MAP.hmi_setpoints}
+    out = []
+    for name, address in section.items():
+        if name not in known:
+            problems.append(f"hmi.setpoints: unknown setpoint {name!r} (known: {sorted(known)})")
+        elif not isinstance(address, int) or isinstance(address, bool):
+            problems.append(f"hmi.setpoints.{name}: {address!r} is not an integer address")
+        else:
+            out.append(HmiSetpoint(name, address, known[name].default, known[name].description))
+    return tuple(out)
 
 
 def _entries(section: object, where: str, problems: list[str]) -> list[tuple[int, object]]:
@@ -160,8 +183,9 @@ def _hmi(section: object, problems: list[str]) -> tuple[tuple[HmiCoil, ...], int
     if section is None:
         problems.append("hmi: missing (the controller needs start/stop/reset/acknowledge)")
         return (), None, None
-    if not isinstance(section, dict) or set(section) != {"request", "ack", "commands"}:
-        problems.append("hmi: must have exactly request, ack, and commands")
+    if not isinstance(section, dict) or not {"request", "ack", "commands"} <= set(section) <= {
+            "request", "ack", "commands", "setpoints"}:
+        problems.append("hmi: must have request, ack and commands (and optionally setpoints)")
         return (), None, None
     coils = []
     commands = section["commands"]

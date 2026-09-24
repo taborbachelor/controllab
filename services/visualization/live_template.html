@@ -22,7 +22,7 @@
   <span class="meta">Automated commissioning tests for industrial control logic, against a simulated line.
     The question it answers: <strong>can we change control software without breaking the machine?</strong></span></div>
   <ol class="orient" aria-label="What you're looking at">
-    <li><strong>The line</strong> (left) is simulated: bin → gate → feeder → conveyor → hopper, with the motors,
+    <li><strong>The line</strong> (left) is simulated: three bins → gates → feeder → conveyor → hopper, with the motors,
       switches and weigh-scale a real one has. Its control program sees only that I/O, as a PLC would.</li>
     <li><strong>Scenarios</strong> (right) are the tests. Press <em>Run &amp; verify</em>: the test operates the line,
       injects its fault, and checks the controller's response stage by stage against time limits.</li>
@@ -32,7 +32,7 @@
   <details class="intro-more">
     <summary>Guide to every panel</summary>
     <ul>
-      <li><strong>The plant</strong> (the picture) is a simulated bulk-material line: a storage bin, a gate, a feeder, a
+      <li><strong>The plant</strong> (the picture) is a simulated bulk-material line: three storage bins, each with a gate, a feeder, a
         conveyor and a hopper, with the motors, limit switches, level switches and weigh-scale a real one has. A control
         program runs it through the same I/O a PLC would.</li>
       <li><strong>Scenarios</strong> are the tests: a setup, operator actions, a deliberate fault, the controller
@@ -91,13 +91,22 @@
           <button type="button" data-cmd="select_manual" aria-pressed="false">Manual</button>
         </div>
       </div>
+      <div class="mode-row">
+        <span class="label" id="bin-label">Source bin</span>
+        <div class="seg" role="group" aria-labelledby="bin-label" id="bin-switch">
+          <button type="button" data-bin="A" aria-pressed="true">A</button>
+          <button type="button" data-bin="B" aria-pressed="false">B</button>
+          <button type="button" data-bin="C" aria-pressed="false">C</button>
+        </div>
+        <span class="note" id="bin-note" style="margin:0"></span>
+      </div>
       <div class="buttons" id="commands"></div>
       <p class="note">Acknowledge and reset are separate on purpose: acknowledging says an operator has seen the alarm; reset says the cause is fixed.</p>
       <div class="devices" id="devices" role="group" aria-label="Manual device controls">
         <span class="dev">Conveyor</span>
         <button type="button" data-cmd="start_conveyor">Start</button><button type="button" data-cmd="stop_conveyor">Stop</button>
         <span class="dev-state" id="dev-conveyor"></span>
-        <span class="dev">Gate</span>
+        <span class="dev" id="dev-gate-label">Gate</span>
         <button type="button" data-cmd="open_gate">Open</button><button type="button" data-cmd="close_gate">Close</button>
         <span class="dev-state" id="dev-gate"></span>
         <span class="dev">Feeder</span>
@@ -150,7 +159,9 @@
       <div class="buttons" id="field-resets">
         <button type="button" data-action="feeder_drive_reset">Reset feeder drive</button>
         <button type="button" data-action="conveyor_overload_reset">Reset conveyor overload</button>
-        <button type="button" data-action="gate_reset">Reset gate actuator</button>
+        <button type="button" data-action="gate_reset">Reset bin A gate actuator</button>
+        <button type="button" data-action="gate_b_reset">Reset bin B gate actuator</button>
+        <button type="button" data-action="gate_c_reset">Reset bin C gate actuator</button>
       </div>
       <h2 style="margin-top:12px">Instrument faults</h2>
       <div id="instruments"></div>
@@ -158,8 +169,12 @@
       <div class="stim">
         <label for="hopper-pct">Set hopper level (%)</label>
         <span><input id="hopper-pct" type="number" min="0" max="100" step="1" value="97"> <button type="button" data-level="hopper_level_pct" data-input="hopper-pct">Set</button></span>
-        <label for="bin-pct">Set bin level (%)</label>
+        <label for="bin-pct">Set bin A level (%)</label>
         <span><input id="bin-pct" type="number" min="0" max="100" step="1" value="5"> <button type="button" data-level="bin_level_pct" data-input="bin-pct">Set</button></span>
+        <label for="bin-b-pct">Set bin B level (%)</label>
+        <span><input id="bin-b-pct" type="number" min="0" max="100" step="1" value="5"> <button type="button" data-level="bin_b_level_pct" data-input="bin-b-pct">Set</button></span>
+        <label for="bin-c-pct">Set bin C level (%)</label>
+        <span><input id="bin-c-pct" type="number" min="0" max="100" step="1" value="5"> <button type="button" data-level="bin_c_level_pct" data-input="bin-c-pct">Set</button></span>
       </div>
       <p class="note">These act on the simulated equipment, never on the control program: the program has to notice and react on its own. A highlighted button is a fault currently injected; click it again to clear it. A motor trip also needs its device reset (Field resets) before the line's Reset will take, the same two-step recovery a real line has.</p>
       </details>
@@ -191,7 +206,8 @@ const INSTRUMENTS = [
 const FAULTS = [
   ["estop", "E-stop"], ["conveyor_trip", "Conveyor trip"], ["feeder_trip", "Feeder trip"],
   ["conveyor_fail_to_start", "Conveyor fail-to-start"], ["feeder_fail_to_start", "Feeder fail-to-start"],
-  ["gate_stuck", "Gate stuck"], ["belt_slip", "Belt slip"], ["feeder_jam", "Feeder jam"],
+  ["gate_stuck", "Bin A gate stuck"], ["gate_b_stuck", "Bin B gate stuck"], ["gate_c_stuck", "Bin C gate stuck"],
+  ["belt_slip", "Belt slip"], ["feeder_jam", "Feeder jam"],
   ["conveyor_jam", "Conveyor jam"], ["bin_bridged", "Bin bridged"],
 ];
 
@@ -204,20 +220,36 @@ async function post(path, body) {
 // pushbuttons are their own controls below them.
 const LINE_COMMANDS = ["start", "stop", "reset", "acknowledge"];
 $("commands").innerHTML = LINE_COMMANDS.map((c) => `<button type="button" data-cmd="${c}">${c[0].toUpperCase() + c.slice(1)}</button>`).join("");
+$("bin-switch").addEventListener("click", (e) => { const b = e.target.dataset.bin; if (b) post("/api/setpoint", { name: "source_bin", value: b }); });
 for (const id of ["commands", "mode-switch", "devices"]) {
   $(id).addEventListener("click", (e) => { const c = e.target.dataset.cmd; if (c) post("/api/command", { name: c }); });
 }
 
 // Manual mode (docs/CONTROL-LAB.md §6.1): the switch shows the controller's
 // mode; the device buttons work only in Manual, and say so otherwise.
+// The source bin (master specification, item 6): a setpoint for the next start.
+function renderBins(s) {
+  document.querySelectorAll("#bin-switch button").forEach((b) => {
+    b.setAttribute("aria-pressed", String(b.dataset.bin === s.source_bin));
+    b.disabled = verificationBusy;
+  });
+  $("bin-note").textContent = s.active_bin && s.active_bin !== s.source_bin
+    ? `Drawing from bin ${s.active_bin}; bin ${s.source_bin} applies at the next start.`
+    : s.active_bin ? `Drawing from bin ${s.active_bin}.` : "Taken at the next Start.";
+}
+
 function renderManual(s) {
   const v = s.values, ext = s.mode === "external", manual = s.line_mode === "manual";
+  const bin = s.active_bin || s.source_bin || "A";
+  const gateTags = { A: ["ZSO-102", "ZSC-102"], B: ["ZSO-112", "ZSC-112"], C: ["ZSO-122", "ZSC-122"] }[bin];
+  $("dev-gate-label").textContent = `Gate (bin ${bin})`;
   document.querySelectorAll("#mode-switch button").forEach((b) => {
     b.setAttribute("aria-pressed", String(!ext && b.dataset.cmd === "select_" + s.line_mode));
   });
   const shown = [
     ["dev-conveyor", v["M-104.RUNNING"] && v["ZSS-104"], "running", v["M-104.RUN"] ? "starting" : "stopped"],
-    ["dev-gate", v["ZSO-102"], "open", v["ZSC-102"] ? "closed" : "moving"],
+    // The gate row follows the selected (or active) bin: the one its buttons act on.
+    ["dev-gate", v[gateTags[0]], "open", v[gateTags[1]] ? "closed" : "moving"],
     ["dev-feeder", v["M-103.RUNNING"], "running", "stopped"],
   ];
   for (const [id, on, yes, no] of shown) { $(id).textContent = on ? yes : no; $(id).classList.toggle("on", !!on); }
@@ -502,6 +534,7 @@ async function poll() {
     $("clock").textContent = `t = ${s.t.toFixed(1)} s`;
     renderState(s.state);
     renderManual(s);
+    renderBins(s);
     const why = [];
     if (s.fault_reason) why.push(`Fault reason: ${s.fault_reason}`);
     if ((s.state === "idle" || s.state === "manual") && s.last_start_refusal.length) why.push(`Last request refused: ${s.last_start_refusal.join("; ")}`);

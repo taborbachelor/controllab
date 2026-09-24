@@ -26,6 +26,7 @@ from services.protocols.register_map import (
     INPUT_REGISTER,
     HmiCoil,
     Point,
+    HmiSetpoint,
     RegisterMap,
     StatusRegister,
 )
@@ -47,6 +48,13 @@ LINE_REGISTER_MAP = RegisterMap(
         # Appended (Phase 4 completion): never shift an address in use.
         Point("LSH-103", DISCRETE_INPUT, 11),
         Point("WT-105.FLT", DISCRETE_INPUT, 12),
+        # Appended (master specification, item 6): bins B and C.
+        Point("LSL-111", DISCRETE_INPUT, 13),
+        Point("ZSO-112", DISCRETE_INPUT, 14),
+        Point("ZSC-112", DISCRETE_INPUT, 15),
+        Point("LSL-121", DISCRETE_INPUT, 16),
+        Point("ZSO-122", DISCRETE_INPUT, 17),
+        Point("ZSC-122", DISCRETE_INPUT, 18),
         # Input registers -- analog sensors (AI)
         Point("LT-101", INPUT_REGISTER, 0, scale=100, full_scale=100.0),
         # WT-105 range = the hopper's 2,000 kg capacity -- the transmitter's
@@ -57,10 +65,14 @@ LINE_REGISTER_MAP = RegisterMap(
         # scale's flow, 0.01 kg/s over 10 kg/s.
         Point("IT-104", INPUT_REGISTER, 2, scale=100, full_scale=100.0),
         Point("FT-104", INPUT_REGISTER, 3, scale=100, full_scale=10.0),
+        Point("LT-111", INPUT_REGISTER, 4, scale=100, full_scale=100.0),
+        Point("LT-121", INPUT_REGISTER, 5, scale=100, full_scale=100.0),
         # Coils -- field outputs (DO)
         Point("XV-102.CMD_OPEN", COIL, 0),
         Point("M-103.RUN", COIL, 1),
         Point("M-104.RUN", COIL, 2),
+        Point("XV-112.CMD_OPEN", COIL, 3),
+        Point("XV-122.CMD_OPEN", COIL, 4),
         # Holding registers -- analog outputs (AO); 1-6 follow below
         Point("SC-103", HOLDING_REGISTER, 0, scale=100, full_scale=100.0),
     ),
@@ -105,4 +117,19 @@ LINE_REGISTER_MAP = dataclasses.replace(
     LINE_REGISTER_MAP,
     status_registers=LINE_REGISTER_MAP.status_registers
     + (StatusRegister("mode", 8, "Operator-selected mode (0 = AUTO, 1 = MANUAL)"),),
+)
+# Master specification, item 6: alarm bits 16-31 (the second word of each
+# mask) and the bins, appended at 9-12; the write range grows to 0-12.
+LINE_REGISTER_MAP = dataclasses.replace(
+    LINE_REGISTER_MAP,
+    status_registers=LINE_REGISTER_MAP.status_registers + (
+        StatusRegister("alarms_active_2", 9, "Alarm bits 16-31: condition active"),
+        StatusRegister("alarms_unacked_2", 10, "Alarm bits 16-31: not yet acknowledged"),
+        StatusRegister("source_bin", 11, "Source bin the next start draws from (1 = A, 2 = B, 3 = C)"),
+        StatusRegister("active_bin", 12, "Bin the line is drawing from now (0 = none)"),
+    ),
+    # The HMI's setpoints, read by the controller with the request word (HR 100).
+    hmi_setpoints=(
+        HmiSetpoint("source_bin", 101, 1, "Source bin for the next start (1 = A, 2 = B, 3 = C)"),
+    ),
 )

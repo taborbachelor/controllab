@@ -1,0 +1,23 @@
+name: Running From Bin B -- Only Bin B's Gate Opens
+description: "The source bin is an HMI setpoint, taken at Start. With bin B selected the start sequence opens bin B's gate, and only that one: the line draws from one bin at a time."
+title: "Start from bin B: bin B's gate opens, bins A and C stay closed"
+
+given:
+  line_state: idle
+  source_bin: B
+
+when:
+  start: true
+
+trigger: start
+
+expect:
+  line_state: running
+  active_bin: B
+  gate_b_open: true
+  gate_open: false
+  gate_c_open: false
+  feeder_flowing: true
+
+within:
+  seconds: 3.0

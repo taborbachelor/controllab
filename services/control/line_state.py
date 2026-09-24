@@ -8,6 +8,10 @@ from __future__ import annotations
 from enum import Enum, IntFlag, auto
 
 
+# The line's bins (master specification, item 6), in order.
+BINS = ("A", "B", "C")
+
+
 class LineMode(Enum):
     """The operator-selected mode (docs/CONTROL-LAB.md §6.1), kept separate
     from LineState: the mode says who drives the devices, the state says

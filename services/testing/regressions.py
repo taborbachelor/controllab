@@ -44,7 +44,7 @@ class JamTripRemoved(LineController):
             return "conveyor jam"
         if not self.interlocks.conveyor_confirmed_running:
             return self._motion_loss_reason()
-        if self.gate_ctrl.travel_fault:
+        if self._gate_travel_fault:
             return "gate travel fault"
         return None
 
@@ -114,7 +114,8 @@ class ManualFeederBeforeBelt(LineController):
     def _manual_feeder_refusal(self):
         inhibit, reasons = StartInhibit.NONE, []
         # REGRESSION: the conveyor-proven check was removed here.
-        if self.interlocks.bin_low:
+        drawn = [b for b, g in self.gates.items() if g.commanded_open] or [self.source_bin]
+        if any(self.interlocks.bin_low_of(b) for b in drawn):
             inhibit |= StartInhibit.BIN_LOW
             reasons.append("bin low")
         if self.interlocks.hopper_high:

@@ -10,11 +10,11 @@ Everything a controller needs is five contiguous ranges, one per table — exact
 
 | Table | Direction | Start | Size | Contents |
 |---|---|---:|---:|---|
-| Discrete inputs (FC 02) | read | 0 | 13 | field sensors |
-| Input registers (FC 04) | read | 0 | 4 | analog sensors |
-| Holding registers (FC 03) | read | 100 | 1 | HMI request word |
-| Coils (FC 15) | write | 0 | 3 | field outputs |
-| Holding registers (FC 16) | write | 0 | 9 | analog outputs, controller status, HMI ack word |
+| Discrete inputs (FC 02) | read | 0 | 19 | field sensors |
+| Input registers (FC 04) | read | 0 | 6 | analog sensors |
+| Holding registers (FC 03) | read | 100 | 2 | HMI request word + setpoints |
+| Coils (FC 15) | write | 0 | 5 | field outputs |
+| Holding registers (FC 16) | write | 0 | 13 | analog outputs, controller status, HMI ack word |
 
 ## Discrete inputs (FC 02, read-only)
 
@@ -33,6 +33,12 @@ Everything a controller needs is five contiguous ranges, one per table — exact
 | 10 | 10011 | `ES-001` | E-stop healthy (1 = healthy; fail-safe polarity) |
 | 11 | 10012 | `LSH-103` | Feeder discharge chute plug switch (jam) |
 | 12 | 10013 | `WT-105.FLT` | Hopper weight input channel fault (wire break / transmitter failed) |
+| 13 | 10014 | `LSL-111` | Bin B low level switch |
+| 14 | 10015 | `ZSO-112` | Bin B gate open limit switch |
+| 15 | 10016 | `ZSC-112` | Bin B gate closed limit switch |
+| 16 | 10017 | `LSL-121` | Bin C low level switch |
+| 17 | 10018 | `ZSO-122` | Bin C gate open limit switch |
+| 18 | 10019 | `ZSC-122` | Bin C gate closed limit switch |
 
 ## Input registers (FC 04, read-only)
 
@@ -42,6 +48,8 @@ Everything a controller needs is five contiguous ranges, one per table — exact
 | 1 | 30002 | `WT-105` | Hopper weight | kg | ×10 | 2000 → 20000 |
 | 2 | 30003 | `IT-104` | Conveyor motor current | A | ×100 | 100 → 10000 |
 | 3 | 30004 | `FT-104` | Belt scale flow rate at the conveyor head | kg/s | ×100 | 10 → 1000 |
+| 4 | 30005 | `LT-111` | Bin B level, % | % | ×100 | 100 → 10000 |
+| 5 | 30006 | `LT-121` | Bin C level, % | % | ×100 | 100 → 10000 |
 
 ## Coils — field outputs (FC 01 read; FC 05/15 write in external-controller mode only)
 
@@ -50,6 +58,8 @@ Everything a controller needs is five contiguous ranges, one per table — exact
 | 0 | 00001 | `XV-102.CMD_OPEN` | Gate open command (de-energized = close) |
 | 1 | 00002 | `M-103.RUN` | Feeder motor run command |
 | 2 | 00003 | `M-104.RUN` | Conveyor motor run command |
+| 3 | 00004 | `XV-112.CMD_OPEN` | Bin B gate open command (de-energized = close) |
+| 4 | 00005 | `XV-122.CMD_OPEN` | Bin C gate open command (de-energized = close) |
 
 ## Holding registers
 
@@ -66,6 +76,10 @@ Written by the controller in external-controller mode (FC 16); read-only with th
 | 6 | 40007 | `hmi_ack` | HMI acknowledge word (controller → ControlLab) | | |
 | 7 | 40008 | `start_inhibit` | Why the most recent start or mode request was refused (bits; 0 = none) | | |
 | 8 | 40009 | `mode` | Operator-selected mode (0 = AUTO, 1 = MANUAL) | | |
+| 9 | 40010 | `alarms_active_2` | Alarm bits 16-31: condition active | | |
+| 10 | 40011 | `alarms_unacked_2` | Alarm bits 16-31: not yet acknowledged | | |
+| 11 | 40012 | `source_bin` | Source bin the next start draws from (1 = A, 2 = B, 3 = C) | | |
+| 12 | 40013 | `active_bin` | Bin the line is drawing from now (0 = none) | | |
 | 100 | 40101 | `hmi_request` | HMI request word (ControlLab → controller; read-only to clients) | | |
 
 ## HMI commands to an external controller — request/acknowledge
@@ -97,6 +111,14 @@ Kept apart from field I/O and outside the controller view: writing 1 issues the 
 | 109 | 00110 | `close_gate` | Manual: close the gate |
 | 110 | 00111 | `start_feeder` | Manual: start the feeder (needs the conveyor proven running) |
 | 111 | 00112 | `stop_feeder` | Manual: stop the feeder |
+
+## HMI setpoints (holding registers; the HMI writes, the controller reads)
+
+Values the operator enters, read by the controller in the same range as the request word. A write of setpoints on their own is accepted in either mode; they stay until changed.
+
+| Address | Ref | Setpoint | Default | Description |
+|---:|---:|---|---:|---|
+| 101 | 40102 | `source_bin` | 1 | Source bin for the next start (1 = A, 2 = B, 3 = C) |
 
 ## Controller status codes
 
@@ -142,8 +164,8 @@ Kept apart from field I/O and outside the controller view: writing 1 issues the 
 | Bit | Alarm | Description | Class |
 |---:|---|---|---|
 | 0 | `ES-001.TRIP` | E-stop tripped | trip |
-| 1 | `LSL-101.LOW` | Bin low | warning |
-| 2 | `XV-102.TRAVEL_FAULT` | Gate travel fault | trip |
+| 1 | `LSL-101.LOW` | Bin A low | warning |
+| 2 | `XV-102.TRAVEL_FAULT` | Bin A gate travel fault | trip |
 | 3 | `M-103.FAULT` | Feeder trip (VFD fault/overload) | trip |
 | 4 | `M-103.START_PROOF` | Feeder failed to prove running | trip |
 | 5 | `M-104.OL` | Conveyor trip (overload) | trip |
@@ -156,6 +178,10 @@ Kept apart from field I/O and outside the controller view: writing 1 issues the 
 | 12 | `LSHH-105.DISAGREE` | Hopper high-high switch disagrees with WT-105 | trip |
 | 13 | `IT-104.HIGH` | Conveyor motor overcurrent (jam) | trip |
 | 14 | `FT-104.NO_FLOW` | No flow on the belt while feeding | warning |
+| 15 | `LSL-111.LOW` | Bin B low | warning |
+| 16 | `XV-112.TRAVEL_FAULT` | Bin B gate travel fault | trip |
+| 17 | `LSL-121.LOW` | Bin C low | warning |
+| 18 | `XV-122.TRAVEL_FAULT` | Bin C gate travel fault | trip |
 
 ### `start_inhibit` bits (why the most recent start or mode request was refused; 0 = NONE)
 

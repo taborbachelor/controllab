@@ -44,6 +44,12 @@ LABELS: dict[str, str] = {
     "line_state": "Line state",
     "fault_reason": "Trip reason",
     "mode": "Mode",
+    "source_bin": "Source bin (next start)",
+    "active_bin": "Bin in use",
+    "gate_b_open": "Bin B gate open",
+    "gate_c_open": "Bin C gate open",
+    "gate_b_open_commanded": "Bin B gate open command",
+    "gate_c_open_commanded": "Bin C gate open command",
     "conveyor_running": "Conveyor running",
     "feeder_running": "Feeder running",
     "feeder_run_commanded": "Feeder run command",
@@ -68,9 +74,10 @@ LABELS: dict[str, str] = {
 _OPERATOR = {"start", "stop", "reset", "acknowledge", "select_manual", "select_auto", "start_conveyor",
              "stop_conveyor", "open_gate", "close_gate", "start_feeder", "stop_feeder"}
 _FAULTS = {"conveyor_trip", "feeder_trip", "conveyor_fail_to_start", "feeder_fail_to_start", "gate_stuck",
+           "gate_b_stuck", "gate_c_stuck",
            "belt_slip", "feeder_jam", "conveyor_jam", "bin_bridged"}
-_FIELD_RESETS = {"feeder_drive_reset", "conveyor_overload_reset", "gate_reset"}
-_PROCESS = {"hopper_level_pct", "bin_level_pct"}
+_FIELD_RESETS = {"feeder_drive_reset", "conveyor_overload_reset", "gate_reset", "gate_b_reset", "gate_c_reset"}
+_PROCESS = {"hopper_level_pct", "bin_level_pct", "bin_b_level_pct", "bin_c_level_pct"}
 _SENSORS = {"sensor_stuck": "fault", "sensor_failed": "fault", "sensor_restored": "repair",
             "sensor_noise": "fault", "sensor_drift": "fault", "sensor_slow": "fault"}
 
@@ -80,7 +87,7 @@ KINDS = {"operator": "Operator action", "fault": "Fault injected", "repair": "Fi
 
 def classify(key: str, value: object) -> str:
     """operator / fault / repair / process."""
-    if key in _OPERATOR:
+    if key in _OPERATOR or key == "source_bin":
         return "operator"
     if key == "estop":
         return "fault" if value == "tripped" else "repair"
@@ -127,6 +134,10 @@ _PHRASES: dict[str, tuple[str, str]] = {
     "feeder_drive_reset": ("The feeder drive is reset at the field", ""),
     "conveyor_overload_reset": ("The conveyor overload is reset at the field", ""),
     "gate_reset": ("The gate actuator is reset at the field", ""),
+    "gate_b_stuck": ("Bin B's gate actuator sticks", "Bin B's gate actuator is freed"),
+    "gate_c_stuck": ("Bin C's gate actuator sticks", "Bin C's gate actuator is freed"),
+    "gate_b_reset": ("Bin B's gate actuator is reset at the field", ""),
+    "gate_c_reset": ("Bin C's gate actuator is reset at the field", ""),
 }
 
 
@@ -150,6 +161,10 @@ def describe_action(key: str, value: object) -> str:
         return f"The hopper is at {value:g} % full"
     if key == "bin_level_pct":
         return f"The bin is at {value:g} % full"
+    if key in ("bin_b_level_pct", "bin_c_level_pct"):
+        return f"Bin {key[4].upper()} is at {value:g} % full"
+    if key == "source_bin":
+        return f"Operator selects bin {value} as the source"
     on, off = _PHRASES[key]
     return on if value or not off else off
 

@@ -31,7 +31,7 @@ exactly five contiguous ranges, reported by controller_ranges():
 
     discrete inputs   read   every DI tag
     input registers   read   every AI tag
-    holding (read)    read   the HMI request word
+    holding (read)    read   the HMI request word + the HMI setpoints
     coils             write  every DO tag -- and nothing else
     holding (write)   write  every AO tag + the status block + the HMI ack word
 
@@ -115,6 +115,24 @@ class StatusRegister:
     description: str = ""
 
 
+@dataclass(frozen=True)
+class HmiSetpoint:
+    """A value the HMI enters and the controller reads (a holding register
+    in the controller's read range, right after the request word): the
+    source bin, a recipe weight. Commands are momentary bits in the request
+    word; a setpoint is a value that stays until changed."""
+
+    name: str
+    address: int
+    default: int = 0
+    description: str = ""
+
+
+@dataclass(frozen=True)
+class _SetpointRef:
+    name: str
+
+
 # Non-tag holding registers, identified in the data store by these markers.
 _REQUEST = "hmi_request"
 _ACK = "hmi_ack"
@@ -139,6 +157,15 @@ class RegisterMap:
     status_registers: tuple[StatusRegister, ...] = ()
     hmi_request: int | None = None  # holding register the controller reads
     hmi_ack: int | None = None  # holding register the controller writes
+    hmi_setpoints: tuple[HmiSetpoint, ...] = ()  # holding registers the controller reads, after the request word
+
+    @property
+    def setpoint_defaults(self) -> dict[str, int]:
+        return {sp.name: sp.default for sp in self.hmi_setpoints}
+
+    def handshake(self) -> "HmiHandshake":
+        """A fresh HMI channel for this map: its commands and setpoints."""
+        return HmiHandshake(self.commands, self.setpoint_defaults)
 
     @property
     def commands(self) -> list[str]:
@@ -182,6 +209,12 @@ class RegisterMap:
             claim(HOLDING_REGISTER, self.hmi_request, _REQUEST)
         if self.hmi_ack is not None:
             claim(HOLDING_REGISTER, self.hmi_ack, _ACK)
+        for sp in self.hmi_setpoints:
+            claim(HOLDING_REGISTER, sp.address, f"setpoint {sp.name}")
+            if not 0 <= sp.default <= UINT16_MAX:
+                problems.append(f"setpoint {sp.name}: default {sp.default} doesn't fit in 16 bits")
+        if self.hmi_setpoints and self.hmi_request is None:
+            problems.append("HMI setpoints need the HMI request word (they're read in the same range)")
         if (self.hmi_request is None) != (self.hmi_ack is None):
             problems.append("hmi_request and hmi_ack come as a pair")
         if len(self.hmi_coils) > 16:
@@ -219,7 +252,10 @@ class RegisterMap:
         return ControllerRanges(
             discrete_inputs=span(list(self.by_table(DISCRETE_INPUT)), "discrete inputs"),
             input_registers=span(list(self.by_table(INPUT_REGISTER)), "input registers"),
-            holding_read=span([self.hmi_request] if self.hmi_request is not None else [], "holding read"),
+            holding_read=span(
+                ([self.hmi_request] if self.hmi_request is not None else []) + [sp.address for sp in self.hmi_setpoints],
+                "holding read (HMI request word + setpoints)",
+            ),
             coils=span(list(self.by_table(COIL)), "output coils"),
             holding_write=span(write, "holding write (analog outputs + status + ack)"),
         )
@@ -246,11 +282,20 @@ class HmiHandshake:
     Not thread-safe on its own; only touched under the lock the Modbus
     server holds."""
 
-    def __init__(self, commands: list[str]) -> None:
+    def __init__(self, commands: list[str], setpoints: dict[str, int] | None = None) -> None:
         self.commands = list(commands)
         self.request_word = 0
         self.ack_word = 0
         self._pending: set[str] = set()
+        # The HMI setpoints (RegisterMap.hmi_setpoints) travel the same way:
+        # values the HMI holds, read by the controller with the request word.
+        self.setpoints: dict[str, int] = dict(setpoints or {})
+        self._setpoint_defaults = dict(self.setpoints)
+
+    def set_setpoint(self, name: str, raw: int) -> None:
+        if name not in self.setpoints:
+            raise ValueError(f"unknown HMI setpoint {name!r}")
+        self.setpoints[name] = int(raw)
 
     def _bit(self, command: str) -> int:
         if command not in self.commands:
@@ -279,8 +324,13 @@ class HmiHandshake:
         return [c for c in self.commands if self.request_word & self._bit(c) or c in self._pending]
 
     def reset(self) -> None:
+        """A fresh HMI: no request outstanding, and every setpoint back at its
+        default. (The setpoints first survived a reset, so in a real-time run
+        a scenario that selected bin C left the next one starting from bin C:
+        found when the three-bin suite first ran against OpenPLC.)"""
         self.request_word = self.ack_word = 0
         self._pending.clear()
+        self.setpoints = dict(self._setpoint_defaults)
 
 
 def to_raw(value: float, scale: float) -> int:
@@ -308,8 +358,15 @@ class IOImageDataStore:
         handshake: HmiHandshake | None = None,
         on_output_write: Callable[[], None] | None = None,
         status_source: Callable[[], list[int]] | None = None,
+        on_setpoint: Callable[[str, int], None] | None = None,
+        setpoint_source: Callable[[], dict[str, int]] | None = None,
     ) -> None:
+        """`on_setpoint` / `setpoint_source` (built-in controller mode, no
+        handshake): an HMI setpoint write goes to the controller, and a read
+        reports the controller's value."""
         register_map.validate(get_io())
+        self.on_setpoint = on_setpoint
+        self.setpoint_source = setpoint_source
         self.map = register_map
         self.get_io = get_io
         self.on_command = on_command
@@ -330,6 +387,7 @@ class IOImageDataStore:
         if register_map.hmi_request is not None:
             self._holding[register_map.hmi_request] = _REQUEST
             self._holding[register_map.hmi_ack] = _ACK
+        self._holding.update({sp.address: _SetpointRef(sp.name) for sp in register_map.hmi_setpoints})
 
     @staticmethod
     def _points(table: dict[int, object], address: int, count: int, what: str) -> list:
@@ -362,6 +420,10 @@ class IOImageDataStore:
                 out.append(self.handshake.request_word if self.handshake else 0)
             elif t == _ACK:
                 out.append(self.handshake.ack_word if self.handshake else 0)
+            elif isinstance(t, _SetpointRef):
+                values = self.handshake.setpoints if self.handshake else (
+                    self.setpoint_source() if self.setpoint_source else {})
+                out.append(values.get(t.name, 0))
             elif isinstance(t, int):
                 out.append(status[t])
             else:
@@ -389,6 +451,19 @@ class IOImageDataStore:
 
     def write_holding_registers(self, address: int, values: list[int]) -> None:
         targets = self._points(self._holding, address, len(values), "holding register")
+        if targets and all(isinstance(t, _SetpointRef) for t in targets):
+            # An HMI entering setpoints: writable in either mode, like the
+            # pushbutton coils -- they're the HMI's, not the controller's.
+            if self.handshake is None and self.on_setpoint is None:
+                raise ModbusError(ILLEGAL_DATA_ADDRESS, "no HMI setpoints in this mode")
+            for target, raw in zip(targets, values):
+                if self.handshake is not None:
+                    self.handshake.set_setpoint(target.name, raw)
+                else:
+                    self.on_setpoint(target.name, raw)
+            return
+        if any(isinstance(t, _SetpointRef) for t in targets):
+            raise ModbusError(ILLEGAL_DATA_ADDRESS, "HMI setpoints are written on their own, not with outputs")
         if not self.outputs_writable:
             raise ModbusError(ILLEGAL_DATA_ADDRESS, "outputs are owned by the built-in controller")
         if _REQUEST in targets:
@@ -438,7 +513,8 @@ def render_markdown(
         "|---|---|---:|---:|---|",
         f"| Discrete inputs (FC 02) | read | {r.discrete_inputs[0]} | {r.discrete_inputs[1]} | field sensors |",
         f"| Input registers (FC 04) | read | {r.input_registers[0]} | {r.input_registers[1]} | analog sensors |",
-        f"| Holding registers (FC 03) | read | {r.holding_read[0]} | {r.holding_read[1]} | HMI request word |",
+        f"| Holding registers (FC 03) | read | {r.holding_read[0]} | {r.holding_read[1]} | "
+        + ("HMI request word + setpoints |" if register_map.hmi_setpoints else "HMI request word |"),
         f"| Coils (FC 15) | write | {r.coils[0]} | {r.coils[1]} | field outputs |",
         f"| Holding registers (FC 16) | write | {r.holding_write[0]} | {r.holding_write[1]} | "
         + ("analog outputs, controller status, HMI ack word |" if register_map.status_registers
@@ -516,6 +592,20 @@ def render_markdown(
         for h in sorted(register_map.hmi_coils, key=lambda h: h.address):
             lines.append(f"| {h.address} | {ref(COIL, h.address)} | `{h.command}` | {h.description} |")
         lines.append("")
+    if register_map.hmi_setpoints:
+        lines += [
+            "## HMI setpoints (holding registers; the HMI writes, the controller reads)",
+            "",
+            "Values the operator enters, read by the controller in the same range as the request word. A write "
+            "of setpoints on their own is accepted in either mode; they stay until changed.",
+            "",
+            "| Address | Ref | Setpoint | Default | Description |",
+            "|---:|---:|---|---:|---|",
+        ]
+        for sp in sorted(register_map.hmi_setpoints, key=lambda sp: sp.address):
+            lines.append(f"| {sp.address} | {ref(HOLDING_REGISTER, sp.address)} | `{sp.name}` | {sp.default} | "
+                         f"{sp.description} |")
+        lines.append("")
     if status_notes:
         lines += ["## Controller status codes", "", status_notes]
     return "\n".join(lines)
@@ -546,6 +636,8 @@ class ModbusIOSync:
         self.map = register_map
         self.ranges = register_map.controller_ranges()
         self._ack = 0
+        # The HMI setpoints as last read with the request word (take_commands).
+        self.setpoints = {sp.name: sp.default for sp in register_map.hmi_setpoints}
         self._holding_write: dict[int, object] = dict(register_map.by_table(HOLDING_REGISTER))
         self._holding_write.update({r.address: i for i, r in enumerate(register_map.status_registers)})
         if register_map.hmi_ack is not None:
@@ -570,7 +662,10 @@ class ModbusIOSync:
         push_outputs()."""
         if self.map.hmi_request is None:
             return []
-        request = self.client.read_holding_registers(self.map.hmi_request, 1)[0]
+        start, count = self.ranges.holding_read
+        words = self.client.read_holding_registers(start, count)
+        request = words[self.map.hmi_request - start]
+        self.setpoints = {sp.name: words[sp.address - start] for sp in self.map.hmi_setpoints}
         taken = []
         for i, command in enumerate(self.map.commands):
             bit = 1 << i

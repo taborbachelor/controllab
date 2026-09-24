@@ -1,0 +1,33 @@
+name: Bin B's Gate Fails To Prove Open
+description: "Starting from bin B with its gate actuator stuck: the gate is commanded open but never reaches its open limit switch, so the start is abandoned before the feeder runs."
+title: "Start from bin B: the belt proves running and bin B's gate is commanded open"
+
+given:
+  line_state: idle
+  source_bin: B
+  gate_b_stuck: true
+
+when:
+  start: true
+
+trigger: start
+
+expect:
+  gate_b_open_commanded: true
+  feeder_run_commanded: false
+
+within:
+  seconds: 1.0
+
+then:
+  - title: "Bin B's gate never proves open: the start is abandoned, the feeder never ran"
+    expect:
+      line_state: faulted
+      fault_reason: "gate failed to prove open"
+      first_out: "XV-112.TRAVEL_FAULT"
+      gate_b_open_commanded: false
+      feeder_run_commanded: false
+    within:
+      seconds: 3.0
+
+interlock: "Gate travel timeout"

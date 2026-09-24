@@ -35,6 +35,16 @@ EXPECTED_TAGS = {
     "LSH-105": TagType.DI,
     "LSHH-105": TagType.DI,
     "ES-001": TagType.DI,
+    "LT-111": TagType.AI,
+    "LSL-111": TagType.DI,
+    "XV-112.CMD_OPEN": TagType.DO,
+    "ZSO-112": TagType.DI,
+    "ZSC-112": TagType.DI,
+    "LT-121": TagType.AI,
+    "LSL-121": TagType.DI,
+    "XV-122.CMD_OPEN": TagType.DO,
+    "ZSO-122": TagType.DI,
+    "ZSC-122": TagType.DI,
 }
 
 

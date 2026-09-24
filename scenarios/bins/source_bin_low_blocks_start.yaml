@@ -1,0 +1,44 @@
+name: Only The Source Bin's Low Switch Refuses A Start
+description: "Bin B is selected and running low, so a start is refused for bin low. Bin A being low doesn't matter to a start from bin B, and doesn't block it."
+title: "Bin B is low and selected: the start is refused"
+
+given:
+  line_state: idle
+  source_bin: B
+  bin_b_level_pct: 5
+
+when:
+  start: true
+
+trigger: start
+
+expect:
+  start_inhibit: ["BIN_LOW"]
+  line_state: idle
+  gate_b_open_commanded: false
+
+within:
+  seconds: 0.3
+
+then:
+  # The field changes first and the operator acts on what the HMI then shows:
+  # a start pressed in the same scan would be judged on the old levels
+  # (Control scans before the plant publishes; the Phase 7 latency finding).
+  - title: "Bin B is refilled and bin A runs low instead"
+    when:
+      bin_b_level_pct: 50
+      bin_level_pct: 5
+    expect:
+      latched_alarm_ids: ["LSL-101.LOW", "LSL-111.LOW"]
+    within:
+      seconds: 0.3
+  - title: "The start from bin B is accepted: bin A's low level doesn't matter to it"
+    when:
+      start: true
+    expect:
+      start_inhibit: ["NONE"]
+      line_state: starting
+    within:
+      seconds: 0.3
+
+interlock: "Bin not low"

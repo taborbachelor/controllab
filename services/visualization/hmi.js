@@ -9,7 +9,7 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 const TRIP = "var(--trip)", WARN = "var(--warn)", RUN = "var(--run)", OFF = "var(--hollow)", LINE = "var(--line)";
 
 // Hopper geometry: fill spans y 310 (empty) .. 110 (full), a 200px column.
-const HOP_TOP = 110, HOP_H = 200, BIN_TOP = 30, BIN_H = 160;
+const HOP_TOP = 110, HOP_H = 200, BIN_TOP = 40, BIN_H = 130;
 let PLANT = null;
 
 function initMimic(plant) {
@@ -36,20 +36,32 @@ function device(el, cmd, fb, trip) {
 
 // `animate`: whether belts show moving material (only while time is advancing).
 function renderMimic(v, animate) {
-  const binPct = Math.max(0, Math.min(100, v["LT-101"]));
-  $("bin-fill").setAttribute("y", BIN_TOP + BIN_H * (1 - binPct / 100));
-  $("bin-fill").setAttribute("height", BIN_H * binPct / 100);
-  $("lt101").textContent = `${binPct.toFixed(1)} % full`;
-  lamp("lsl101", v["LSL-101"], WARN);
-
-  const gateOpen = v["ZSO-102"], gateClosed = v["ZSC-102"], gateCmd = v["XV-102.CMD_OPEN"];
-  const gateFb = gateOpen ? true : gateClosed ? false : null;  // null = travelling
-  const gate = $("xv102");
-  gate.setAttribute("fill", gateOpen ? RUN : OFF);
-  gate.setAttribute("stroke", gateFb === gateCmd ? LINE : WARN);
-  gate.setAttribute("stroke-dasharray", gateFb === gateCmd ? "none" : "6 4");
-  $("xv102-txt").textContent = (gateOpen ? "Open" : gateClosed ? "Closed" : gateCmd ? "Opening…" : "Closing…") +
-    (gateFb !== null && gateFb !== gateCmd ? ` (told to ${gateCmd ? "open" : "close"})` : "");
+  let anyGateOpen = false;  // the feeder moves material only through an open gate
+  // The three bins and their gates. A recording made before bins B and C
+  // existed has no tags for them: those bins are hidden rather than drawn empty.
+  for (const [grp, fill, lt, lsl, gateId, gateTxt, tLt, tLsl, tOpen, tClosed, tCmd] of [
+    ["bin-a", "bin-fill", "lt101", "lsl101", "xv102", "xv102-txt", "LT-101", "LSL-101", "ZSO-102", "ZSC-102", "XV-102.CMD_OPEN"],
+    ["bin-b", "bin-b-fill", "lt111", "lsl111", "xv112", "xv112-txt", "LT-111", "LSL-111", "ZSO-112", "ZSC-112", "XV-112.CMD_OPEN"],
+    ["bin-c", "bin-c-fill", "lt121", "lsl121", "xv122", "xv122-txt", "LT-121", "LSL-121", "ZSO-122", "ZSC-122", "XV-122.CMD_OPEN"],
+  ]) {
+    const present = v[tLt] !== undefined;
+    $(grp).style.display = present ? "" : "none";
+    if (!present) continue;
+    const binPct = Math.max(0, Math.min(100, v[tLt]));
+    $(fill).setAttribute("y", BIN_TOP + BIN_H * (1 - binPct / 100));
+    $(fill).setAttribute("height", BIN_H * binPct / 100);
+    $(lt).textContent = `${binPct.toFixed(1)} %`;
+    lamp(lsl, v[tLsl], WARN);
+    const gateOpen = v[tOpen], gateClosed = v[tClosed], gateCmd = v[tCmd];
+    const gateFb = gateOpen ? true : gateClosed ? false : null;  // null = travelling
+    anyGateOpen = anyGateOpen || !!gateOpen;
+    const gate = $(gateId);
+    gate.setAttribute("fill", gateOpen ? RUN : OFF);
+    gate.setAttribute("stroke", gateFb === gateCmd ? LINE : WARN);
+    gate.setAttribute("stroke-dasharray", gateFb === gateCmd ? "none" : "6 4");
+    $(gateTxt).textContent = (gateOpen ? "Open" : gateClosed ? "Closed" : gateCmd ? "Opening…" : "Closing…") +
+      (gateFb !== null && gateFb !== gateCmd ? ` (told to ${gateCmd ? "open" : "close"})` : "");
+  }
 
   const fRun = v["M-103.RUNNING"], fCmd = v["M-103.RUN"], fTrip = v["M-103.FAULT"], plugged = v["LSH-103"];
   device($("m103"), fCmd, fRun, fTrip);
@@ -65,15 +77,15 @@ function renderMimic(v, animate) {
   $("m104-l").setAttribute("fill", cRun || cTrip ? "#fff" : "var(--ink)");
   $("conv-belt").setAttribute("stroke", cTrip ? TRIP : cRun && !motion ? WARN : LINE);
   $("m104-txt").textContent = (cTrip ? "Overload trip" : cRun && !motion ? "Motor on, belt not moving" : cRun ? "Running" : "Stopped") +
-    (!cTrip && cCmd !== cRun ? ` (told to ${cCmd ? "run" : "stop"})` : "") +
-    // The motor current (IT-104) and the belt scale (FT-104): a jam shows as a
-    // current far over the motor's rating with nothing on the scale.
-    (v["IT-104"] !== undefined ? ` · motor ${v["IT-104"].toFixed(1)} A` : "") +
-    (v["FT-104"] !== undefined ? ` · belt scale ${v["FT-104"].toFixed(1)} kg/s` : "");
+    (!cTrip && cCmd !== cRun ? ` (told to ${cCmd ? "run" : "stop"})` : "");
+  // The motor current (IT-104) and the belt scale (FT-104): a jam shows as a
+  // current far over the motor's rating with nothing on the scale.
+  $("m104-io").textContent = v["IT-104"] !== undefined
+    ? `motor ${v["IT-104"].toFixed(1)} A · belt scale ${v["FT-104"].toFixed(1)} kg/s` : "";
   lamp("zss104", motion, RUN);
 
   // Material only visibly moves where it physically can.
-  const feeding = fRun && gateOpen;
+  const feeding = fRun && anyGateOpen;
   for (const [id, on] of [["feeder-flow", feeding], ["conv-flow", motion]]) {
     $(id).setAttribute("opacity", on ? 1 : 0);
     $(id).classList.toggle("flowing", on && animate);

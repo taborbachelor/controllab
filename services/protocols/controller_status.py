@@ -72,8 +72,8 @@ FAULT_REASONS: tuple[str | None, ...] = (
 # (id, description, is_warning) in AlarmManager's registration order.
 ALARMS: tuple[tuple[str, str, bool], ...] = (
     ("ES-001.TRIP", "E-stop tripped", False),                         # bit 0
-    ("LSL-101.LOW", "Bin low", True),                                 # bit 1
-    ("XV-102.TRAVEL_FAULT", "Gate travel fault", False),              # bit 2
+    ("LSL-101.LOW", "Bin A low", True),                               # bit 1
+    ("XV-102.TRAVEL_FAULT", "Bin A gate travel fault", False),        # bit 2
     ("M-103.FAULT", "Feeder trip (VFD fault/overload)", False),       # bit 3
     ("M-103.START_PROOF", "Feeder failed to prove running", False),   # bit 4
     ("M-104.OL", "Conveyor trip (overload)", False),                  # bit 5
@@ -86,12 +86,19 @@ ALARMS: tuple[tuple[str, str, bool], ...] = (
     ("LSHH-105.DISAGREE", "Hopper high-high switch disagrees with WT-105", False),  # bit 12 (level cross-check)
     ("IT-104.HIGH", "Conveyor motor overcurrent (jam)", False),                     # bit 13 (motor current)
     ("FT-104.NO_FLOW", "No flow on the belt while feeding", True),                  # bit 14 (belt scale)
+    ("LSL-111.LOW", "Bin B low", True),                                             # bit 15 (bins B, C)
+    ("XV-112.TRAVEL_FAULT", "Bin B gate travel fault", False),                      # bit 16 (second word)
+    ("LSL-121.LOW", "Bin C low", True),                                             # bit 17
+    ("XV-122.TRAVEL_FAULT", "Bin C gate travel fault", False),                      # bit 18
 )
 _ALARM_INDEX = {alarm_id: i for i, (alarm_id, _, _) in enumerate(ALARMS)}
 
 REGISTER_NAMES = (
     "line_state", "fault_reason", "alarms_active", "alarms_unacked", "first_out", "start_inhibit", "mode",
+    # Master specification, item 6: alarm bits 16-31, and the bins.
+    "alarms_active_2", "alarms_unacked_2", "source_bin", "active_bin",
 )
+BIN_CODES = ("A", "B", "C")  # source_bin / active_bin: 1 + index; active_bin 0 = none
 UNKNOWN = 0xFFFF  # a reason/state this table doesn't know -- published rather than guessed
 
 
@@ -110,7 +117,10 @@ def encode(line) -> list[int]:
     state = LINE_STATES.index(line.state) if line.state in LINE_STATES else UNKNOWN
     reason = FAULT_REASONS.index(line.fault_reason) if line.fault_reason in FAULT_REASONS else UNKNOWN
     mode = MODES.index(line.mode) if line.mode in MODES else UNKNOWN
-    return [state, reason, active, unacked, first_out, int(line.start_inhibit), mode]
+    source = 1 + BIN_CODES.index(line.source_bin)
+    active_bin = 1 + BIN_CODES.index(line.active_bin) if line.active_bin else 0
+    return [state, reason, active & 0xFFFF, unacked & 0xFFFF, first_out, int(line.start_inhibit), mode,
+            active >> 16, unacked >> 16, source, active_bin]
 
 
 @dataclass
@@ -120,6 +130,8 @@ class ControllerStatus:
     alarms: list[Alarm]
     start_inhibit: StartInhibit = StartInhibit.NONE
     mode: LineMode | None = LineMode.AUTO  # None: a code this table doesn't know
+    source_bin: str = "A"
+    active_bin: str | None = None
 
     @property
     def latched_alarms(self) -> list[Alarm]:
@@ -130,7 +142,10 @@ class ControllerStatus:
 
 
 def decode(registers: list[int]) -> ControllerStatus:
-    state_code, reason_code, active, unacked, first_out, inhibit, mode_code = registers
+    (state_code, reason_code, active_lo, unacked_lo, first_out, inhibit, mode_code,
+     active_hi, unacked_hi, source_code, active_code) = registers
+    active = active_lo | active_hi << 16
+    unacked = unacked_lo | unacked_hi << 16
     state = LINE_STATES[state_code] if state_code < len(LINE_STATES) else None
     reason = FAULT_REASONS[reason_code] if reason_code < len(FAULT_REASONS) else f"unknown reason code {reason_code}"
     alarms = [
@@ -150,7 +165,9 @@ def decode(registers: list[int]) -> ControllerStatus:
         if member and inhibit & member:
             known |= member
     mode = MODES[mode_code] if mode_code < len(MODES) else None
-    return ControllerStatus(state, reason, alarms, known, mode)
+    source = BIN_CODES[source_code - 1] if 1 <= source_code <= len(BIN_CODES) else "A"
+    active_bin = BIN_CODES[active_code - 1] if 1 <= active_code <= len(BIN_CODES) else None
+    return ControllerStatus(state, reason, alarms, known, mode, source, active_bin)
 
 
 def render_markdown() -> str:

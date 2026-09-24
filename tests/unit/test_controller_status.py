@@ -40,7 +40,7 @@ def test_alarm_table_matches_alarm_manager_exactly():
 
 
 def test_everything_fits_its_register():
-    assert len(ALARMS) <= 16
+    assert len(ALARMS) <= 32  # two 16-bit words per mask
     assert len(LINE_STATES) < UNKNOWN and len(FAULT_REASONS) < UNKNOWN
 
 

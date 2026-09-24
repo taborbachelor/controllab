@@ -50,7 +50,6 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 from services.protocols.line_map import LINE_REGISTER_MAP
-from services.protocols.register_map import HmiHandshake
 from services.telemetry.events import Event, EventLog
 from services.telemetry.tag_history import TagHistory
 from services.simulation.equipment.instruments import InstrumentFault
@@ -78,6 +77,12 @@ STIMULI: dict[str, str] = {
     "conveyor_fail_to_start": "bool",
     "feeder_fail_to_start": "bool",
     "gate_stuck": "bool",
+    "gate_b_stuck": "bool",
+    "gate_c_stuck": "bool",
+    "gate_b_reset": "action",
+    "gate_c_reset": "action",
+    "bin_b_level_pct": "pct",
+    "bin_c_level_pct": "pct",
     "belt_slip": "bool",
     "conveyor_jam": "bool",
     "bin_bridged": "bool",
@@ -100,7 +105,7 @@ STIMULI: dict[str, str] = {
 # Directly setting a level is a deliberate setup action, not a physical
 # event -- the conservation invariant is rebaselined after it, exactly as
 # the scenario runner does for given/when (see Invariants.rebaseline()).
-LEVEL_STIMULI = {"hopper_level_pct", "bin_level_pct"}
+LEVEL_STIMULI = {"hopper_level_pct", "bin_level_pct", "bin_b_level_pct", "bin_c_level_pct"}
 
 # External-controller mode (Phase 7 step 3): if no controller output
 # write arrives for this long (simulated seconds), every output is forced
@@ -133,7 +138,7 @@ class LiveSession:
         self.external = external
         # Created once, not per session: the Modbus data store holds this
         # object, so restart() resets it instead of replacing it.
-        self.handshake = HmiHandshake(list(COMMANDS))
+        self.handshake = LINE_REGISTER_MAP.handshake()
         # A scenario verification owns the line while it runs (run_live):
         # the pacer's ticks and every manual input are refused meanwhile.
         self.verifying: str | None = None
@@ -200,6 +205,31 @@ class LiveSession:
                 self._pending.append((name, lambda: self.handshake.request(name)))
             else:
                 self._pending.append((name, getattr(self.rig.line, name)))
+
+    def setpoint(self, name: str, value: object) -> None:
+        """An HMI setpoint (master specification, item 6): today the source
+        bin, "A" / "B" / "C". Applied at the next tick like a command; in
+        external mode it's entered into the setpoint register the external
+        controller reads."""
+        self._refuse_while_verifying()
+        if name != "source_bin" or value not in ("A", "B", "C"):
+            raise ValueError("setpoints: source_bin takes 'A', 'B' or 'C'")
+        label = f"source_bin {value}"
+        with self._lock:
+            if self.external:
+                code = "ABC".index(value) + 1
+                self._pending.append((label, lambda: self.handshake.set_setpoint("source_bin", code)))
+            else:
+                self._pending.append((label, lambda: self.rig.line.select_source(value)))
+
+    def setpoint_raw(self, name: str, raw: int) -> None:
+        """A setpoint written over Modbus (built-in mode's HMI registers)."""
+        if name != "source_bin" or raw not in (1, 2, 3):
+            raise ValueError(f"setpoint {name}: {raw} is not a bin code (1-3)")
+        self.setpoint(name, "ABC"[raw - 1])
+
+    def setpoint_values(self) -> dict[str, int]:
+        return {"source_bin": "ABC".index(self.rig.line.source_bin) + 1}
 
     def stimulus(self, key: str, value: object) -> None:
         self._refuse_while_verifying()
@@ -365,7 +395,7 @@ class LiveSession:
             t = self.rig.plant.time_s
             if self.external:
                 for key, _ in pending:
-                    if key in COMMANDS:
+                    if key in COMMANDS or key.startswith("source_bin "):
                         self._external_events.append(Event(t, "command_issued", {"command": key}))
             else:
                 self.events.sample(t)
@@ -407,6 +437,7 @@ class LiveSession:
                 controller = {
                     "mode": "external", "state": "external", "fault_reason": None,
                     "last_start_refusal": [], "alarms": [], "start_step": None, "line_mode": None,
+                    "source_bin": "ABC"[self.handshake.setpoints.get("source_bin", 1) - 1], "active_bin": None,
                 }
             else:
                 controller = {
@@ -415,6 +446,8 @@ class LiveSession:
                     # Auto / Manual (docs/CONTROL-LAB.md §6.1). "mode" above is
                     # which controller runs the line, built-in or external.
                     "line_mode": line.mode.name.lower(),
+                    "source_bin": line.source_bin,
+                    "active_bin": line.active_bin,
                     "fault_reason": line.fault_reason,
                     "last_start_refusal": list(line.last_start_refusal),
                     "start_step": line.start_step.name.lower() if line.start_step else None,
@@ -448,6 +481,8 @@ class LiveSession:
                     "conveyor_fail_to_start": plant.conveyor.motor.fail_to_start,
                     "feeder_fail_to_start": plant.feeder.motor.fail_to_start,
                     "gate_stuck": plant.gate.stuck,
+                    "gate_b_stuck": plant.gate_b.stuck,
+                    "gate_c_stuck": plant.gate_c.stuck,
                     "belt_slip": plant.conveyor.motion_switch_stuck_false,
                     "conveyor_jam": plant.conveyor.jammed,
                     "bin_bridged": plant.bin.bridged,
@@ -598,6 +633,8 @@ def make_handler(session: LiveSession, pacer: Pacer) -> type[BaseHTTPRequestHand
                 path = urlparse(self.path).path
                 if path == "/api/command":
                     session.command(body.get("name"))
+                elif path == "/api/setpoint":
+                    session.setpoint(body.get("name"), body.get("value"))
                 elif path == "/api/stimulus":
                     session.stimulus(body.get("key"), body.get("value"))
                 elif path == "/api/run":

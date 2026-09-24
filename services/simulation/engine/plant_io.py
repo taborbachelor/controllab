@@ -41,6 +41,17 @@ _TAGS: list[tuple[str, TagType, str, str]] = [
     ("LSH-105", TagType.DI, "", "Hopper high level switch (80%; 1 = below, fail-safe polarity)"),
     ("LSHH-105", TagType.DI, "", "Hopper high-high level switch (95%; 1 = below, fail-safe polarity)"),
     ("ES-001", TagType.DI, "", "E-stop healthy (1 = healthy; fail-safe polarity)"),
+    # Bins B and C (master specification, item 6), each with its own gate.
+    ("LT-111", TagType.AI, "%", "Bin B level, %"),
+    ("LSL-111", TagType.DI, "", "Bin B low level switch"),
+    ("XV-112.CMD_OPEN", TagType.DO, "", "Bin B gate open command (de-energized = close)"),
+    ("ZSO-112", TagType.DI, "", "Bin B gate open limit switch"),
+    ("ZSC-112", TagType.DI, "", "Bin B gate closed limit switch"),
+    ("LT-121", TagType.AI, "%", "Bin C level, %"),
+    ("LSL-121", TagType.DI, "", "Bin C low level switch"),
+    ("XV-122.CMD_OPEN", TagType.DO, "", "Bin C gate open command (de-energized = close)"),
+    ("ZSO-122", TagType.DI, "", "Bin C gate open limit switch"),
+    ("ZSC-122", TagType.DI, "", "Bin C gate closed limit switch"),
 ]
 
 
@@ -65,6 +76,14 @@ def publish_plant_inputs(plant: Plant, io: IOImage) -> None:
 
     publish("ZSO-102", plant.gate.is_open)
     publish("ZSC-102", plant.gate.is_closed)
+
+    for level, low, opened, closed, which in (("LT-111", "LSL-111", "ZSO-112", "ZSC-112", "B"),
+                                               ("LT-121", "LSL-121", "ZSO-122", "ZSC-122", "C")):
+        bin_, gate = plant.bins[which]
+        publish(level, bin_.level_pct)
+        publish(low, bin_.low)
+        publish(opened, gate.is_open)
+        publish(closed, gate.is_closed)
 
     publish("M-103.RUNNING", plant.feeder.motor.running)
     publish("M-103.FAULT", plant.feeder.motor.fault)
@@ -96,6 +115,8 @@ def apply_plant_commands(io: IOImage, plant: Plant) -> None:
     setters rather than setting internal state directly, so validation
     (e.g. Feeder's speed clamp) still applies."""
     plant.gate.command(io.read("XV-102.CMD_OPEN"))
+    plant.gate_b.command(io.read("XV-112.CMD_OPEN"))
+    plant.gate_c.command(io.read("XV-122.CMD_OPEN"))
     plant.feeder.command(io.read("M-103.RUN"), io.read("SC-103"))
     plant.conveyor.command(io.read("M-104.RUN"))
 

@@ -44,7 +44,11 @@ def test_every_located_variable_is_where_openplc_will_put_it():
     ir = LINE_REGISTER_MAP.by_table(INPUT_REGISTER)
     for i, a in enumerate(range(ranges.input_registers[0], sum(ranges.input_registers))):
         expected[st_name(ir[a].tag)] = f"%IW{100 + i}"
-    expected["HMI_REQUEST"] = f"%IW{100 + ranges.input_registers[1]}"  # holding-read follows the input registers
+    # The holding-read range follows the input registers: the request word, then each HMI setpoint.
+    read_base = 100 + ranges.input_registers[1] - ranges.holding_read[0]
+    expected["HMI_REQUEST"] = f"%IW{read_base + LINE_REGISTER_MAP.hmi_request}"
+    for sp in LINE_REGISTER_MAP.hmi_setpoints:
+        expected[f"SP_{sp.name.upper()}"] = f"%IW{read_base + sp.address}"
 
     hr = LINE_REGISTER_MAP.by_table(HOLDING_REGISTER)
     status = {r.address: f"ST_{r.name.upper()}" for r in LINE_REGISTER_MAP.status_registers}

@@ -104,6 +104,16 @@ class ObservedLine:
     def acknowledge(self) -> None:
         self._command("acknowledge")
 
+    def select_source(self, bin_: str) -> None:
+        """The source-bin setpoint, entered into the HMI's setpoint register
+        (the controller reads it with the request word)."""
+        code = "ABC".index(bin_) + 1
+        with self._lock:
+            changed = self.handshake.setpoints.get("source_bin") != code
+            self.handshake.set_setpoint("source_bin", code)
+        if changed and self.command_sink is not None:
+            self.command_sink(f"source_bin {bin_}")
+
     def select_auto(self) -> None:
         self._command("select_auto")
 
@@ -136,6 +146,14 @@ class ObservedLine:
         return status.state
 
     @property
+    def source_bin(self) -> str:
+        return self._published().source_bin
+
+    @property
+    def active_bin(self) -> str | None:
+        return self._published().active_bin
+
+    @property
     def mode(self) -> LineMode:
         status = self._published()
         if status.mode is None:
@@ -166,7 +184,7 @@ class RemoteLine(ObservedLine):
     one controller scan, then refreshes the status."""
 
     def __init__(self, rig: Rig) -> None:
-        handshake = HmiHandshake(LINE_REGISTER_MAP.commands)
+        handshake = LINE_REGISTER_MAP.handshake()
         store = IOImageDataStore(LINE_REGISTER_MAP, lambda: rig.io, outputs_writable=True, handshake=handshake)
         self._server = ModbusServer(store, port=0)
         threading.Thread(target=self._server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()

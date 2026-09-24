@@ -1,7 +1,12 @@
-"""The bulk-material handling line: BIN-101 -> XV-102 -> FDR-103 -> CV-104 -> HOP-105.
+"""The bulk-material handling line: three bins, each behind its own slide gate
+(A: BIN-101/XV-102, B: BIN-111/XV-112, C: BIN-121/XV-122), onto one screw
+feeder FDR-103 -> belt conveyor CV-104 -> hopper HOP-105.
 
-Wires the five devices together and moves material between them each tick.
-This is the whole "virtual plant" for Phase 1 (docs/CONTROL-LAB.md §5).
+Wires the devices together and moves material between them each tick
+(docs/CONTROL-LAB.md §5). Bins B and C complete the master specification
+(item 6); bin A keeps the original tags and attribute names (`bin`,
+`gate`), so everything written against the one-bin line still means the
+same thing.
 
 Material conservation is a first-class invariant: everything still in the
 system plus everything that has left it (downstream draw or spillage) must
@@ -24,6 +29,9 @@ class PlantConfig:
     bin_capacity_kg: float = 10_000.0
     bin_level_kg: float | None = None
     bin_low_pct: float = 10.0
+    # Bins B and C: the same size and low point as bin A.
+    bin_b_level_kg: float | None = None
+    bin_c_level_kg: float | None = None
 
     gate_travel_time_s: float = 2.0
 
@@ -52,6 +60,12 @@ class Plant:
         cfg = config or PlantConfig()
         self.bin = MaterialBin("BIN-101", cfg.bin_capacity_kg, cfg.bin_level_kg, cfg.bin_low_pct)
         self.gate = Gate("XV-102", cfg.gate_travel_time_s)
+        self.bin_b = MaterialBin("BIN-111", cfg.bin_capacity_kg, cfg.bin_b_level_kg, cfg.bin_low_pct)
+        self.gate_b = Gate("XV-112", cfg.gate_travel_time_s)
+        self.bin_c = MaterialBin("BIN-121", cfg.bin_capacity_kg, cfg.bin_c_level_kg, cfg.bin_low_pct)
+        self.gate_c = Gate("XV-122", cfg.gate_travel_time_s)
+        # Each bin with its gate, by letter.
+        self.bins = {"A": (self.bin, self.gate), "B": (self.bin_b, self.gate_b), "C": (self.bin_c, self.gate_c)}
         self.feeder = Feeder("FDR-103", cfg.feeder_max_rate_kg_s, cfg.feeder_start_delay_s, cfg.feeder_plug_detect_s)
         self.conveyor = Conveyor(
             "CV-104", cfg.conveyor_length_m, cfg.conveyor_speed_m_s, cfg.conveyor_start_delay_s,
@@ -75,7 +89,8 @@ class Plant:
             diagnosed={"WT-105"},
             # Calibrated ranges: the bin's level transmitter in %, the hopper's
             # load cells over the hopper's capacity (as the Modbus map spans them).
-            ranges={"LT-101": (0.0, 100.0), "WT-105": (0.0, cfg.hopper_capacity_kg),
+            ranges={"LT-101": (0.0, 100.0), "LT-111": (0.0, 100.0), "LT-121": (0.0, 100.0),
+                    "WT-105": (0.0, cfg.hopper_capacity_kg),
                     "IT-104": (0.0, 100.0), "FT-104": (0.0, 10.0)},
             seed=cfg.instrument_seed,
         )
@@ -89,8 +104,9 @@ class Plant:
         self.feed_flow_kg_s = 0.0
 
     def total_mass_kg(self) -> float:
-        """Material still in the system right now (bin + belt + hopper)."""
-        return self.bin.level_kg + self.conveyor.mass_on_belt_kg + self.hopper.level_kg
+        """Material still in the system right now (bins + belt + hopper)."""
+        bins = sum(b.level_kg for b, _ in self.bins.values())
+        return bins + self.conveyor.mass_on_belt_kg + self.hopper.level_kg
 
     def accounted_mass_kg(self) -> float:
         """total_mass_kg() plus everything that has left the system, in
@@ -109,7 +125,8 @@ class Plant:
             # A real E-stop removes power regardless of what's commanded.
             self.feeder.motor.run_command = False
             self.conveyor.motor.run_command = False
-            self.gate.open_command = False
+            for _, gate in self.bins.values():
+                gate.open_command = False
             self.feeder.motor.estop()
             self.conveyor.motor.estop()
         else:
@@ -136,9 +153,13 @@ class Plant:
         # scan-cycle model in docs/CONTROL-LAB.md §3.3.
         self.feeder.step(dt)
         offered = 0.0
-        if self.gate.is_open and self.feeder.motor.running:
-            offered = self.bin.discharge(self.feeder.current_rate_kg_s() * dt)
-        self.gate.step(dt)
+        open_bins = [b for b, gate in self.bins.values() if gate.is_open]
+        if open_bins and self.feeder.motor.running:
+            # The feeder draws through every open gate, an equal share from each.
+            share = self.feeder.current_rate_kg_s() * dt / len(open_bins)
+            offered = sum(b.discharge(share) for b in open_bins)
+        for _, gate in self.bins.values():
+            gate.step(dt)
         self.feed_flow_kg_s = offered / dt if dt > 0 else 0.0
 
         self.spilled_kg += self.conveyor.load(offered)

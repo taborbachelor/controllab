@@ -54,14 +54,15 @@ _FAULTS: dict[str, tuple[str, str]] = {
         "Clear the feeder fault if one is injected (Engineer tools → Feeder fail-to-start, click it off)",
     ),
     "gate failed to prove open": (
-        "The bin gate was told to open but never reached its open position, so the start was abandoned.",
-        "Free the gate (Engineer tools → Gate stuck, click it off), then reset it (Engineer tools → Reset "
-        "gate actuator)",
+        "The source bin's gate was told to open but never reached its open position, so the start was abandoned.",
+        "Free the stuck gate (Engineer tools → Bin A/B/C gate stuck, click it off), then reset it (Engineer "
+        "tools → Reset bin A/B/C gate actuator)",
     ),
     "gate travel fault": (
-        "The bin gate didn't reach its commanded position in time.",
-        "Free the gate (Engineer tools → Gate stuck, click it off), then reset it (Engineer tools → Reset "
-        "gate actuator)",
+        "A bin gate didn't reach its commanded position in time -- open when it should be closed pours from "
+        "the wrong bin.",
+        "Free the stuck gate (Engineer tools → Bin A/B/C gate stuck, click it off), then reset it (Engineer "
+        "tools → Reset bin A/B/C gate actuator)",
     ),
     "conveyor jam": (
         "The conveyor belt jammed: it stopped moving while its motor strained against it (the motor current "
@@ -88,8 +89,8 @@ _CLEARED = {
     "hopper weight signal failed": lambda v, inj: not v["WT-105.FLT"],
     "conveyor failed to prove running": lambda v, inj: not inj.get("conveyor_fail_to_start"),
     "feeder failed to prove running": lambda v, inj: not inj.get("feeder_fail_to_start"),
-    "gate failed to prove open": lambda v, inj: not inj.get("gate_stuck"),
-    "gate travel fault": lambda v, inj: not inj.get("gate_stuck"),
+    "gate failed to prove open": lambda v, inj: not any(inj.get(k) for k in ("gate_stuck", "gate_b_stuck", "gate_c_stuck")),
+    "gate travel fault": lambda v, inj: not any(inj.get(k) for k in ("gate_stuck", "gate_b_stuck", "gate_c_stuck")),
     "conveyor lost confirmation": lambda v, inj: not inj.get("belt_slip"),
     "conveyor jam": lambda v, inj: not inj.get("conveyor_jam") and not v["M-104.OL"],
 }
@@ -97,7 +98,8 @@ _CLEARED = {
 # Why a start was refused (LineController.last_start_refusal), in plain
 # words, with the fix. Matched by prefix: "unacknowledged alarm: ..." carries ids.
 _REFUSALS: list[tuple[str, str, str]] = [
-    ("bin low", "the bin is nearly empty (below 10 %)", "Refill the bin (Engineer tools → Set bin level, e.g. 50 %)"),
+    ("bin low", "the source bin is nearly empty (below 10 %)",
+     "Refill it (Engineer tools → Set bin A/B/C level, e.g. 50 %), or choose another source bin"),
     ("hopper at high-high", "the hopper is already too full (95 % or more)",
      "Lower the hopper (Engineer tools → Set hopper level, e.g. 50 %)"),
     ("hopper weight signal failed", "the hopper weight transmitter has failed, so its level is unknown",

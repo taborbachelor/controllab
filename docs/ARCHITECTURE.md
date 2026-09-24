@@ -1242,6 +1242,17 @@ issue and propose the change"):
   running), `no_flow` (on-delay); `LineController._motion_loss_reason()` names a
   motion loss a jam or a slip from the current. Alarms `IT-104.HIGH`,
   `FT-104.NO_FLOW`; §6.3 rows 12-13 in `report.py`.
+- **Three bins** (item 6) — `Plant.bins` {"A","B","C"} → (bin, gate);
+  `LineController.gates`, `select_source()`, `source_bin`, `active_bin`,
+  `_close_gates()`, `_active_gate`, `_gate_travel_fault`; `Interlocks.gates`,
+  `bin_low_of()`. `register_map.HmiSetpoint` + `RegisterMap.hmi_setpoints` +
+  `RegisterMap.handshake()`: HMI setpoints, carried by `HmiHandshake.setpoints`,
+  read by `ModbusIOSync.take_commands()` with the request word, applied by the
+  reference external controller; `IOImageDataStore(on_setpoint=, setpoint_source=)`
+  for built-in mode. `controller_status`: 11 registers (two alarm words, the
+  bins). Dashboard: `LiveSession.setpoint()`, `/api/setpoint`, the Source bin
+  switch, the three-bin picture. `tests/unit/test_hmi_js.py` runs `hmi.js`
+  in Node.
 
 ## The self-explaining replay (readable cold)
 

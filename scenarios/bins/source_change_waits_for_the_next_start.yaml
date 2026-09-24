@@ -1,0 +1,41 @@
+name: A Source Bin Change During A Run Waits For The Next Start
+description: "The source bin is a setpoint for the next start. Changing it while the line runs changes nothing now: the line keeps drawing from the bin it started on, and the new source applies after a stop and a start."
+title: "Bin C selected while running from bin A: the line keeps drawing from A"
+
+given:
+  line_state: running
+
+when:
+  source_bin: C
+
+trigger: source_bin
+
+expect:
+  source_bin: C
+  active_bin: A
+  gate_open: true
+  gate_c_open_commanded: false
+  line_state: running
+
+within:
+  seconds: 0.3
+
+then:
+  - title: "Stop: the line purges and comes to rest"
+    when:
+      stop: true
+    expect:
+      line_state: idle
+      active_bin: none
+    within:
+      seconds: 3.0
+  - title: "Start: now it draws from bin C"
+    when:
+      start: true
+    expect:
+      line_state: running
+      active_bin: C
+      gate_c_open: true
+      gate_open: false
+    within:
+      seconds: 3.0

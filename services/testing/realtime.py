@@ -65,7 +65,7 @@ from typing import Protocol
 from services.protocols import external_controller
 from services.protocols.line_map import LINE_REGISTER_MAP
 from services.protocols.modbus import ModbusClient, ModbusServer
-from services.protocols.register_map import COIL, HmiHandshake, IOImageDataStore, ModbusIOSync, RegisterMap
+from services.protocols.register_map import COIL, IOImageDataStore, ModbusIOSync, RegisterMap
 from services.simulation.engine.plant_io import scan as plant_scan
 from services.telemetry.events import EventLog
 from services.telemetry.tag_history import TagHistory
@@ -153,7 +153,7 @@ class RealtimePlant:
     def __init__(self, host: str = "127.0.0.1", port: int = 5020, register_map: RegisterMap = LINE_REGISTER_MAP) -> None:
         self.map = register_map
         self.lock = threading.RLock()
-        self.handshake = HmiHandshake(register_map.commands)
+        self.handshake = register_map.handshake()
         self.rig = build_rig(with_controller=False)
         self.writes = 0
         self.last_write = time.monotonic()

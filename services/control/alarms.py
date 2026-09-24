@@ -98,8 +98,8 @@ class AlarmManager:
         self._first_out_holder: str | None = None
 
         self._register("ES-001.TRIP", "E-stop tripped", lambda: not self._il.estop_healthy)
-        self._register("LSL-101.LOW", "Bin low", lambda: self._il.bin_low, is_warning=True)
-        self._register("XV-102.TRAVEL_FAULT", "Gate travel fault", lambda: self._il.gate_ctrl.travel_fault)
+        self._register("LSL-101.LOW", "Bin A low", lambda: self._il.bin_low, is_warning=True)
+        self._register("XV-102.TRAVEL_FAULT", "Bin A gate travel fault", lambda: self._il.gate_ctrl.travel_fault)
         self._register("M-103.FAULT", "Feeder trip (VFD fault/overload)", lambda: self._il.feeder_ctrl.faulted)
         self._register(
             "M-103.START_PROOF",
@@ -145,6 +145,12 @@ class AlarmManager:
         self._register(
             "FT-104.NO_FLOW", "No flow on the belt while feeding", lambda: self._il.no_flow, is_warning=True,
         )
+        # Bins B and C (master specification, item 6), appended; registered
+        # whether or not the line has them, so the published bits never move.
+        for letter, low, gate in (("B", "LSL-111", "XV-112"), ("C", "LSL-121", "XV-122")):
+            self._register(f"{low}.LOW", f"Bin {letter} low", lambda b=letter: self._il.bin_low_of(b), is_warning=True)
+            self._register(f"{gate}.TRAVEL_FAULT", f"Bin {letter} gate travel fault",
+                           lambda b=letter: b in self._il.gates and self._il.gates[b].travel_fault)
 
     def _register(self, alarm_id: str, description: str, condition: AlarmCondition, is_warning: bool = False) -> None:
         alarm = Alarm(id=alarm_id, description=description, is_warning=is_warning)

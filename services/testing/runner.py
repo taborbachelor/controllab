@@ -402,7 +402,8 @@ def _line_running(rig: Rig) -> bool:
         return rig.line.state.name == "RUNNING"
     except NotObservable:
         plant = rig.plant
-        return plant.conveyor.motor.running and plant.gate.is_open and plant.feeder.motor.running
+        gate_open = any(gate.is_open for _, gate in plant.bins.values())
+        return plant.conveyor.motor.running and gate_open and plant.feeder.motor.running
 
 
 def _unmet_expectations(rig: Rig, expect: dict) -> tuple[dict, tuple[str, ...]]:

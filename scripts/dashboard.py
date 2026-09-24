@@ -61,6 +61,7 @@ def main() -> int:
             store = IOImageDataStore(
                 LINE_REGISTER_MAP, lambda: session.io, on_command=session.command,
                 status_source=lambda: controller_status.encode(session.rig.line),
+                on_setpoint=session.setpoint_raw, setpoint_source=session.setpoint_values,
             )
         modbus = ModbusServer(store, port=args.modbus_port, lock=session.lock)
         threading.Thread(target=modbus.serve_forever, daemon=True, name="controllab-modbus").start()

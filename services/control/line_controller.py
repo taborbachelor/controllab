@@ -80,14 +80,20 @@ class LineController:
         hopper_high_high_pct: float = 95.0,
         conveyor_overcurrent_a: float = 15.0,
         no_flow_s: float = 15.0,
+        gate_b_ctrl: GateControl | None = None,
+        gate_c_ctrl: GateControl | None = None,
     ) -> None:
         self.io = io
         self.feeder_ctrl = feeder_ctrl
         self.conveyor_ctrl = conveyor_ctrl
-        self.gate_ctrl = gate_ctrl
+        self.gate_ctrl = gate_ctrl  # bin A's gate
+        # Every bin's gate, by letter (master specification, item 6). A line
+        # built without B and C is the original one-bin line.
+        self.gates = {"A": gate_ctrl, **({"B": gate_b_ctrl} if gate_b_ctrl else {}),
+                      **({"C": gate_c_ctrl} if gate_c_ctrl else {})}
         self.interlocks = Interlocks(
             io, feeder_ctrl, conveyor_ctrl, gate_ctrl, hopper_capacity_kg, hopper_high_high_pct=hopper_high_high_pct,
-            conveyor_overcurrent_a=conveyor_overcurrent_a, no_flow_s=no_flow_s,
+            conveyor_overcurrent_a=conveyor_overcurrent_a, no_flow_s=no_flow_s, gates=self.gates,
         )
         self.hysteresis = HopperHysteresis(restart_below_pct)
         # The switch-vs-transmitter cross-checks, set to the switches'
@@ -103,6 +109,10 @@ class LineController:
         self.purge_time_s = purge_time_s
 
         self.mode = LineMode.AUTO
+        # The source bin, an HMI setpoint: the bin the NEXT start draws from.
+        # active_bin is the one the line is drawing from now (taken at Start).
+        self.source_bin = "A"
+        self.active_bin: str | None = None
         self.state = LineState.IDLE
         self.fault_reason: str | None = None
         self.last_start_refusal: list[str] = []
@@ -157,6 +167,16 @@ class LineController:
         self._emit_command("acknowledge")
         self._acknowledge_requested = True
 
+    def select_source(self, bin_: str) -> None:
+        """The HMI's source-bin setpoint. It applies at the next start (a
+        running line keeps drawing from its active bin) and is recorded like
+        a command, since changing it changes what the next start does."""
+        if bin_ not in self.gates:
+            raise ValueError(f"no bin {bin_!r} on this line (bins: {', '.join(self.gates)})")
+        if bin_ != self.source_bin:
+            self._emit_command(f"source_bin {bin_}")
+        self.source_bin = bin_
+
     def select_auto(self) -> None:
         self._emit_command("select_auto")
         self._mode_request = LineMode.AUTO
@@ -201,7 +221,8 @@ class LineController:
         machine."""
         self.feeder_ctrl.scan(dt)
         self.conveyor_ctrl.scan(dt)
-        self.gate_ctrl.scan(dt)
+        for gate in self.gates.values():
+            gate.scan(dt)
         self.interlocks.scan(dt)
         self.level_checks.scan(self.interlocks, dt)
         self.alarms.scan()
@@ -260,7 +281,8 @@ class LineController:
         self.last_start_refusal = [f"mode change to {mode.name.lower()} refused: {why}"]
 
     def _any_device_commanded(self) -> bool:
-        return self.feeder_ctrl.commanded_run or self.conveyor_ctrl.commanded_run or self.gate_ctrl.commanded_open
+        return (self.feeder_ctrl.commanded_run or self.conveyor_ctrl.commanded_run
+                or any(g.commanded_open for g in self.gates.values()))
 
     def _enter_rest(self) -> None:
         """The mode's rest state -- IDLE in Auto, MANUAL in Manual -- with
@@ -268,6 +290,7 @@ class LineController:
         with them already off, and MANUAL only runs what is started anew."""
         self.state = LineState.IDLE if self.mode == LineMode.AUTO else LineState.MANUAL
         self.fault_reason = None
+        self.active_bin = None
         self._manual_conveyor_proven = False
         self._manual_conveyor_elapsed_s = 0.0
 
@@ -294,12 +317,12 @@ class LineController:
         # Continuously enforced, not just assumed -- IDLE means off.
         self.feeder_ctrl.command_run(False)
         self.conveyor_ctrl.command_run(False)
-        self.gate_ctrl.command_open(False)
+        self._close_gates()
 
         if not self._start_requested:
             return
 
-        check = self.interlocks.start_permissives_ok()
+        check = self.interlocks.start_permissives_ok(self.source_bin)
         reasons = list(check.reasons)
         # "No active latched alarms" (docs/CONTROL-LAB.md §6.3) lives here,
         # not inside Interlocks.start_permissives_ok() -- AlarmManager is
@@ -314,7 +337,7 @@ class LineController:
         inhibit = StartInhibit.NONE
         if self.interlocks.hopper_high_high:  # the same reads start_permissives_ok() just made
             inhibit |= StartInhibit.HOPPER_HIGH_HIGH
-        if self.interlocks.bin_low:
+        if self.interlocks.bin_low_of(self.source_bin):
             inhibit |= StartInhibit.BIN_LOW
         if self.interlocks.hopper_weight_failed:
             inhibit |= StartInhibit.SENSOR_FAILED
@@ -324,10 +347,25 @@ class LineController:
         if not reasons:
             self._begin_start_sequence()
 
+    def _close_gates(self) -> None:
+        for gate in self.gates.values():
+            gate.command_open(False)
+
+    @property
+    def _active_gate(self) -> GateControl:
+        return self.gates[self.active_bin or self.source_bin]
+
+    @property
+    def _gate_travel_fault(self) -> bool:
+        """Any gate that didn't reach its commanded position -- including a
+        gate that should be closed and isn't, pouring from the wrong bin."""
+        return any(g.travel_fault for g in self.gates.values())
+
     def _unacked_trip_ids(self) -> list[str]:
         return [a.id for a in self.alarms.all_alarms if not a.is_warning and not a.acknowledged]
 
     def _begin_start_sequence(self) -> None:
+        self.active_bin = self.source_bin
         self.state = LineState.STARTING
         self.start_step = StartStep.CONVEYOR
         self._step_elapsed_s = 0.0
@@ -357,19 +395,19 @@ class LineController:
             if self.interlocks.conveyor_confirmed_running:
                 self.start_step = StartStep.GATE
                 self._step_elapsed_s = 0.0
-                self.gate_ctrl.command_open(True)
+                self._active_gate.command_open(True)
             elif self._step_elapsed_s >= self.conveyor_proof_timeout_s:
                 self._enter_faulted("conveyor failed to prove running")
 
         elif self.start_step == StartStep.GATE:
-            if self.gate_ctrl.is_open:
+            if self._active_gate.is_open:
                 self.start_step = StartStep.FEEDER
                 self._step_elapsed_s = 0.0
                 self.feeder_ctrl.command_run(True)
                 self.feeder_ctrl.command_speed(self.feed_speed_pct)
-            # gate_ctrl.travel_fault (checked above, via
+            # The active gate's travel_fault (checked above, via
             # _starting_trip_reason) is what catches "never opened" --
-            # its own 5s window is already running via gate_ctrl.scan(),
+            # its own 5s window is already running via its scan(),
             # called once per tick from this class's own scan().
 
         elif self.start_step == StartStep.FEEDER:
@@ -395,7 +433,7 @@ class LineController:
             return "conveyor failed to prove running"
         if self.feeder_ctrl.start_proof_fault:
             return "feeder failed to prove running"
-        if self.gate_ctrl.travel_fault:
+        if self._gate_travel_fault:
             return "gate failed to prove open"
         return None
 
@@ -456,7 +494,7 @@ class LineController:
             return "conveyor jam"
         if not self.interlocks.conveyor_confirmed_running:
             return self._motion_loss_reason()
-        if self.gate_ctrl.travel_fault:
+        if self._gate_travel_fault:
             return "gate travel fault"
         return None
 
@@ -471,7 +509,7 @@ class LineController:
     def _begin_stop_sequence(self) -> None:
         self.state = LineState.STOPPING
         self.feeder_ctrl.command_run(False)
-        self.gate_ctrl.command_open(False)
+        self._close_gates()
         self._purge_elapsed_s = 0.0
 
     def _scan_stopping(self, dt: float) -> None:
@@ -488,6 +526,7 @@ class LineController:
         if self._purge_elapsed_s >= self.purge_time_s:
             self.conveyor_ctrl.command_run(False)
             self.state = LineState.IDLE
+            self.active_bin = None
             self._purge_elapsed_s = 0.0
 
     def _stopping_trip_reason(self) -> str | None:
@@ -501,7 +540,7 @@ class LineController:
             return "feeder trip"
         if self.interlocks.feeder_plugged:
             return "feeder jam"
-        if self.gate_ctrl.travel_fault:
+        if self._gate_travel_fault:
             return "gate travel fault"
         return None
 
@@ -512,14 +551,14 @@ class LineController:
         self._purge_elapsed_s = 0.0
         self.feeder_ctrl.command_run(False)
         self.conveyor_ctrl.command_run(self.clearing_belt)
-        self.gate_ctrl.command_open(False)
+        self._close_gates()
         self.state = LineState.FAULTED
         self.fault_reason = reason
         self.start_step = None
 
     def _scan_faulted(self, dt: float) -> None:
         self.feeder_ctrl.command_run(False)
-        self.gate_ctrl.command_open(False)
+        self._close_gates()
         if self.clearing_belt:
             # The same purge as a normal stop, cut short by anything that makes
             # running the belt on wrong: the conveyor itself failing or losing
@@ -579,7 +618,8 @@ class LineController:
     def _clear_all_device_faults(self) -> None:
         self.feeder_ctrl.clear_fault()
         self.conveyor_ctrl.clear_fault()
-        self.gate_ctrl.clear_fault()
+        for gate in self.gates.values():
+            gate.clear_fault()
 
     # ---- ESTOPPED -------------------------------------------------------
 
@@ -587,7 +627,7 @@ class LineController:
         self.clearing_belt = False
         self.feeder_ctrl.command_run(False)
         self.conveyor_ctrl.command_run(False)
-        self.gate_ctrl.command_open(False)
+        self._close_gates()
         self.state = LineState.ESTOPPED
         self.fault_reason = "e-stop"
         self.start_step = None
@@ -600,7 +640,7 @@ class LineController:
         # testing; this is what closes it).
         self.feeder_ctrl.command_run(False)
         self.conveyor_ctrl.command_run(False)
-        self.gate_ctrl.command_open(False)
+        self._close_gates()
 
         if self._start_requested:
             # Refused exactly as before (ESTOPPED never acts on start); only
@@ -640,7 +680,7 @@ class LineController:
         if "stop_feeder" in requests:
             self.feeder_ctrl.command_run(False)
         if "close_gate" in requests:
-            self.gate_ctrl.command_open(False)
+            self._close_gates()
         if "stop_conveyor" in requests:
             self.conveyor_ctrl.command_run(False)
             self._manual_conveyor_proven = False
@@ -667,7 +707,10 @@ class LineController:
             # the gate alone moves no material, and stroking it to check its
             # limit switches is what Manual is for.
             evaluated = True
-            self.gate_ctrl.command_open(True)
+            # One bin at a time, in every mode: opening the selected bin's gate
+            # closes any other.
+            for letter, gate in self.gates.items():
+                gate.command_open(letter == self.source_bin)
         if "start_feeder" in requests and "stop_feeder" not in requests:
             evaluated = True
             refused, why = self._manual_feeder_refusal()
@@ -728,7 +771,7 @@ class LineController:
                 return self._motion_loss_reason()
         if feeding and self.feeder_ctrl.start_proof_fault:
             return "feeder failed to prove running"
-        if self.gate_ctrl.travel_fault:
+        if self._gate_travel_fault:
             return "gate travel fault"
         return None
 
@@ -748,7 +791,8 @@ class LineController:
         if not self._manual_conveyor_proven:
             inhibit |= StartInhibit.CONVEYOR_NOT_RUNNING
             reasons.append("conveyor not proven running")
-        if self.interlocks.bin_low:
+        drawn = [b for b, g in self.gates.items() if g.commanded_open] or [self.source_bin]
+        if any(self.interlocks.bin_low_of(b) for b in drawn):
             inhibit |= StartInhibit.BIN_LOW
             reasons.append("bin low")
         if self.interlocks.hopper_high:

@@ -10,7 +10,7 @@ simulated plant before the logic ever reaches real equipment.**
 [![A feeder-jam commissioning test mid-run: the simulated line on the left is tripped with the feeder jammed; the conveyor is still running to clear the belt, and the first-out alarm is the chute plug switch; the test on the right shows stage 1 (trip within 1 s) and stage 2 (reset refused while the chute is plugged) passed](docs/images/demo-feeder-jam.jpg)](https://taborbachelor.github.io/controllab/)
 
 **What you're looking at.** On the left is a small bulk-material handling
-line: bin → slide gate → screw feeder → inclined conveyor → weighed hopper.
+line: three bins, each behind its own slide gate → screw feeder → inclined conveyor → weighed hopper.
 It is simulated, with the motors, limit switches, level switches and weigh
 scale a real line has. Its control program sees only I/O, the same way a PLC
 does. On the right is a commissioning test for a feeder jam. The test jams
@@ -33,7 +33,7 @@ still plugged.
 
 **What's verified:**
 
-- 46 scenarios covering all 13 interlocks in the spec, in both Auto and
+- 51 scenarios covering all 13 interlocks in the spec, in both Auto and
   Manual mode: trips, recoveries, E-stop, and instrument faults (stuck,
   failed, noisy, drifting and slow sensors, a 1oo2 overfill trip with a
   switch/transmitter disagreement alarm).
@@ -44,7 +44,7 @@ still plugged.
 - Mass is conserved to the milligram and checked on every scan, and every
   run is deterministic, so the same scenario gives the same result every
   time.
-- 819 automated tests, run on every push (Python 3.12 and 3.13; the badge
+- 847 automated tests, run on every push (Python 3.12 and 3.13; the badge
   above is the latest run). The demo site is rebuilt from the current code
   on every push too, so it can't drift from the repository.
 
@@ -169,7 +169,7 @@ E-stop. The result is an engineering record:
 
 Nothing in that record is inferred beyond what the runner observed.
 
-The repository has 46 scenarios covering all 13 interlock rows of the
+The repository has 51 scenarios covering all 13 interlock rows of the
 specification, in Auto and Manual mode. New scenarios, hand-written or AI-generated, go through a
 deterministic review gate that rejects a scenario that is vacuous (it still
 passes with its fault, or any later stage's actions, removed),
@@ -328,7 +328,7 @@ Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md).
 
 ## Status
 
-All roadmap phases are complete, and 819 tests pass.
+All roadmap phases are complete, and 847 tests pass.
 
 | Phase | Focus | Status |
 |---|---|---|

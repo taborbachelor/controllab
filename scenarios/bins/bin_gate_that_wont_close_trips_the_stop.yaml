@@ -1,0 +1,24 @@
+name: A Bin Gate That Won't Close On Stop Trips The Line
+description: "Running from bin B, its gate actuator sticks open. Stop commands every gate closed; bin B's never reaches its closed limit switch, so the stop ends in a trip instead of a line left idle with a bin still pouring into the feeder inlet."
+title: "Stop with bin B's gate stuck open: the line trips on the travel fault"
+
+given:
+  line_state: running
+  source_bin: B
+
+when:
+  gate_b_stuck: true
+  stop: true
+
+trigger: gate_b_stuck
+
+expect:
+  line_state: faulted
+  fault_reason: "gate travel fault"
+  first_out: "XV-112.TRAVEL_FAULT"
+  gate_b_open_commanded: false
+
+within:
+  seconds: 3.0
+
+interlock: "Gate travel timeout"

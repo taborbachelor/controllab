@@ -14,11 +14,11 @@
   ControlLab is a Modbus TCP remote-I/O device to this program. Configure
   it in OpenPLC under Slave Devices with the five ranges from
   docs/MODBUS-MAP.md ("Controller view"):
-      Discrete inputs      start 0    size 13   -> %IX100.0 .. %IX101.4
-      Coils                start 0    size 3    -> %QX100.0 .. %QX100.2
-      Input registers      start 0    size 4    -> %IW100 .. %IW103
-      Holding - read       start 100  size 1    -> %IW104 (after the input registers)
-      Holding - write      start 0    size 9    -> %QW100 .. %QW108
+      Discrete inputs      start 0    size 19   -> %IX100.0 .. %IX102.2
+      Coils                start 0    size 5    -> %QX100.0 .. %QX100.4
+      Input registers      start 0    size 6    -> %IW100 .. %IW105
+      Holding - read       start 100  size 2    -> %IW106 .. %IW107 (after the input registers)
+      Holding - write      start 0    size 13   -> %QW100 .. %QW112
 
   Timings match ControlLab's test rig (services/testing/rig.py), so this
   program and the reference controller answer the same scenarios alike:
@@ -42,20 +42,31 @@ PROGRAM controllab_line
     ES_001 AT %IX101.2 : BOOL;        (* e-stop healthy, fail-safe *)
     LSH_103 AT %IX101.3 : BOOL;       (* feeder discharge chute plugged: a jam *)
     WT105_FLT AT %IX101.4 : BOOL;    (* hopper weight input channel fault: WT_105 is meaningless *)
+    LSL_111 AT %IX101.5 : BOOL;       (* bin B low *)
+    ZSO_112 AT %IX101.6 : BOOL;       (* bin B gate open limit *)
+    ZSC_112 AT %IX101.7 : BOOL;       (* bin B gate closed limit *)
+    LSL_121 AT %IX102.0 : BOOL;       (* bin C low *)
+    ZSO_122 AT %IX102.1 : BOOL;       (* bin C gate open limit *)
+    ZSC_122 AT %IX102.2 : BOOL;       (* bin C gate closed limit *)
 
     (* ---- analog inputs (input registers 0-3) and the HMI request word (holding 100) ---- *)
     LT_101 AT %IW100 : INT;           (* bin level, % x100 *)
     WT_105 AT %IW101 : INT;           (* hopper weight, kg x10 *)
     IT_104 AT %IW102 : INT;           (* conveyor motor current, A x100 *)
     FT_104 AT %IW103 : INT;           (* belt scale flow, kg/s x100 *)
-    HMI_REQUEST AT %IW104 : WORD;     (* bit 0 start, 1 stop, 2 reset, 3 acknowledge, 4 select auto,
+    LT_111 AT %IW104 : INT;           (* bin B level, % x100 *)
+    LT_121 AT %IW105 : INT;           (* bin C level, % x100 *)
+    HMI_REQUEST AT %IW106 : WORD;     (* bit 0 start, 1 stop, 2 reset, 3 acknowledge, 4 select auto,
                                          5 select manual, 6/7 conveyor start/stop, 8/9 gate open/close,
                                          10/11 feeder start/stop *)
+    SP_SOURCE_BIN AT %IW107 : INT;    (* HMI setpoint: source bin for the next start, 1 A 2 B 3 C *)
 
     (* ---- field outputs (coils 0-2) ---- *)
     XV102_CMD_OPEN AT %QX100.0 : BOOL;
     M103_RUN AT %QX100.1 : BOOL;
     M104_RUN AT %QX100.2 : BOOL;
+    XV112_CMD_OPEN AT %QX100.3 : BOOL;
+    XV122_CMD_OPEN AT %QX100.4 : BOOL;
 
     (* ---- the holding write range 0-6: analog output, status, HMI ack ---- *)
     SC_103 AT %QW100 : INT;           (* feeder speed reference, % x100 *)
@@ -70,6 +81,10 @@ PROGRAM controllab_line
                                           64 conveyor not running, 128 hopper high, 256 wrong mode,
                                           512 line not idle; 0 = none *)
     ST_MODE AT %QW108 : INT;          (* controller_status.MODES code: 0 AUTO, 1 MANUAL *)
+    ST_ALARMS_ACTIVE_2 AT %QW109 : WORD;  (* alarm bits 16-31 *)
+    ST_ALARMS_UNACKED_2 AT %QW110 : WORD;
+    ST_SOURCE_BIN AT %QW111 : INT;    (* 1 A 2 B 3 C *)
+    ST_ACTIVE_BIN AT %QW112 : INT;    (* the bin being drawn from, 0 = none *)
   END_VAR
 
   (* IEC 61131-3: a VAR block holds either located variables or ordinary
@@ -111,6 +126,17 @@ PROGRAM controllab_line
     gate_last_cmd : BOOL := FALSE;
     gate_scans : INT := 0;
     gate_travel_fault : BOOL := FALSE;
+    gate_b_last_cmd : BOOL := FALSE;  (* bins B and C: the same GateControl supervision *)
+    gate_b_scans : INT := 0;
+    gate_b_travel_fault : BOOL := FALSE;
+    gate_c_last_cmd : BOOL := FALSE;
+    gate_c_scans : INT := 0;
+    gate_c_travel_fault : BOOL := FALSE;
+    gate_any_fault : BOOL;            (* any gate not where it was commanded *)
+    source_bin : INT := 1;            (* the HMI's setpoint, taken at start: 1 A 2 B 3 C *)
+    active_bin : INT := 0;            (* the bin being drawn from, 0 at rest *)
+    bin_low_src : BOOL;               (* the source bin's low switch *)
+    bin_low_drawn : BOOL;             (* Manual: the low switch of any bin whose gate is commanded open *)
 
     (* Manual mode -- LineController._scan_manual *)
     man_conv_proven : BOOL := FALSE;  (* the belt proved running after a manual start *)
@@ -121,9 +147,9 @@ PROGRAM controllab_line
     refused : WORD;
 
     (* alarms, in controller_status.ALARMS bit order *)
-    alarm_cond : ARRAY[0..14] OF BOOL;
-    alarm_active : ARRAY[0..14] OF BOOL;
-    alarm_unacked : ARRAY[0..14] OF BOOL;
+    alarm_cond : ARRAY[0..18] OF BOOL;
+    alarm_active : ARRAY[0..18] OF BOOL;
+    alarm_unacked : ARRAY[0..18] OF BOOL;
     first_out_holder : INT := 0;      (* 1-based, 0 = none *)
     was_active : BOOL;
     unacked_trip : BOOL;
@@ -193,6 +219,10 @@ PROGRAM controllab_line
     END_IF;
   END_FOR;
 
+  (* ================= the HMI setpoint: source bin (select_source) ================= *)
+  IF SP_SOURCE_BIN >= 1 AND SP_SOURCE_BIN <= 3 THEN source_bin := SP_SOURCE_BIN; END_IF;
+  bin_low_src := (source_bin = 1 AND LSL_101) OR (source_bin = 2 AND LSL_111) OR (source_bin = 3 AND LSL_121);
+
   (* ================= device supervision (MotorControl, GateControl) ================= *)
   (* each reads the command it wrote on the previous scan, as the Python reads the I/O image *)
   IF M104_RUN <> conv_last_cmd THEN conv_proof_scans := 0; conv_proof_fault := FALSE; conv_last_cmd := M104_RUN; END_IF;
@@ -215,6 +245,20 @@ PROGRAM controllab_line
     gate_scans := gate_scans + 1;
     IF gate_scans >= LIM_GATE_TRAVEL THEN gate_travel_fault := TRUE; END_IF;
   END_IF;
+
+  IF XV112_CMD_OPEN <> gate_b_last_cmd THEN gate_b_scans := 0; gate_b_travel_fault := FALSE; gate_b_last_cmd := XV112_CMD_OPEN; END_IF;
+  IF (XV112_CMD_OPEN AND ZSO_112) OR (NOT XV112_CMD_OPEN AND ZSC_112) THEN gate_b_scans := 0;
+  ELSE
+    gate_b_scans := gate_b_scans + 1;
+    IF gate_b_scans >= LIM_GATE_TRAVEL THEN gate_b_travel_fault := TRUE; END_IF;
+  END_IF;
+  IF XV122_CMD_OPEN <> gate_c_last_cmd THEN gate_c_scans := 0; gate_c_travel_fault := FALSE; gate_c_last_cmd := XV122_CMD_OPEN; END_IF;
+  IF (XV122_CMD_OPEN AND ZSO_122) OR (NOT XV122_CMD_OPEN AND ZSC_122) THEN gate_c_scans := 0;
+  ELSE
+    gate_c_scans := gate_c_scans + 1;
+    IF gate_c_scans >= LIM_GATE_TRAVEL THEN gate_c_travel_fault := TRUE; END_IF;
+  END_IF;
+  gate_any_fault := gate_travel_fault OR gate_b_travel_fault OR gate_c_travel_fault;
 
   conveyor_confirmed := M104_RUNNING AND ZSS_104;
   (* the level switches are fail-safe (1 = below the switch point): a broken wire reads high *)
@@ -240,7 +284,7 @@ PROGRAM controllab_line
     oc_scans := 0;
   END_IF;
   conveyor_overcurrent := M104_RUNNING AND conveyor_current_high AND oc_scans >= LIM_OVERCURRENT;
-  IF M103_RUNNING AND ZSO_102 AND FT_104 < LIM_NO_FLOW_RAW THEN
+  IF M103_RUNNING AND (ZSO_102 OR ZSO_112 OR ZSO_122) AND FT_104 < LIM_NO_FLOW_RAW THEN
     IF no_flow_scans < LIM_NO_FLOW THEN no_flow_scans := no_flow_scans + 1; END_IF;
   ELSE
     no_flow_scans := 0;
@@ -280,8 +324,12 @@ PROGRAM controllab_line
   alarm_cond[12] := lshh_disagree;             (* LSHH-105.DISAGREE *)
   alarm_cond[13] := conveyor_overcurrent;      (* IT-104.HIGH *)
   alarm_cond[14] := no_flow;                   (* FT-104.NO_FLOW (warning) *)
+  alarm_cond[15] := LSL_111;                   (* LSL-111.LOW (warning) *)
+  alarm_cond[16] := gate_b_travel_fault;       (* XV-112.TRAVEL_FAULT *)
+  alarm_cond[17] := LSL_121;                   (* LSL-121.LOW (warning) *)
+  alarm_cond[18] := gate_c_travel_fault;       (* XV-122.TRAVEL_FAULT *)
 
-  FOR i := 0 TO 14 DO
+  FOR i := 0 TO 18 DO
     was_active := alarm_active[i];
     alarm_active[i] := alarm_cond[i];
     IF alarm_active[i] AND NOT was_active THEN
@@ -292,20 +340,21 @@ PROGRAM controllab_line
   END_FOR;
 
   IF ack_req THEN
-    FOR i := 0 TO 14 DO
+    FOR i := 0 TO 18 DO
       alarm_unacked[i] := FALSE;
       IF NOT alarm_active[i] AND first_out_holder = i + 1 THEN first_out_holder := 0; END_IF;
     END_FOR;
   END_IF;
 
   unacked_trip := FALSE;
-  FOR i := 0 TO 14 DO
-    IF i <> 1 AND i <> 11 AND i <> 14 AND alarm_unacked[i] THEN unacked_trip := TRUE; END_IF;   (* bits 1, 11, 14: warnings *)
+  FOR i := 0 TO 18 DO
+    IF i <> 1 AND i <> 11 AND i <> 14 AND i <> 15 AND i <> 17 AND alarm_unacked[i] THEN unacked_trip := TRUE; END_IF;
+    (* bits 1, 11, 14, 15, 17 are the warnings *)
   END_FOR;
 
   (* ================= e-stop overrides every state ================= *)
   IF NOT ES_001 AND state <> 5 THEN
-    M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE; clearing := FALSE;
+    M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE; clearing := FALSE;
     state := 5; fault_reason := 1; start_step := 0;
   END_IF;
 
@@ -316,9 +365,10 @@ PROGRAM controllab_line
   IF mode_req >= 0 THEN
     IF mode_req = mode THEN
       start_inhibit := 16#0000;
-    ELSIF state = 0 OR (state = 6 AND NOT M103_RUN AND NOT M104_RUN AND NOT XV102_CMD_OPEN) THEN
+    ELSIF state = 0 OR (state = 6 AND NOT M103_RUN AND NOT M104_RUN AND NOT XV102_CMD_OPEN AND NOT XV112_CMD_OPEN
+                        AND NOT XV122_CMD_OPEN) THEN
       mode := mode_req;
-      IF mode = 0 THEN state := 0; ELSE state := 6; END_IF;          (* _enter_rest *)
+      IF mode = 0 THEN state := 0; ELSE state := 6; END_IF; active_bin := 0;          (* _enter_rest *)
       fault_reason := 0; man_conv_proven := FALSE; man_conv_scans := 0;
       start_inhibit := 16#0000;
     ELSE
@@ -337,15 +387,15 @@ PROGRAM controllab_line
   (* ================= the line state machine ================= *)
   CASE state OF
     0: (* IDLE -- off, continuously enforced *)
-      M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE;
+      M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE;
       IF start_req THEN
         start_inhibit := 16#0000;
         IF hopper_high_high THEN start_inhibit := start_inhibit OR 16#0002; END_IF;
-        IF LSL_101 THEN start_inhibit := start_inhibit OR 16#0001; END_IF;
+        IF bin_low_src THEN start_inhibit := start_inhibit OR 16#0001; END_IF;
         IF unacked_trip THEN start_inhibit := start_inhibit OR 16#0004; END_IF;
         IF WT105_FLT THEN start_inhibit := start_inhibit OR 16#0020; END_IF;   (* unknown means stopped *)
         IF start_inhibit = 0 THEN
-          state := 1; start_step := 0; step_scans := 0;
+          state := 1; start_step := 0; step_scans := 0; active_bin := source_bin;
           M104_RUN := TRUE;                                        (* downstream first *)
         END_IF;
       END_IF;
@@ -360,26 +410,28 @@ PROGRAM controllab_line
       ELSIF WT105_FLT THEN trip := 11;
       ELSIF conv_proof_fault THEN trip := 6;
       ELSIF feed_proof_fault THEN trip := 5;
-      ELSIF gate_travel_fault THEN trip := 7;
+      ELSIF gate_any_fault THEN trip := 7;
       END_IF;
       IF trip <> 0 THEN
         (* an upstream trip (feeder trip, feeder fail-to-start, gate fault, jam) keeps a running
            conveyor on to clear the belt; every other trip stops it at once -- LineController.CLEAR_BELT_ON *)
         clearing := M104_RUN AND (trip = 3 OR trip = 5 OR trip = 7 OR trip = 9 OR trip = 10);
-        M103_RUN := FALSE; M104_RUN := clearing; XV102_CMD_OPEN := FALSE; purge_scans := 0;
+        M103_RUN := FALSE; M104_RUN := clearing; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE; purge_scans := 0;
         state := 4; fault_reason := trip; start_step := 0;
       ELSIF stop_req THEN
-        state := 3; M103_RUN := FALSE; XV102_CMD_OPEN := FALSE; purge_scans := 0;
+        state := 3; M103_RUN := FALSE; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE; purge_scans := 0;
       ELSIF start_step = 0 THEN
         step_scans := step_scans + 1;
         IF conveyor_confirmed THEN
-          start_step := 1; step_scans := 0; XV102_CMD_OPEN := TRUE;
+          start_step := 1; step_scans := 0;
+          IF active_bin = 2 THEN XV112_CMD_OPEN := TRUE; ELSIF active_bin = 3 THEN XV122_CMD_OPEN := TRUE;
+          ELSE XV102_CMD_OPEN := TRUE; END_IF;
         ELSIF step_scans >= LIM_CONV_PROOF THEN
-          M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE;
+          M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE;
           state := 4; fault_reason := 6; start_step := 0;
         END_IF;
       ELSIF start_step = 1 THEN
-        IF ZSO_102 THEN
+        IF (active_bin = 1 AND ZSO_102) OR (active_bin = 2 AND ZSO_112) OR (active_bin = 3 AND ZSO_122) THEN
           start_step := 2; step_scans := 0; M103_RUN := TRUE; SC_103 := LIM_FEED_SPEED;
         END_IF;
       ELSIF start_step = 2 THEN
@@ -397,16 +449,16 @@ PROGRAM controllab_line
       ELSIF conveyor_overcurrent THEN trip := 12;
       ELSIF NOT conveyor_confirmed THEN
         IF conveyor_current_high THEN trip := 12; ELSE trip := 8; END_IF;   (* _motion_loss_reason: jam or slip *)
-      ELSIF gate_travel_fault THEN trip := 9;
+      ELSIF gate_any_fault THEN trip := 9;
       END_IF;
       IF trip <> 0 THEN
         (* an upstream trip (feeder trip, feeder fail-to-start, gate fault, jam) keeps a running
            conveyor on to clear the belt; every other trip stops it at once -- LineController.CLEAR_BELT_ON *)
         clearing := M104_RUN AND (trip = 3 OR trip = 5 OR trip = 7 OR trip = 9 OR trip = 10);
-        M103_RUN := FALSE; M104_RUN := clearing; XV102_CMD_OPEN := FALSE; purge_scans := 0;
+        M103_RUN := FALSE; M104_RUN := clearing; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE; purge_scans := 0;
         state := 4; fault_reason := trip;
       ELSIF stop_req THEN
-        state := 3; M103_RUN := FALSE; XV102_CMD_OPEN := FALSE; purge_scans := 0;
+        state := 3; M103_RUN := FALSE; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE; purge_scans := 0;
       ELSE
         (* hopper hysteresis: stop feeding at LSH, resume below 60 % *)
         IF hopper_high THEN feed_demand := FALSE;
@@ -423,24 +475,24 @@ PROGRAM controllab_line
       ELSIF conveyor_overcurrent THEN trip := 12;
       ELSIF M103_FAULT THEN trip := 3;
       ELSIF LSH_103 THEN trip := 10;
-      ELSIF gate_travel_fault THEN trip := 9;
+      ELSIF gate_any_fault THEN trip := 9;
       END_IF;
       IF trip <> 0 THEN
         (* an upstream trip (feeder trip, feeder fail-to-start, gate fault, jam) keeps a running
            conveyor on to clear the belt; every other trip stops it at once -- LineController.CLEAR_BELT_ON *)
         clearing := M104_RUN AND (trip = 3 OR trip = 5 OR trip = 7 OR trip = 9 OR trip = 10);
-        M103_RUN := FALSE; M104_RUN := clearing; XV102_CMD_OPEN := FALSE; purge_scans := 0;
+        M103_RUN := FALSE; M104_RUN := clearing; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE; purge_scans := 0;
         state := 4; fault_reason := trip;
       ELSE
         purge_scans := purge_scans + 1;
         IF purge_scans >= LIM_PURGE THEN
-          M104_RUN := FALSE; state := 0; purge_scans := 0;
+          M104_RUN := FALSE; state := 0; purge_scans := 0; active_bin := 0;
         END_IF;
       END_IF;
 
     4: (* FAULTED -- feed and gate off; the conveyor off too unless it is clearing the belt after an
           upstream trip; reset only once the pass-through causes have cleared *)
-      M103_RUN := FALSE; XV102_CMD_OPEN := FALSE;
+      M103_RUN := FALSE; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE;
       IF clearing THEN
         purge_scans := purge_scans + 1;
         IF purge_scans >= LIM_PURGE OR M104_OL OR conveyor_overcurrent OR NOT conveyor_confirmed OR hopper_high_high
@@ -454,19 +506,21 @@ PROGRAM controllab_line
         conv_proof_fault := FALSE; conv_proof_scans := 0;
         feed_proof_fault := FALSE; feed_proof_scans := 0;
         gate_travel_fault := FALSE; gate_scans := 0;
+        gate_b_travel_fault := FALSE; gate_b_scans := 0; gate_c_travel_fault := FALSE; gate_c_scans := 0;
         clearing := FALSE; M104_RUN := FALSE;                      (* rest means off, in this same scan *)
-        IF mode = 0 THEN state := 0; ELSE state := 6; END_IF;      (* _enter_rest *)
+        IF mode = 0 THEN state := 0; ELSE state := 6; END_IF; active_bin := 0;      (* _enter_rest *)
         fault_reason := 0; man_conv_proven := FALSE; man_conv_scans := 0;
       END_IF;
 
     5: (* ESTOPPED -- off; reset once the e-stop is healthy again; a trip cause
           still standing sends the line to FAULTED on it, never to IDLE *)
-      M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE;
+      M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE;
       IF start_req THEN start_inhibit := 16#0008; END_IF;          (* refused, as always; now reported *)
       IF ES_001 AND reset_req THEN
         conv_proof_fault := FALSE; conv_proof_scans := 0;
         feed_proof_fault := FALSE; feed_proof_scans := 0;
         gate_travel_fault := FALSE; gate_scans := 0;
+        gate_b_travel_fault := FALSE; gate_b_scans := 0; gate_c_travel_fault := FALSE; gate_c_scans := 0;
         trip := 0;                                                 (* same order as _standing_cause *)
         IF hopper_high_high THEN trip := 2;
         ELSIF M104_OL THEN trip := 4;
@@ -477,7 +531,7 @@ PROGRAM controllab_line
         IF trip <> 0 THEN
           state := 4; fault_reason := trip;
         ELSE
-          IF mode = 0 THEN state := 0; ELSE state := 6; END_IF;    (* _enter_rest *)
+          IF mode = 0 THEN state := 0; ELSE state := 6; END_IF; active_bin := 0;    (* _enter_rest *)
           fault_reason := 0; man_conv_proven := FALSE; man_conv_scans := 0;
         END_IF;
       END_IF;
@@ -506,16 +560,16 @@ PROGRAM controllab_line
         END_IF;
       END_IF;
       IF trip = 0 AND M103_RUN AND feed_proof_fault THEN trip := 5; END_IF;
-      IF trip = 0 AND gate_travel_fault THEN trip := 9; END_IF;
+      IF trip = 0 AND gate_any_fault THEN trip := 9; END_IF;
       IF trip <> 0 THEN
         clearing := M104_RUN AND (trip = 3 OR trip = 5 OR trip = 7 OR trip = 9 OR trip = 10);
-        M103_RUN := FALSE; M104_RUN := clearing; XV102_CMD_OPEN := FALSE; purge_scans := 0;
+        M103_RUN := FALSE; M104_RUN := clearing; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE; purge_scans := 0;
         state := 4; fault_reason := trip;
       ELSE
         (* the line Stop stops every device; stops before starts *)
         IF stop_req THEN feed_stop_req := TRUE; gate_close_req := TRUE; conv_stop_req := TRUE; END_IF;
         IF feed_stop_req THEN M103_RUN := FALSE; END_IF;
-        IF gate_close_req THEN XV102_CMD_OPEN := FALSE; END_IF;
+        IF gate_close_req THEN XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE; END_IF;
         IF conv_stop_req THEN M104_RUN := FALSE; man_conv_proven := FALSE; man_conv_scans := 0; END_IF;
         evaluated := FALSE; inh := 16#0000;
         IF start_req THEN evaluated := TRUE; inh := inh OR 16#0100; END_IF;       (* WRONG_MODE *)
@@ -530,12 +584,15 @@ PROGRAM controllab_line
           END_IF;
         END_IF;
         IF gate_open_req AND NOT gate_close_req THEN                              (* no permissive but the e-stop *)
-          evaluated := TRUE; XV102_CMD_OPEN := TRUE;
+          evaluated := TRUE;                   (* one bin at a time: only the selected bin's gate *)
+          XV102_CMD_OPEN := source_bin = 1; XV112_CMD_OPEN := source_bin = 2; XV122_CMD_OPEN := source_bin = 3;
         END_IF;
         IF feed_start_req AND NOT feed_stop_req THEN                              (* _manual_feeder_refusal *)
           evaluated := TRUE; refused := 16#0000;
           IF NOT man_conv_proven THEN refused := refused OR 16#0040; END_IF;
-          IF LSL_101 THEN refused := refused OR 16#0001; END_IF;
+          bin_low_drawn := (XV102_CMD_OPEN AND LSL_101) OR (XV112_CMD_OPEN AND LSL_111) OR (XV122_CMD_OPEN AND LSL_121)
+                           OR (NOT XV102_CMD_OPEN AND NOT XV112_CMD_OPEN AND NOT XV122_CMD_OPEN AND bin_low_src);
+          IF bin_low_drawn THEN refused := refused OR 16#0001; END_IF;
           IF hopper_high THEN refused := refused OR 16#0080; END_IF;
           IF hopper_high_high THEN refused := refused OR 16#0002; END_IF;
           IF WT105_FLT THEN refused := refused OR 16#0020; END_IF;
@@ -554,15 +611,25 @@ PROGRAM controllab_line
   ST_FAULT_REASON := fault_reason;
   ST_ALARMS_ACTIVE := 16#0000;
   ST_ALARMS_UNACKED := 16#0000;
-  FOR i := 0 TO 14 DO
-    bit := SHL(IN := WORD#1, N := i);
-    IF alarm_active[i] THEN ST_ALARMS_ACTIVE := ST_ALARMS_ACTIVE OR bit; END_IF;
-    IF alarm_unacked[i] THEN ST_ALARMS_UNACKED := ST_ALARMS_UNACKED OR bit; END_IF;
+  ST_ALARMS_ACTIVE_2 := 16#0000;
+  ST_ALARMS_UNACKED_2 := 16#0000;
+  FOR i := 0 TO 18 DO
+    IF i < 16 THEN
+      bit := SHL(IN := WORD#1, N := i);
+      IF alarm_active[i] THEN ST_ALARMS_ACTIVE := ST_ALARMS_ACTIVE OR bit; END_IF;
+      IF alarm_unacked[i] THEN ST_ALARMS_UNACKED := ST_ALARMS_UNACKED OR bit; END_IF;
+    ELSE
+      bit := SHL(IN := WORD#1, N := i - 16);
+      IF alarm_active[i] THEN ST_ALARMS_ACTIVE_2 := ST_ALARMS_ACTIVE_2 OR bit; END_IF;
+      IF alarm_unacked[i] THEN ST_ALARMS_UNACKED_2 := ST_ALARMS_UNACKED_2 OR bit; END_IF;
+    END_IF;
   END_FOR;
   ST_FIRST_OUT := first_out_holder;
   HMI_ACK := ack_bits;
   ST_START_INHIBIT := start_inhibit;
   ST_MODE := mode;
+  ST_SOURCE_BIN := source_bin;
+  ST_ACTIVE_BIN := active_bin;
 END_PROGRAM
 
 

@@ -70,6 +70,12 @@ class ExternalController:
         self.sync.pull_inputs()
         for command in self.sync.take_commands():
             COMMANDS[command](self.line)
+        # The HMI's source-bin setpoint, read with the request word.
+        code = self.sync.setpoints.get("source_bin")
+        if code in (1, 2, 3):
+            bin_ = "ABC"[code - 1]
+            if bin_ in self.line.gates and bin_ != self.line.source_bin:
+                self.line.select_source(bin_)
         self.line.scan(dt)
         self.sync.push_outputs(status=controller_status.encode(self.line))
         self.scans += 1

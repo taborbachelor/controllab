@@ -19,17 +19,27 @@ discrete_inputs:
   10: ES-001
   11: LSH-103
   12: WT-105.FLT
+  13: LSL-111
+  14: ZSO-112
+  15: ZSC-112
+  16: LSL-121
+  17: ZSO-122
+  18: ZSC-122
 
 input_registers:
   0: {tag: LT-101, scale: 100, full_scale: 100}
   1: {tag: WT-105, scale: 10, full_scale: 2000}
   2: {tag: IT-104, scale: 100, full_scale: 100}
   3: {tag: FT-104, scale: 100, full_scale: 10}
+  4: {tag: LT-111, scale: 100, full_scale: 100}
+  5: {tag: LT-121, scale: 100, full_scale: 100}
 
 coils:
   0: XV-102.CMD_OPEN
   1: M-103.RUN
   2: M-104.RUN
+  3: XV-112.CMD_OPEN
+  4: XV-122.CMD_OPEN
 
 holding_registers:
   0: {tag: SC-103, scale: 100, full_scale: 100}
@@ -50,6 +60,8 @@ hmi:
     close_gate: 109
     start_feeder: 110
     stop_feeder: 111
+  setpoints:
+    source_bin: 101
 
 status:
   line_state: 1
@@ -59,3 +71,7 @@ status:
   first_out: 5
   start_inhibit: 7
   mode: 8
+  alarms_active_2: 9
+  alarms_unacked_2: 10
+  source_bin: 11
+  active_bin: 12

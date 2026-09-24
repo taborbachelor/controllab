@@ -30,6 +30,8 @@ DT = 0.1
 DEFAULT_PLANT_CONFIG = dict(
     bin_capacity_kg=10_000.0,
     bin_level_kg=2_000.0,  # 20% -- comfortably above the 10% low threshold
+    bin_b_level_kg=2_000.0,
+    bin_c_level_kg=2_000.0,
     bin_low_pct=10.0,
     gate_travel_time_s=1.0,
     feeder_max_rate_kg_s=5.0,
@@ -110,6 +112,8 @@ def build_line_controller(
         io, "M-104.RUN", "M-104.RUNNING", "M-104.OL", start_proof_timeout_s=DEFAULT_DEVICE_PROOF_TIMEOUT_S
     )
     gate_ctrl = GateControl(io, "XV-102.CMD_OPEN", "ZSO-102", "ZSC-102", travel_timeout_s=DEFAULT_GATE_TRAVEL_TIMEOUT_S)
+    gate_b_ctrl = GateControl(io, "XV-112.CMD_OPEN", "ZSO-112", "ZSC-112", travel_timeout_s=DEFAULT_GATE_TRAVEL_TIMEOUT_S)
+    gate_c_ctrl = GateControl(io, "XV-122.CMD_OPEN", "ZSO-122", "ZSC-122", travel_timeout_s=DEFAULT_GATE_TRAVEL_TIMEOUT_S)
 
     line_cfg = dict(DEFAULT_LINE_CONFIG)
     line_cfg.update(line_overrides or {})
@@ -119,6 +123,8 @@ def build_line_controller(
         conveyor_ctrl,
         gate_ctrl,
         hopper_capacity_kg=hopper_capacity_kg,
+        gate_b_ctrl=gate_b_ctrl,
+        gate_c_ctrl=gate_c_ctrl,
         **line_cfg,
     )
 

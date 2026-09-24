@@ -22,6 +22,10 @@ from services.control.motor_control import MotorControl
 from services.simulation.engine.io_image import IOImage
 
 
+# Each bin's low level switch (docs/CONTROL-LAB.md §5.3).
+BIN_LOW_TAGS = {"A": "LSL-101", "B": "LSL-111", "C": "LSL-121"}
+
+
 @dataclass(frozen=True)
 class PermissiveCheck:
     ok: bool
@@ -42,11 +46,14 @@ class Interlocks:
         overcurrent_s: float = 1.0,
         no_flow_s: float = 15.0,
         no_flow_below_kg_s: float = 0.2,
+        gates: dict[str, GateControl] | None = None,
     ) -> None:
         self.io = io
         self.feeder_ctrl = feeder_ctrl
         self.conveyor_ctrl = conveyor_ctrl
         self.gate_ctrl = gate_ctrl
+        # Every bin's gate by letter; bin A alone unless the line has B and C.
+        self.gates = gates or {"A": gate_ctrl}
         self.hopper_capacity_kg = hopper_capacity_kg
         # The analog high-high setpoint on WT-105, commissioned to match
         # LSHH-105's switch point -- a configured constant, like the capacity.
@@ -73,7 +80,7 @@ class Interlocks:
         self._overcurrent_held_s = (
             round(self._overcurrent_held_s + dt, 9) if self.conveyor_ctrl.running and self.conveyor_current_high else 0.0
         )
-        feeding = self.feeder_ctrl.running and self.gate_ctrl.is_open
+        feeding = self.feeder_ctrl.running and any(g.is_open for g in self.gates.values())
         self._no_flow_held_s = (
             round(self._no_flow_held_s + dt, 9) if feeding and self.belt_flow_kg_s < self.no_flow_below_kg_s else 0.0
         )
@@ -111,7 +118,12 @@ class Interlocks:
 
     @property
     def bin_low(self) -> bool:
+        """Bin A's low switch (the original single bin)."""
         return self.io.read("LSL-101")
+
+    def bin_low_of(self, bin_: str) -> bool:
+        """That bin's low level switch."""
+        return self.io.read(BIN_LOW_TAGS[bin_])
 
     @property
     def feeder_plugged(self) -> bool:
@@ -201,7 +213,7 @@ class Interlocks:
         motion-confirmation signal — the feeder has no equivalent tag."""
         return self.conveyor_ctrl.running and self.conveyor_motion_confirmed
 
-    def start_permissives_ok(self) -> PermissiveCheck:
+    def start_permissives_ok(self, bin_: str = "A") -> PermissiveCheck:
         """Everything that must be true before a start is allowed
         (docs/CONTROL-LAB.md §6.3's Permissive rows).
 
@@ -220,7 +232,7 @@ class Interlocks:
         reasons: list[str] = []
         if self.hopper_high_high:
             reasons.append("hopper at high-high")
-        if self.bin_low:
+        if self.bin_low_of(bin_):
             reasons.append("bin low")
         if self.hopper_weight_failed:
             reasons.append("hopper weight signal failed")

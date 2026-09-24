@@ -52,9 +52,9 @@ def test_a_refused_start_says_why_and_how_to_fix_it():
     steps(s, 2)
     st = story(s)
     assert st["headline"] == "Stopped. The last Start was refused."
-    assert "the bin is nearly empty" in st["detail"]
+    assert "the source bin is nearly empty" in st["detail"]
     assert [x["text"] for x in st["steps"]][-1] == "Press Start again"
-    assert any("Set bin level" in x["text"] for x in st["steps"])
+    assert any("Set bin A/B/C level" in x["text"] for x in st["steps"])
 
 
 def test_a_trip_gives_the_recovery_checklist_and_ticks_it_off():

@@ -59,6 +59,8 @@ class StatusWithheld:
 
     state = property(_withheld)
     mode = property(_withheld)
+    source_bin = property(_withheld)
+    active_bin = property(_withheld)
     fault_reason = property(_withheld)
     alarms = property(_withheld)
     start_inhibit = property(_withheld)
@@ -214,6 +216,33 @@ def _degraded_action(key: str, method: str, param: str):
     return apply
 
 
+def _apply_source_bin(rig: Rig, value: str) -> None:
+    """The HMI's source-bin setpoint: the bin the next start draws from."""
+    if value not in ("A", "B", "C"):
+        raise ScenarioError(f"source_bin must be 'A', 'B' or 'C', got {value!r}")
+    rig.line.select_source(value)
+
+
+def _bin_level(which: str):
+    def apply(rig: Rig, value: float) -> None:
+        bin_ = rig.plant.bins[which][0]
+        bin_.level_kg = (value / 100.0) * bin_.capacity_kg
+    return apply
+
+
+def _gate_stuck(which: str):
+    def apply(rig: Rig, value: bool) -> None:
+        rig.plant.bins[which][1].stuck = value
+    return apply
+
+
+def _gate_reset(which: str):
+    def apply(rig: Rig, value: bool) -> None:
+        if value:
+            rig.plant.bins[which][1].clear_fault()
+    return apply
+
+
 def _apply_hopper_level_pct(rig: Rig, value: float) -> None:
     rig.plant.hopper.level_kg = (value / 100.0) * rig.plant.hopper.capacity_kg
 
@@ -248,6 +277,13 @@ APPLY_ACTIONS: dict[str, Callable[[Rig, object], None]] = {
     "sensor_stuck": _instrument_action("stuck"),
     "sensor_failed": _instrument_action("failed"),
     "sensor_restored": _instrument_action("restored"),
+    "source_bin": _apply_source_bin,
+    "bin_b_level_pct": _bin_level("B"),
+    "bin_c_level_pct": _bin_level("C"),
+    "gate_b_stuck": _gate_stuck("B"),
+    "gate_c_stuck": _gate_stuck("C"),
+    "gate_b_reset": _gate_reset("B"),
+    "gate_c_reset": _gate_reset("C"),
     "sensor_noise": _degraded_action("sensor_noise", "add_noise", "amplitude"),
     "sensor_drift": _degraded_action("sensor_drift", "drift", "rate_per_s"),
     "sensor_slow": _degraded_action("sensor_slow", "lag", "seconds"),
@@ -278,6 +314,14 @@ READ_FIELDS: dict[str, Callable[[Rig], object]] = {
     # it tells a jam (running, not flowing) apart from a stopped feeder.
     "feeder_flowing": lambda rig: rig.plant.feed_flow_kg_s > 0,
     "gate_open": lambda rig: rig.plant.gate.is_open,
+    "gate_b_open": lambda rig: rig.plant.gate_b.is_open,
+    "gate_c_open": lambda rig: rig.plant.gate_c.is_open,
+    "gate_b_open_commanded": lambda rig: rig.io.read("XV-112.CMD_OPEN"),
+    "gate_c_open_commanded": lambda rig: rig.io.read("XV-122.CMD_OPEN"),
+    # The source bin the next start draws from, and the bin the line is
+    # drawing from now ("none" at rest).
+    "source_bin": lambda rig: rig.line.source_bin,
+    "active_bin": lambda rig: rig.line.active_bin or "none",
     "estop_healthy": lambda rig: rig.plant.estop.healthy,
     "spilled_kg": lambda rig: rig.plant.spilled_kg,
     "spilled": lambda rig: rig.plant.spilled_kg > 1e-9,
@@ -308,7 +352,8 @@ READ_FIELDS: dict[str, Callable[[Rig], object]] = {
 # (tests/unit/test_observability.py), so a new controller field can't
 # silently be treated as always observable.
 CONTROLLER_FIELDS = frozenset(
-    {"line_state", "mode", "fault_reason", "any_unacknowledged_trip", "latched_alarm_ids", "first_out", "start_inhibit"}
+    {"line_state", "mode", "fault_reason", "any_unacknowledged_trip", "latched_alarm_ids", "first_out", "start_inhibit",
+     "source_bin", "active_bin"}
 )
 
 
