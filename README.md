@@ -45,7 +45,7 @@ still plugged.
 - Mass is conserved to the milligram and checked on every scan, and every
   run is deterministic, so the same scenario gives the same result every
   time.
-- 885 automated tests, run on every push (Python 3.12 and 3.13; the badge
+- 914 automated tests, run on every push (Python 3.12 and 3.13; the badge
   above is the latest run). The demo site is rebuilt from the current code
   on every push too, so it can't drift from the repository.
 
@@ -304,11 +304,20 @@ real model. Details: [`docs/AI.md`](docs/AI.md).
     addresses ([`configs/io/`](configs/io/));
   - *not observable* verdicts for a controller that publishes no status
     block, instead of a guess.
+- **MQTT and OPC UA:**
+  - a stdlib MQTT 3.1.1 telemetry publisher (tags by exception, retained
+    state, events, an `offline` last will), tested against a real Eclipse
+    Mosquitto broker in CI and read back with `mosquitto_sub`;
+  - an OPC UA server (the optional `[opcua]` extra, over `asyncua`): every
+    tag, the controller state, a method per operator command, and validated
+    writable setpoints.
 
 ## Reference
 
 ```bash
 python scripts/dashboard.py --modbus-port 5020      # also expose the live line to any Modbus client
+python scripts/dashboard.py --mqtt 127.0.0.1:1883   # also publish telemetry to an MQTT broker
+python scripts/dashboard.py --opcua 4840            # also serve OPC UA (pip install -e ".[opcua]")
 python scripts/scenario_report.py --external        # the suite across Modbus, lockstep
 python scripts/scenario_report.py --realtime reference --speed 4    # against a free-running controller
 python scripts/scenario_report.py --realtime openplc --repeat 3     # against OpenPLC (examples/openplc)
@@ -329,14 +338,14 @@ Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md).
 
 ## Status
 
-All roadmap phases are complete, and 885 tests pass.
+All roadmap phases are complete, and 914 tests pass.
 
 | Phase | Focus | Status |
 |---|---|---|
 | 0–2 | Foundation, simulation core, control | done |
 | 3–4 | Commissioning scenarios; fault injection and alarms | done |
 | 5–6 | Telemetry; visualization | done |
-| 7 | Protocols (Modbus, external-controller mode) | done |
+| 7 | Protocols (Modbus, external-controller mode, MQTT, OPC UA) | done |
 | 8 | AI engineering assistance | done (the live-model path is built but not exercised) |
 | 9 | Virtual commissioning against a real PLC | done |
 | 10 | Demonstration and validation workflow | done |

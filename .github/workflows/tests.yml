@@ -26,5 +26,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev,opcua]"
+      # A real MQTT broker for tests/integration/test_mqtt_broker.py: the
+      # hand-rolled client is proven against Mosquitto, not against itself.
+      - run: >-
+          docker run -d --name controllab-mosquitto -p 127.0.0.1:1883:1883
+          eclipse-mosquitto:2 mosquitto -c /mosquitto-no-auth.conf
       - run: pytest -q
+        env:
+          CONTROLLAB_MQTT_BROKER: 127.0.0.1:1883
+          CONTROLLAB_MQTT_CONTAINER: controllab-mosquitto

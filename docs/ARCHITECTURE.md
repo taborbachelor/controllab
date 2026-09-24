@@ -177,8 +177,12 @@ ControlLab/
 │   │   ├── controller_status.py      status block codec + code tables (step 3b)
 │   │   ├── openplc.py                OpenPLC web client + OpenPLCController (cold
 │   │   │                              restart between scenarios, Phase 9 step 2)
-│   │   └── map_file.py               load_map(): a YAML I/O map file -> a validated
-│   │                                  RegisterMap (Phase 9 step 4)
+│   │   ├── map_file.py               load_map(): a YAML I/O map file -> a validated
+│   │   │                              RegisterMap (Phase 9 step 4)
+│   │   ├── mqtt.py                   stdlib MQTT 3.1.1 client + TelemetryPublisher
+│   │   │                              (by exception, retained, last will)
+│   │   └── opcua_server.py           OPC UA server over asyncua (optional extra):
+│   │                                  tags, controller state, command methods, setpoints
 │   └── visualization/
 │       ├── replay.py                 build_frames()/build_replay()/render_html() --
 │       │                             replay reconstructed from telemetry (Phase 6 step 2)
@@ -1266,6 +1270,19 @@ issue and propose the change"):
   applies setpoints before commands. Dashboard: the Batch button, the recipe
   panel, the outlet in the picture. `scenarios/batch/`; the PLC port's batch
   limits are tied to the rig by `test_openplc_program.py`.
+- **MQTT and OPC UA** (item 8) — both read the live session through
+  `LiveSession.snapshot()` (which now carries `session`, a counter that tells
+  a restarted session from the same one) and operate it through `command()` /
+  `setpoint()`, exactly as the browser does; neither touches the controller.
+  `mqtt.py`: packet functions (pure), `MqttClient` (blocking, one owner
+  thread), `TelemetryPublisher.publish_changes()`, `run_publisher()` (the
+  dashboard's retrying loop). `opcua_server.py`: `LineOpcUaServer.build()` /
+  `update()` / `serve()`, `start_in_thread()`; a node is written only when its
+  value changes, and a setpoint only when the session's value changes, so a
+  client's write waits for the next tick instead of being undone. Tests:
+  `tests/unit/test_mqtt.py`, `tests/integration/test_mqtt_broker.py`
+  (`CONTROLLAB_MQTT_BROKER` / `CONTROLLAB_MQTT_CONTAINER`),
+  `tests/integration/test_opcua_server.py` (skipped without the extra).
 
 ## The self-explaining replay (readable cold)
 

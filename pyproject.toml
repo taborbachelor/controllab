@@ -15,6 +15,9 @@ dev = ["pytest>=8.0", "pymodbus>=3.10,<4"]  # pymodbus: interop tests only, neve
 # Optional AI engineering assistance (Phase 8). Never needed for simulation,
 # control, testing, protocols, or the dashboard.
 ai = ["anthropic>=1.8,<2"]
+# Optional OPC UA server (services/protocols/opcua_server.py). MQTT needs
+# nothing: its client is stdlib.
+opcua = ["asyncua>=1.1,<2"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

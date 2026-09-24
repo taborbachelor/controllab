@@ -7,6 +7,8 @@ the simulated line running in real time, served on localhost.
     python scripts/dashboard.py --modbus-port 5020   # also serve the I/O image over Modbus TCP
     python scripts/dashboard.py --external           # no built-in controller: an external one
                                                      # drives the plant over Modbus (default port 5020)
+    python scripts/dashboard.py --mqtt 127.0.0.1:1883    # also publish telemetry to an MQTT broker
+    python scripts/dashboard.py --opcua 4840             # also serve an OPC UA server (the [opcua] extra)
 
 Localhost only, no authentication -- a local engineering tool, not a
 network service. All the logic lives in services/visualization/live.py.
@@ -37,6 +39,15 @@ def main() -> int:
         help="run the plant with NO built-in controller; an external controller owns the outputs over Modbus "
         "(see scripts/external_controller.py). Implies --modbus-port 5020 unless one is given.",
     )
+    parser.add_argument(
+        "--mqtt", metavar="HOST[:PORT]", default=None,
+        help="publish telemetry (tags, state, events) to this MQTT broker; see services/protocols/mqtt.py",
+    )
+    parser.add_argument("--mqtt-prefix", default="controllab/line1", help="MQTT topic prefix")
+    parser.add_argument(
+        "--opcua", metavar="PORT", type=int, default=None,
+        help='also serve an OPC UA server on 127.0.0.1:PORT (needs pip install -e ".[opcua]")',
+    )
     args = parser.parse_args()
     if args.external and args.modbus_port is None:
         args.modbus_port = 5020
@@ -66,6 +77,24 @@ def main() -> int:
         modbus = ModbusServer(store, port=args.modbus_port, lock=session.lock)
         threading.Thread(target=modbus.serve_forever, daemon=True, name="controllab-modbus").start()
         print(f"Modbus TCP: 127.0.0.1:{modbus.server_address[1]}  (map: docs/MODBUS-MAP.md)")
+    mqtt_halt = threading.Event()
+    if args.mqtt is not None:
+        from services.protocols import mqtt
+
+        host, _, port = args.mqtt.partition(":")
+        publisher = mqtt.TelemetryPublisher(
+            mqtt.MqttClient(host, int(port or 1883), client_id="controllab-dashboard"),
+            session.snapshot, prefix=args.mqtt_prefix,
+        )
+        threading.Thread(target=mqtt.run_publisher, args=(publisher, mqtt_halt),
+                         kwargs={"log": lambda m: print(m, flush=True)}, daemon=True,
+                         name="controllab-mqtt").start()
+    opcua_halt = None
+    if args.opcua is not None:
+        from services.protocols import opcua_server
+
+        _, opcua_halt = opcua_server.start_in_thread(
+            opcua_server.LineOpcUaServer(session, endpoint=f"opc.tcp://127.0.0.1:{args.opcua}/controllab/"))
     pacer.start()
     print(f"ControlLab live dashboard: http://127.0.0.1:{server.server_port}  (Ctrl+C to stop)")
     try:
@@ -74,6 +103,9 @@ def main() -> int:
         pass
     finally:
         pacer.stop()
+        mqtt_halt.set()
+        if opcua_halt is not None:
+            opcua_halt.set()
         server.server_close()
         if modbus is not None:
             modbus.shutdown()

@@ -160,6 +160,9 @@ class LiveSession:
         return self.rig.io
 
     def _fresh(self, line_cls=None) -> None:
+        # Counts sessions, so a snapshot reader (the MQTT publisher) can tell
+        # a new session, whose event list starts again, from the same one.
+        self.session_number = getattr(self, "session_number", 0) + 1
         self.rig = (build_rig(with_controller=not self.external) if line_cls is None
                     else build_rig(line_cls=line_cls))
         self.invariants = Invariants(self.rig)
@@ -500,6 +503,7 @@ class LiveSession:
                 "values": self.tags.samples[-1].values,
                 "events": [{"t": e.t, "type": e.type, **e.data} for e in events[since:]],
                 "event_count": len(events),
+                "session": self.session_number,
                 "pending_hmi": self.handshake.outstanding() if self.external else [],
                 # inputs queued for the next tick -- visible so a paused line
                 # doesn't swallow button presses without a word
