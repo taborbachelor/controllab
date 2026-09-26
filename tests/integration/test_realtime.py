@@ -20,6 +20,18 @@ REPO = Path(__file__).resolve().parents[2]
 SPEED = 4.0
 
 
+def run_rt(*args, **kwargs):
+    """run_realtime(), rerun (at most twice) only when the runner declared
+    the run invalid because this host fell behind real time -- that's "not a
+    verdict on the logic", and a loaded CI runner produces it now and then.
+    Every other result, a failure included, is returned as it came."""
+    for _ in range(3):
+        result = run_realtime(*args, **kwargs)
+        if result.passed or "behind real time" not in result.detail:
+            return result
+    return result
+
+
 def scenario(rel):
     return Scenario.load(REPO / "scenarios" / rel)
 
@@ -48,7 +60,7 @@ def rt():
 ])
 def test_scenarios_pass_unchanged_against_a_free_running_controller(rt, rel):
     plant, controller = rt
-    result = run_realtime(scenario(rel), plant, controller(), speed=SPEED)
+    result = run_rt(scenario(rel), plant, controller(), speed=SPEED)
     assert result.passed, result.detail
     assert not result.within_tolerance  # a fast controller needs none of the allowance
 
@@ -59,10 +71,10 @@ def test_every_scenario_starts_from_a_clean_restarted_controller(rt):
     procedure that got it there isn't part of the scenario's record."""
     plant, controller = rt
     ctl = controller()
-    tripped = run_realtime(scenario("faults/feeder_trip_while_running.yaml"), plant, ctl, speed=SPEED)
+    tripped = run_rt(scenario("faults/feeder_trip_while_running.yaml"), plant, ctl, speed=SPEED)
     assert tripped.passed, tripped.detail
 
-    refused = run_realtime(scenario("faults/bin_low_blocks_start.yaml"), plant, ctl, speed=SPEED)
+    refused = run_rt(scenario("faults/bin_low_blocks_start.yaml"), plant, ctl, speed=SPEED)
     assert refused.passed, refused.detail  # IDLE + start_inhibit == BIN_LOW: not stale state
     commands = [e.data["command"] for e in refused.events if e.type == "command_issued"]
     assert commands == ["start"]
@@ -78,7 +90,7 @@ def test_a_slow_controller_is_judged_with_the_stated_tolerance(rt):
         given={"line_state": "running"}, when={"feeder_trip": True},
         expect={"line_state": "faulted"}, within_s=0.1,
     )
-    result = run_realtime(tight, plant, controller(scan_s=0.3), speed=SPEED, latency_s=0.5)
+    result = run_rt(tight, plant, controller(scan_s=0.3), speed=SPEED, latency_s=0.5)
     assert result.passed and result.within_tolerance, result.detail
     assert "inside the 0.5s latency tolerance" in result.detail
 
@@ -95,7 +107,7 @@ class _NeverStarts:
 
 def test_a_controller_that_never_writes_is_reported_not_blamed_on_the_scenario(rt):
     plant, _ = rt
-    result = run_realtime(scenario("startup/normal_start.yaml"), plant, _NeverStarts(), speed=SPEED, ready_timeout_s=0.5)
+    result = run_rt(scenario("startup/normal_start.yaml"), plant, _NeverStarts(), speed=SPEED, ready_timeout_s=0.5)
     assert not result.passed
     assert "never wrote its outputs" in result.detail
 
@@ -112,7 +124,7 @@ def test_a_controller_dying_mid_run_invalidates_the_run(rt):
         threading.Timer(0.3, ctl.close).start()
 
     ctl.restart = restart_then_die
-    result = run_realtime(scenario("shutdown/normal_stop.yaml"), plant, ctl, speed=SPEED)
+    result = run_rt(scenario("shutdown/normal_stop.yaml"), plant, ctl, speed=SPEED)
     assert not result.passed
     assert result.detail.startswith("run invalid, not a verdict on the logic: controller stopped writing")
 
@@ -138,9 +150,9 @@ def test_a_controller_without_a_status_block_is_judged_on_the_field_alone(rt):
     from the controller's state is reported not observable."""
     plant, controller = rt
     ctl = controller()
-    partial = run_realtime(scenario("safety/estop_from_running.yaml"), plant, ctl, speed=SPEED, status=False)
+    partial = run_rt(scenario("safety/estop_from_running.yaml"), plant, ctl, speed=SPEED, status=False)
     assert partial.passed and partial.not_observed == ("line_state",), partial.detail
-    blind = run_realtime(scenario("faults/bin_low_blocks_start.yaml"), plant, ctl, speed=SPEED, status=False)
+    blind = run_rt(scenario("faults/bin_low_blocks_start.yaml"), plant, ctl, speed=SPEED, status=False)
     assert blind.not_observable and not blind.passed
 
 
@@ -150,7 +162,7 @@ def test_the_same_logic_passes_at_relocated_addresses(rt_relocated):
     controller's logic untouched -- and the unchanged scenarios pass."""
     plant, controller = rt_relocated
     for rel in ("faults/feeder_trip_while_running.yaml", "faults/bin_low_blocks_start.yaml"):
-        result = run_realtime(scenario(rel), plant, controller, speed=SPEED)
+        result = run_rt(scenario(rel), plant, controller, speed=SPEED)
         assert result.passed, (rel, result.detail)
 
 
@@ -165,7 +177,7 @@ def test_a_map_without_a_status_block_makes_the_run_status_less(tmp_path):
     plant = RealtimePlant(port=0, register_map=register_map)
     ctl = ReferenceController(plant.port, speed=SPEED, register_map=register_map)
     try:
-        result = run_realtime(scenario("safety/estop_from_running.yaml"), plant, ctl, speed=SPEED)  # status: from the map
+        result = run_rt(scenario("safety/estop_from_running.yaml"), plant, ctl, speed=SPEED)  # status: from the map
         assert result.passed and result.not_observed == ("line_state",), result.detail
     finally:
         ctl.close()
