@@ -458,6 +458,7 @@ class LineController:
         self.state = LineState.STARTING
         self.start_step = StartStep.CONVEYOR
         self._step_elapsed_s = 0.0
+        self.hysteresis.rearm()
         self.conveyor_ctrl.command_run(True)
 
     # ---- STARTING ---------------------------------------------------------
@@ -490,10 +491,17 @@ class LineController:
 
         elif self.start_step == StartStep.GATE:
             if self._active_gate.is_open:
-                self.start_step = StartStep.FEEDER
-                self._step_elapsed_s = 0.0
-                self.feeder_ctrl.command_run(True)
-                self.feeder_ctrl.command_speed(self.feed_speed_pct)
+                # Level control decides the first feed too: a hopper already
+                # at LSH-105 starts the line with the feed held, and RUNNING
+                # starts the feeder once the level falls below the restart
+                # point (a drive that won't start then trips, as mid-run).
+                if self.hysteresis.evaluate(self.interlocks.hopper_high, self.interlocks.hopper_level_pct):
+                    self.start_step = StartStep.FEEDER
+                    self._step_elapsed_s = 0.0
+                    self.feeder_ctrl.command_run(True)
+                    self.feeder_ctrl.command_speed(self.feed_speed_pct)
+                else:
+                    self._enter_running()
             # The active gate's travel_fault (checked above, via
             # _starting_trip_reason) is what catches "never opened" --
             # its own 5s window is already running via its scan(),

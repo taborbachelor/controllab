@@ -478,6 +478,7 @@ PROGRAM controllab_line
         IF WT105_FLT THEN start_inhibit := start_inhibit OR 16#0020; END_IF;   (* unknown means stopped *)
         IF start_inhibit = 0 THEN
           state := 1; start_step := 0; step_scans := 0; active_bin := source_bin;
+          feed_demand := TRUE;                                     (* HopperHysteresis.rearm *)
           M104_RUN := TRUE;                                        (* downstream first *)
         END_IF;
       END_IF;
@@ -515,7 +516,15 @@ PROGRAM controllab_line
         END_IF;
       ELSIF start_step = 1 THEN
         IF (active_bin = 1 AND ZSO_102) OR (active_bin = 2 AND ZSO_112) OR (active_bin = 3 AND ZSO_122) THEN
-          start_step := 2; step_scans := 0; M103_RUN := TRUE; SC_103 := LIM_FEED_SPEED;
+          (* level control decides the first feed too: at LSH-105 the line runs with the feed held *)
+          IF hopper_high THEN feed_demand := FALSE;
+          ELSIF WT_105 < LIM_RESTART_RAW THEN feed_demand := TRUE;
+          END_IF;
+          IF feed_demand THEN
+            start_step := 2; step_scans := 0; M103_RUN := TRUE; SC_103 := LIM_FEED_SPEED;
+          ELSE
+            state := 2; start_step := 0;
+          END_IF;
         END_IF;
       ELSIF start_step = 2 THEN
         IF M103_RUNNING THEN state := 2; start_step := 0; END_IF;

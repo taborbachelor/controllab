@@ -173,6 +173,50 @@ def test_hysteresis_pauses_and_resumes_the_feeder_while_running():
     assert line.state == LineState.RUNNING  # never left RUNNING for any of this
 
 
+def test_start_with_the_hopper_above_its_high_switch_holds_the_feed():
+    """Level control decides the first feed too (found in the 2026-09-23
+    logic review): the start sequence used to run the feeder into a hopper
+    already at LSH-105 until RUNNING's level control stopped it."""
+    plant, io, line = make_rig()
+    plant.hopper.level_kg = 1_700.0  # 85% -- above LSH-105, below high-high
+    tick(plant, io, line)
+    line.start()
+    for _ in range(round(3.0 / DT)):
+        tick(plant, io, line)
+        assert plant.feeder.motor.run_command is False  # never started, not started-then-stopped
+    assert line.state == LineState.RUNNING
+    assert plant.conveyor.motor.running is True
+    assert plant.gate.is_open is True
+    assert plant.conveyor.mass_on_belt_kg == 0.0
+
+    plant.hopper.level_kg = 1_000.0  # 50% -- below the restart point
+    run(plant, io, line, 0.5)
+    assert plant.feeder.motor.running is True
+    assert line.state == LineState.RUNNING
+
+
+def test_a_new_start_rearms_level_control():
+    """A run that ended with level control holding the feed must not carry
+    that into the next start: in the dead band between 60 % and LSH-105 a
+    new start feeds."""
+    plant, io, line = make_rig()
+    line.start()
+    run(plant, io, line, 3.0)
+    plant.hopper.level_kg = 1_700.0  # above LSH-105: level control stops the feed
+    run(plant, io, line, 0.3)
+    assert plant.feeder.motor.run_command is False
+    line.stop()
+    run(plant, io, line, 5.0)
+    assert line.state == LineState.IDLE
+
+    plant.hopper.level_kg = 1_400.0  # 70% -- the dead band
+    tick(plant, io, line)
+    line.start()
+    run(plant, io, line, 3.0)
+    assert line.state == LineState.RUNNING
+    assert plant.feeder.motor.running is True
+
+
 # ---- STARTING faults ----------------------------------------------------
 
 

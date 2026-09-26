@@ -1284,6 +1284,19 @@ issue and propose the change"):
   (`CONTROLLAB_MQTT_BROKER` / `CONTROLLAB_MQTT_CONTAINER`),
   `tests/integration/test_opcua_server.py` (skipped without the extra).
 
+## Module responsibilities (hardening: the logic review's minors)
+
+- **`services/control/hopper_hysteresis.py`** gains `rearm()`, called by
+  `LineController._begin_start_sequence()`, so each run's level control
+  starts out wanting to feed. **`LineController._scan_starting()`**'s
+  gate step evaluates level control before starting the feeder: with
+  `LSH-105` made it goes straight to RUNNING with the feed held. The ST
+  port does the same (`feed_demand := TRUE` at Start; the hysteresis
+  block in `start_step = 1`).
+- **`services/testing/runner.py`** `_line_running()`: on field evidence
+  (a status-less controller), a started line with the feed held at
+  `LSH-105` counts as running.
+
 ## The self-explaining replay (readable cold)
 
 A replay of a scenario run carries the run's summary

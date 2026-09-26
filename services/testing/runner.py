@@ -400,13 +400,15 @@ def _line_running(rig: Rig) -> bool:
     """The controller's own word when it publishes one; otherwise the
     field evidence of a running line -- conveyor running, gate open,
     feeder running -- which is what an engineer watching the plant
-    without an HMI would go by."""
+    without an HMI would go by. With the hopper at its high switch a
+    started line holds its feed, so there the feeder is not required."""
     try:
         return rig.line.state.name == "RUNNING"
     except NotObservable:
         plant = rig.plant
         gate_open = any(gate.is_open for _, gate in plant.bins.values())
-        return plant.conveyor.motor.running and gate_open and plant.feeder.motor.running
+        feed_held = not rig.io.read("LSH-105")  # fail-safe: 0 = at or above the switch
+        return plant.conveyor.motor.running and gate_open and (plant.feeder.motor.running or feed_held)
 
 
 def _unmet_expectations(rig: Rig, expect: dict) -> tuple[dict, tuple[str, ...]]:

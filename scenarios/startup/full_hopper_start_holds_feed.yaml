@@ -1,0 +1,37 @@
+name: Start With The Hopper Above The High Switch -- The Line Runs, The Feed Waits
+description: "The hopper is already at 85 %, above its high switch LSH-105. Start brings the conveyor up and opens the gate, but level control holds the feed: the feeder must not run into a hopper that is already full. Once the level falls below the 60 % restart point, the feeder starts."
+title: "Start with a full hopper: conveyor and gate up, feeder held"
+
+given:
+  line_state: idle
+  hopper_level_pct: 85
+
+when:
+  start: true
+
+trigger: start
+
+# belt_empty is what proves the feeder never ran: a feeder started and then
+# stopped by level control leaves material on the belt for a full transit,
+# and the line is RUNNING with the feeder off either way.
+expect:
+  line_state: running
+  conveyor_run_commanded: true
+  gate_open: true
+  feeder_run_commanded: false
+  feeder_running: false
+  belt_empty: true
+
+within:
+  seconds: 2.0
+
+then:
+  - title: "The level falls below the restart point: the feeder starts"
+    when:
+      hopper_level_pct: 55
+    expect:
+      line_state: running
+      feeder_run_commanded: true
+      feeder_running: true
+    within:
+      seconds: 1.0

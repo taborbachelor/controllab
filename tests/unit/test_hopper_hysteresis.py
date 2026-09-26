@@ -24,6 +24,15 @@ def test_resumes_below_restart_point():
     assert h.evaluate(hopper_high=False, hopper_level_pct=59.9) is True
 
 
+def test_rearm_wants_to_feed_again_in_the_dead_band():
+    h = HopperHysteresis(restart_below_pct=60.0)
+    h.evaluate(hopper_high=True, hopper_level_pct=80.0)
+    h.rearm()
+    assert h.evaluate(hopper_high=False, hopper_level_pct=70.0) is True
+    h.rearm()
+    assert h.evaluate(hopper_high=True, hopper_level_pct=85.0) is False  # the switch still wins
+
+
 def test_hopper_high_wins_even_if_level_pct_disagrees():
     """hopper_high (the actual LSH-105 switch) is authoritative over the
     computed percentage -- if they ever disagree, trust the switch."""

@@ -34,7 +34,7 @@ still plugged.
 
 **What's verified:**
 
-- 58 scenarios covering all 17 interlocks in the spec, in Auto, Manual
+- 59 scenarios covering all 17 interlocks in the spec, in Auto, Manual
   and Batch mode: trips, recoveries, E-stop, and instrument faults (stuck,
   failed, noisy, drifting and slow sensors, a 1oo2 overfill trip with a
   switch/transmitter disagreement alarm).
@@ -45,7 +45,7 @@ still plugged.
 - Mass is conserved to the milligram and checked on every scan, and every
   run is deterministic, so the same scenario gives the same result every
   time.
-- 914 automated tests, run on every push (Python 3.12 and 3.13; the badge
+- 920 automated tests, run on every push (Python 3.12 and 3.13; the badge
   above is the latest run). The demo site is rebuilt from the current code
   on every push too, so it can't drift from the repository.
 
@@ -170,7 +170,7 @@ E-stop. The result is an engineering record:
 
 Nothing in that record is inferred beyond what the runner observed.
 
-The repository has 58 scenarios covering all 17 interlock rows of the
+The repository has 59 scenarios covering all 17 interlock rows of the
 specification, in Auto, Manual and Batch mode. New scenarios, hand-written or AI-generated, go through a
 deterministic review gate that rejects a scenario that is vacuous (it still
 passes with its fault, or any later stage's actions, removed),
@@ -338,7 +338,7 @@ Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md).
 
 ## Status
 
-All roadmap phases are complete, and 914 tests pass.
+All roadmap phases are complete, and 920 tests pass.
 
 | Phase | Focus | Status |
 |---|---|---|
