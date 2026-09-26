@@ -5,6 +5,7 @@ vocabulary without pulling in the state machine itself.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum, IntFlag, auto
 
 
@@ -110,3 +111,17 @@ def inhibit_names(inhibit: StartInhibit) -> list[str]:
     form the scenario vocabulary compares against."""
     names = sorted(m.name for m in StartInhibit if m and m in inhibit)
     return names or ["NONE"]
+
+
+@dataclass(frozen=True)
+class Preview:
+    """What the controller would do with a request if it were consumed now
+    (LineController.preview): accepted or not, and if not, why -- the same
+    inhibit bits and reasons the request itself would report. It informs
+    an HMI before the press; it never decides anything, and it can be one
+    scan stale (a condition arriving with the request is judged when the
+    request is consumed)."""
+
+    accepted: bool
+    inhibit: StartInhibit = StartInhibit.NONE
+    reasons: tuple[str, ...] = ()

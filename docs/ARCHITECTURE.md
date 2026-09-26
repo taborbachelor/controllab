@@ -1336,6 +1336,10 @@ issue and propose the change"):
   `ObservedLine` across Modbus yields the same event.
 - **`examples/openplc/controllab_line.st`**: the same rules (`any_req` is
   `_reported`), `16#8000` for a standing cause.
+- **`LineController.preview(command)`** (`Preview` in `line_state.py`):
+  the answer a request would get if consumed now, from the same
+  evaluators; changes nothing. `COMMANDS` lists what it answers. For the
+  HMI's "Can't reset yet: ..." before the press; it informs, never blocks.
 
 ## The self-explaining replay (readable cold)
 

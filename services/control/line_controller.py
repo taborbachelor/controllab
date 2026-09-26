@@ -56,7 +56,7 @@ from services.control.gate_control import GateControl
 from services.control.hopper_hysteresis import HopperHysteresis
 from services.control.interlocks import Interlocks
 from services.control.level_check import HopperLevelChecks
-from services.control.line_state import BINS, BatchStep, LineMode, LineState, StartInhibit, StartStep
+from services.control.line_state import BINS, BatchStep, LineMode, LineState, Preview, StartInhibit, StartStep
 from services.control.motor_control import MotorControl
 from services.simulation.engine.io_image import IOImage
 
@@ -75,6 +75,9 @@ CLEAR_BELT_ON = frozenset({
 DEVICE_START_ORDER = ("start_conveyor", "open_gate", "open_outlet", "start_feeder")
 DEVICE_STARTS = frozenset(DEVICE_START_ORDER)
 DEVICE_STOPS = frozenset({"stop_conveyor", "close_gate", "stop_feeder", "close_outlet"})
+# Every operator request preview() answers: the refusable ones, and those never refused.
+MODE_SELECTS = {"select_auto": LineMode.AUTO, "select_manual": LineMode.MANUAL, "select_batch": LineMode.BATCH}
+COMMANDS = frozenset({"start", "stop", "reset", "acknowledge", *MODE_SELECTS, *DEVICE_STARTS, *DEVICE_STOPS})
 BATCH_STATES = frozenset({LineState.LOADING, LineState.PROCESSING, LineState.DISCHARGING, LineState.CLEANING})
 
 
@@ -282,6 +285,27 @@ class LineController:
 
     def stop_feeder(self) -> None:
         self._device_command("stop_feeder")
+
+    def preview(self, command: str) -> Preview:
+        """What `command` would get if it were consumed now: accepted, or
+        refused with the inhibit bits and reasons it would report. Asks the
+        same evaluator the scan acts on, and changes nothing, so an HMI can
+        say "Can't reset yet: the chute is still plugged" before the press.
+        Stop, Acknowledge and the device stops are never refused."""
+        if command not in COMMANDS:
+            raise ValueError(f"no operator command {command!r} (commands: {', '.join(sorted(COMMANDS))})")
+        if command == "start":
+            inhibit, reasons = self._start_refusal()
+        elif command == "reset":
+            inhibit, reasons = self._reset_refusal()
+        elif command in MODE_SELECTS:
+            mode = MODE_SELECTS[command]
+            if mode != self.mode and mode == LineMode.BATCH and self.outlet_ctrl is None:
+                raise ValueError("this line has no hopper outlet gate, so no Batch mode")
+            inhibit, reasons = self._mode_refusal(mode)
+        else:  # the device pushbuttons; stop and acknowledge fall through to never refused
+            inhibit, reasons = self._device_refusal(command)
+        return Preview(accepted=not reasons, inhibit=inhibit, reasons=tuple(reasons))
 
     def _device_command(self, command: str) -> None:
         self._emit_command(command)
@@ -518,7 +542,7 @@ class LineController:
             return self._manual_conveyor_refusal()
         if command == "start_feeder":
             return self._manual_feeder_refusal()
-        if command == "open_outlet" and not self.interlocks.downstream_ready:
+        if command == "open_outlet" and self.outlet_ctrl is not None and not self.interlocks.downstream_ready:
             # Draining the hopper by hand is a Manual-mode job (after an aborted
             # batch, say), but only into a downstream that can take it: the
             # discharge permissive holds in every mode.
@@ -940,8 +964,8 @@ class LineController:
         for command, stop in (("start_conveyor", "stop_conveyor"), ("open_gate", "close_gate"),
                               ("open_outlet", "close_outlet"), ("start_feeder", "stop_feeder")):
             if command in requests and (stop in requests or (command == "open_outlet" and self.outlet_ctrl is None)):
-                # Its own stop in the same scan wins (or there's no outlet):
-                # nothing to refuse, and nothing started.
+                # Its own stop in the same scan wins (or there's no outlet to
+                # open): nothing refused, and nothing started.
                 outcomes.append((command, StartInhibit.NONE, []))
         if "start_conveyor" in requests and "stop_conveyor" not in requests:
             refused, why = self._device_refusal("start_conveyor")
