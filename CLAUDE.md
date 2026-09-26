@@ -250,7 +250,7 @@ If you discover a better architecture than the one described here: **do not sile
 
 ## 23. Current Immediate Objective
 
-**If `docs/HANDOFF-design.md` exists, read it before anything else in this section:** it holds the in-progress state and next steps from the last session.
+**If `docs/HANDOFF-design.md` exists, read it before anything else in this section:** it holds the controls work's in-progress state and next steps. (`docs/HANDOFF-frontend.md`, if present and untracked, belongs to a separate frontend design workstream.)
 
 All roadmap phases (0-10) are complete; Phase 10 made the validation workflow the face of the project (run summaries, `controllab test`, regression fixtures, dashboard scenarios, `docs/DEMO.md`). The work now is hardening and finishing, not new phases:
 

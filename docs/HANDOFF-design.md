@@ -9,6 +9,13 @@ done, fold anything still useful into those docs and delete this file.*
 
 ---
 
+**Two handoffs exist.** This one is the **controls session's** (plant,
+controller, PLC port, scenarios, reports). `docs/HANDOFF-frontend.md`
+(untracked, owned by a separate frontend/UX design workstream running in
+the same repo) is the other; leave it alone. The two sessions collided on
+this filename once (2026-09-26); the design session moved its file, so
+this name stays with the controls work.
+
 ## 0. Read order for a cold start
 
 1. `CLAUDE.md` — project identity, architecture rules, dev rules for the agent.
@@ -381,7 +388,13 @@ collapsed; check new UI in a real browser. Left/right wording uses
    the AI `--live` path is built but not exercised; don't run or propose it.
    Still undecided: whether to keep Anthropic's server-side refusal fallback
    (`fallbacks="default"`) in `services/ai/provider.py`.
-7. Not built (the *Later* list in `docs/CONTROL-LAB.md` §10): a Continuous
+7. **A frontend redesign is being designed in parallel** (its handoff:
+   `docs/HANDOFF-frontend.md`; its rule: the frontend visualizes, explains
+   and requests, and never re-implements control logic). This session
+   changed UI files today (phone layout, the downstream picture/button/
+   narration). Before any further change to `services/visualization/`,
+   check with Tabor how the two workstreams split file ownership.
+8. Not built (the *Later* list in `docs/CONTROL-LAB.md` §10): a Continuous
    mode of its own, Maintenance with audited bypass, a plant definition
    file, PI feed control, ISA-88 phases.
 
