@@ -62,6 +62,8 @@ LABELS: dict[str, str] = {
     "feeder_flowing": "Material flowing from the feeder",
     "gate_open": "Gate open",
     "gates_closed": "Every gate proven closed",
+    "downstream_ready": "Downstream ready (DS-107)",
+    "discharging": "Material discharging downstream",
     "estop_healthy": "E-stop healthy",
     "spilled_kg": "Material spilled (kg)",
     "spilled": "Any material spilled",
@@ -84,7 +86,7 @@ _FAULTS = {"conveyor_trip", "feeder_trip", "conveyor_fail_to_start", "feeder_fai
            "belt_slip", "feeder_jam", "conveyor_jam", "bin_bridged"}
 _FIELD_RESETS = {"feeder_drive_reset", "conveyor_overload_reset", "gate_reset", "gate_b_reset", "gate_c_reset",
                  "outlet_reset"}
-_PROCESS = {"hopper_level_pct", "bin_level_pct", "bin_b_level_pct", "bin_c_level_pct"}
+_PROCESS = {"hopper_level_pct", "bin_level_pct", "bin_b_level_pct", "bin_c_level_pct", "downstream_stopped"}
 _SENSORS = {"sensor_stuck": "fault", "sensor_failed": "fault", "sensor_restored": "repair",
             "sensor_noise": "fault", "sensor_drift": "fault", "sensor_slow": "fault"}
 
@@ -148,6 +150,8 @@ _PHRASES: dict[str, tuple[str, str]] = {
     "outlet_stuck": ("The hopper outlet gate's actuator sticks", "The hopper outlet gate's actuator is freed"),
     "outlet_plugged": ("The hopper outlet plugs: open, but nothing drains", "The hopper outlet is cleared"),
     "outlet_reset": ("The hopper outlet gate's actuator is reset at the field", ""),
+    "downstream_stopped": ("The downstream process stops taking material (DS-107 not ready)",
+                           "The downstream process is ready to take material again"),
     "gate_c_stuck": ("Bin C's gate actuator sticks", "Bin C's gate actuator is freed"),
     "gate_b_reset": ("Bin B's gate actuator is reset at the field", ""),
     "gate_c_reset": ("Bin C's gate actuator is reset at the field", ""),

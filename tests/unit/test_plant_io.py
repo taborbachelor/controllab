@@ -48,6 +48,7 @@ EXPECTED_TAGS = {
     "XV-106.CMD_OPEN": TagType.DO,
     "ZSO-106": TagType.DI,
     "ZSC-106": TagType.DI,
+    "DS-107.READY": TagType.DI,
 }
 
 

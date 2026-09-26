@@ -58,6 +58,7 @@ LINE_REGISTER_MAP = RegisterMap(
         # Appended (master specification, item 7): the hopper outlet gate.
         Point("ZSO-106", DISCRETE_INPUT, 19),
         Point("ZSC-106", DISCRETE_INPUT, 20),
+        Point("DS-107.READY", DISCRETE_INPUT, 21),
         # Input registers -- analog sensors (AI)
         Point("LT-101", INPUT_REGISTER, 0, scale=100, full_scale=100.0),
         # WT-105 range = the hopper's 2,000 kg capacity -- the transmitter's

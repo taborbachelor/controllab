@@ -111,7 +111,9 @@ BIN-121 (C) ──► XV-122 ──┘    Screw        Belt        Surge       O
 Material bins  Slide gates    feeder       conveyor    hopper      gate
 ```
 
-The hopper outlet gate `XV-106` (added for Batch mode, §6.1) is a slide gate like the bin gates; the hopper draws downstream only while it is open. A line built without it draws continuously, as the original line did.
+The downstream draw is **DS-107**, the consumer the hopper feeds: the hopper is a buffer between the upstream source (bins, feeder, conveyor) and it.
+
+The hopper outlet gate `XV-106` (added for Batch mode, §6.1) is a slide gate like the bin gates; the hopper draws downstream only while it is open **and** the downstream consumer `DS-107` is taking material. A line built without it draws continuously, as the original line did.
 
 The slide gate is included because it is the simplest device with travel time and limit switches, which is the classic source of "commanded but never arrived" faults.
 
@@ -124,6 +126,7 @@ The slide gate is included because it is the simplest device with travel time an
 | **FDR-103** Screw feeder (VFD) | Rate proportional to speed reference, *only if* motor running, gate open, and bin not empty | Max rate 5 kg/s; start delay 0.5 s |
 | **CV-104** Belt conveyor | Carries material with a transport delay (material on the belt is modeled as a queue); the belt carries material only while it is actually moving, so a stopped or slipping belt holds its load; motion switch confirms the belt is moving | 20 m at 2 m/s → 10 s transit; start delay 1 s |
 | **HOP-105** Surge hopper | Accumulates incoming mass and discharges at a fixed downstream draw rate | Capacity 2,000 kg; draw 3 kg/s (configurable, may be 0) |
+| **DS-107** Downstream consumer | Takes material through the open outlet at a fixed rate, only while it is accepting (`DS-107.READY`); stopped, the discharge chute backs up and nothing leaves the hopper | Rate 3 kg/s (the hopper draw rate) |
 | **ES-001** E-stop / safety relay | When tripped, removes power from all motors **in the simulation**, regardless of control outputs | — |
 
 **Material is conserved.** At every tick, bin + belt + hopper + discharged downstream + spilled equals the initial total. Spillage is modeled explicitly: material fed onto a stopped belt, or into a full hopper, is counted as spilled and logged. Spillage is the measurable consequence that most control mistakes produce, so tests can assert on it directly (for example, "zero spillage during a normal stop").
@@ -157,6 +160,7 @@ The slide gate is included because it is the simplest device with travel time an
 | `XV-106.CMD_OPEN` | DO | Hopper outlet gate open command (de-energized = close) |
 | `ZSO-106` | DI | Hopper outlet gate open limit switch |
 | `ZSC-106` | DI | Hopper outlet gate closed limit switch |
+| `DS-107.READY` | DI | Downstream consumer ready to take material (1 = ready; fail-safe polarity) |
 | `ES-001` | DI | E-stop healthy (1 = healthy; fail-safe polarity) |
 
 Tag naming loosely follows ISA-5.1 conventions. This table is the first commissioning artifact the project produces, and it should stay in sync with the code.
@@ -175,6 +179,7 @@ Tag naming loosely follows ISA-5.1 conventions. This table is the first commissi
 | Feeder jam | Motor running, zero material flow; the discharge-chute plug switch `LSH-103` makes after the screw pushes against the jam, and stays made until it's cleared (weight-trend detection was the first idea; rejected, since Control doesn't know the downstream draw) |
 | Sensor failure | *Stuck*: any instrument keeps its last reading (undetectable from its own signal). *Failed*: an analog signal reads bottom of range and its input channel's diagnostic sets (`WT-105.FLT`); a switch without a diagnostic reads 0 when it fails (on a fail-safe switch, the tripped state) or sticks at its last reading |
 | Degraded instrument | *Noisy* (± an amplitude, seeded), *drifting* (out of calibration at a rate per second), *slow* (reports what was true N s earlier). No diagnostic: only a cross-check or a timing check can notice |
+| Downstream stops | `DS-107.READY` drops; the consumer takes nothing even through an open outlet (a process condition, `downstream_stopped`) |
 | E-stop pressed | `ES-001` drops; simulation de-energizes motors |
 | Bin runs empty | Natural consequence, no special injection needed |
 
@@ -663,3 +668,4 @@ Test tiers, in the order they get built:
 | 2026-09-25 | **CI: a real-time test failed on a stalled runner.** On `831f479` the plant fell 0.27 s behind real time on GitHub's runner; the real-time runner correctly declared the run "invalid, not a verdict on the logic", and `test_every_scenario_starts_from_a_clean_restarted_controller` failed on that instead of the logic. The real-time tests now rerun (at most twice) only a run invalidated by host lag; every other result, failures included, is returned as it came. |
 | 2026-09-25 | **README: the three-bin line.** The hero, the regression-caught and the dashboard screenshots recaptured from the current code (the same moments as before: the jam's stage 2 passed, the regression's stage-2 FAIL, the dashboard mid-verification with stage 3 running), and section 3 describes the line as built: three bins, the outlet gate, motor current and belt scale, 34 I/O tags (it said one bin and 19). The runtime-comparison screenshot needs OpenPLC and is retaken with the three-pass report. |
 | 2026-09-25 | **Reports: Batch gets its row in *Operating modes validated*, and the three-pass run's memory is bounded.** The report's mode section still had only Auto and Manual, so the seven Batch scenarios were counted as Auto ("Auto 54/54"); `report.scenario_mode()` now knows Batch, and the JSON/HTML exporter uses it instead of its own copy of the rule (Auto 47, Manual 7, Batch 7). Found reading the first real-time run of the whole suite against the free-running reference controller after today's fixes: 61/61 scenarios, 18/18 interlocks, at 4× over Modbus. `run_suite_realtime` now keeps only the last tag sample of each run (events stay whole): holding every run's full history is what exhausted memory at 160 of 174 runs on 2026-09-24. |
+| 2026-09-25 | **Downstream consumer, step 1 (plant and I/O).** Per Tabor, the hopper is a buffer between the upstream source and a downstream consumer. New minimal model `DS-107` (`services/simulation/equipment/downstream.py`): it takes material through the open outlet at the draw rate, only while ready; stopped, the chute backs up and nothing leaves the hopper. New fail-safe input `DS-107.READY` (Modbus DI 21, appended; `%IX102.5` in the ST port), the process condition `downstream_stopped`, read fields `downstream_ready` and `discharging`. No control change yet: step 2 makes the outlet an interlocked discharge-enablement device. 1 new test (930 total). |

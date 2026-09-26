@@ -10,7 +10,7 @@ Everything a controller needs is five contiguous ranges, one per table — exact
 
 | Table | Direction | Start | Size | Contents |
 |---|---|---:|---:|---|
-| Discrete inputs (FC 02) | read | 0 | 21 | field sensors |
+| Discrete inputs (FC 02) | read | 0 | 22 | field sensors |
 | Input registers (FC 04) | read | 0 | 6 | analog sensors |
 | Holding registers (FC 03) | read | 100 | 6 | HMI request word + setpoints |
 | Coils (FC 15) | write | 0 | 6 | field outputs |
@@ -41,6 +41,7 @@ Everything a controller needs is five contiguous ranges, one per table — exact
 | 18 | 10019 | `ZSC-122` | Bin C gate closed limit switch |
 | 19 | 10020 | `ZSO-106` | Hopper outlet gate open limit switch |
 | 20 | 10021 | `ZSC-106` | Hopper outlet gate closed limit switch |
+| 21 | 10022 | `DS-107.READY` | Downstream consumer ready to take material (1 = ready; fail-safe polarity) |
 
 ## Input registers (FC 04, read-only)
 

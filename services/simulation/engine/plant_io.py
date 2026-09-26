@@ -56,6 +56,7 @@ _TAGS: list[tuple[str, TagType, str, str]] = [
     ("XV-106.CMD_OPEN", TagType.DO, "", "Hopper outlet gate open command (de-energized = close)"),
     ("ZSO-106", TagType.DI, "", "Hopper outlet gate open limit switch"),
     ("ZSC-106", TagType.DI, "", "Hopper outlet gate closed limit switch"),
+    ("DS-107.READY", TagType.DI, "", "Downstream consumer ready to take material (1 = ready; fail-safe polarity)"),
 ]
 
 
@@ -112,6 +113,8 @@ def publish_plant_inputs(plant: Plant, io: IOImage) -> None:
     publish("ES-001", plant.estop.healthy)
     publish("ZSO-106", plant.outlet.is_open)
     publish("ZSC-106", plant.outlet.is_closed)
+    # Fail-safe like ES-001: a lost signal reads "not ready", so discharge stops.
+    publish("DS-107.READY", plant.downstream.ready)
 
 
 def apply_plant_commands(io: IOImage, plant: Plant) -> None:

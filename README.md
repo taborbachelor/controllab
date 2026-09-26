@@ -45,7 +45,7 @@ still plugged.
 - Mass is conserved to the milligram and checked on every scan, and every
   run is deterministic, so the same scenario gives the same result every
   time.
-- 929 automated tests, run on every push (Python 3.12 and 3.13; the badge
+- 930 automated tests, run on every push (Python 3.12 and 3.13; the badge
   above is the latest run). The demo site is rebuilt from the current code
   on every push too, so it can't drift from the repository.
 
@@ -101,7 +101,7 @@ reaches equipment.
 
 A bulk-material handling line: three storage **bins**, each behind its own
 slide **gate** → one screw **feeder** → an inclined **conveyor** → a weighed
-**hopper** → an **outlet gate**, plus an **E-stop**. It has the
+**hopper** → an **outlet gate** → a downstream consumer, plus an **E-stop**. It has the
 instrumentation a real one would:
 
 - motor run commands and running feedback;
@@ -112,7 +112,7 @@ instrumentation a real one would:
 - bin low-level and hopper high / high-high level switches;
 - a hopper weight transmitter with an input-channel diagnostic.
 
-That's 34 I/O tags in all ([`docs/CONTROL-LAB.md`](docs/CONTROL-LAB.md) §5.3).
+That's 35 I/O tags in all ([`docs/CONTROL-LAB.md`](docs/CONTROL-LAB.md) §5.3).
 Material moves through it with mass conserved (checked to a milligram
 every scan), spillage accounted for, and every scan deterministic: the same scenario gives
 identical results every run.
@@ -340,7 +340,7 @@ Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md).
 
 ## Status
 
-All roadmap phases are complete, and 929 tests pass.
+All roadmap phases are complete, and 930 tests pass.
 
 | Phase | Focus | Status |
 |---|---|---|

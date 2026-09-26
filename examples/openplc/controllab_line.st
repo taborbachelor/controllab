@@ -14,7 +14,7 @@
   ControlLab is a Modbus TCP remote-I/O device to this program. Configure
   it in OpenPLC under Slave Devices with the five ranges from
   docs/MODBUS-MAP.md ("Controller view"):
-      Discrete inputs      start 0    size 21   -> %IX100.0 .. %IX102.4
+      Discrete inputs      start 0    size 22   -> %IX100.0 .. %IX102.5
       Coils                start 0    size 6    -> %QX100.0 .. %QX100.5
       Input registers      start 0    size 6    -> %IW100 .. %IW105
       Holding - read       start 100  size 6    -> %IW106 .. %IW111 (after the input registers)
@@ -50,6 +50,7 @@ PROGRAM controllab_line
     ZSC_122 AT %IX102.2 : BOOL;       (* bin C gate closed limit *)
     ZSO_106 AT %IX102.3 : BOOL;       (* hopper outlet gate open limit *)
     ZSC_106 AT %IX102.4 : BOOL;       (* hopper outlet gate closed limit *)
+    DS107_READY AT %IX102.5 : BOOL;   (* downstream consumer ready, 1 = ready (fail-safe) *)
 
     (* ---- analog inputs (input registers 0-3) and the HMI request word (holding 100) ---- *)
     LT_101 AT %IW100 : INT;           (* bin level, % x100 *)

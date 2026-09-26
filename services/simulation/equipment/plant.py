@@ -1,6 +1,7 @@
 """The bulk-material handling line: three bins, each behind its own slide gate
 (A: BIN-101/XV-102, B: BIN-111/XV-112, C: BIN-121/XV-122), onto one screw
-feeder FDR-103 -> belt conveyor CV-104 -> hopper HOP-105.
+feeder FDR-103 -> belt conveyor CV-104 -> hopper HOP-105 -> outlet XV-106 ->
+the downstream consumer DS-107.
 
 Wires the devices together and moves material between them each tick
 (docs/CONTROL-LAB.md §5). Bins B and C complete the master specification
@@ -17,6 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from services.simulation.equipment.conveyor import Conveyor
+from services.simulation.equipment.downstream import DownstreamConsumer
 from services.simulation.equipment.estop import EStop
 from services.simulation.equipment.feeder import Feeder
 from services.simulation.equipment.gate import Gate
@@ -80,6 +82,9 @@ class Plant:
         self.outlet = Gate("XV-106", cfg.gate_travel_time_s)
         # Fault injection: the outlet plugs -- open, but nothing drains.
         self.outlet_plugged = False
+        # What the outlet discharges into: it takes material at the hopper's
+        # draw rate, and only while it's ready (downstream.py).
+        self.downstream = DownstreamConsumer("DS-107")
         self.hopper = Hopper(
             "HOP-105",
             cfg.hopper_capacity_kg,
@@ -108,6 +113,8 @@ class Plant:
         # What actually left the bin through the feeder this tick, kg/s: less
         # than the feeder's rate when the bin runs empty, zero when it bridges.
         self.feed_flow_kg_s = 0.0
+        # What left the hopper for the downstream consumer this tick, kg/s.
+        self.discharge_flow_kg_s = 0.0
 
     def total_mass_kg(self) -> float:
         """Material still in the system right now (bins + belt + hopper)."""
@@ -175,7 +182,11 @@ class Plant:
         self.belt_flow_kg_s = delivered / dt if dt > 0 else 0.0
         self.spilled_kg += self.hopper.receive(delivered)
 
-        # The downstream draw happens only through the open outlet gate.
-        if self.outlet.is_open and not self.outlet_plugged:
+        # The downstream draw happens only through the open outlet gate, and
+        # only while the consumer is taking material: with it stopped the
+        # discharge chute backs up and nothing leaves the hopper.
+        before = self.hopper.level_kg
+        if self.outlet.is_open and not self.outlet_plugged and self.downstream.ready:
             self.hopper.step(dt)
+        self.discharge_flow_kg_s = (before - self.hopper.level_kg) / dt if dt > 0 else 0.0
         self.outlet.step(dt)

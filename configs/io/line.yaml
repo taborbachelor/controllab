@@ -27,6 +27,7 @@ discrete_inputs:
   18: ZSC-122
   19: ZSO-106
   20: ZSC-106
+  21: DS-107.READY
 
 input_registers:
   0: {tag: LT-101, scale: 100, full_scale: 100}

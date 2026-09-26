@@ -1297,6 +1297,10 @@ issue and propose the change"):
   commanded, a start-proof fault or (once `_stop_belt_proven`) a loss of
   belt motion trips STOPPING, so the purge can't count down on a belt that
   isn't moving. ST: `stop_belt_proven`, set on each entry to state 3.
+- **`services/simulation/equipment/downstream.py`** (`DownstreamConsumer`,
+  DS-107): the consumer the hopper feeds; `Plant` discharges the hopper
+  through the open outlet only while it's ready, and records
+  `discharge_flow_kg_s`. Published as the fail-safe DI `DS-107.READY`.
 - **`LineController._gates_not_closed()`**: the gates-closed start
   permissive (every bin gate and the outlet at `ZSC`), checked by
   `_scan_idle()` and `_request_batch()`, reported as

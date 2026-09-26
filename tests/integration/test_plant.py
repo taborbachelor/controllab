@@ -174,3 +174,27 @@ def test_plant_time_does_not_drift():
     for _ in range(25):
         plant.step(0.1)
     assert plant.time_s == 2.5
+
+
+def test_the_hopper_discharges_only_through_the_open_outlet_into_a_ready_consumer():
+    """DS-107 takes material through the open outlet at the draw rate, and
+    only while it's ready: stopped, the chute backs up and nothing leaves
+    the hopper (nothing is spilled either). Mass stays conserved."""
+    plant = Plant(PlantConfig(hopper_capacity_kg=2_000.0, hopper_draw_rate_kg_s=10.0, gate_travel_time_s=1.0))
+    plant.hopper.level_kg = 1_000.0
+    start = plant.accounted_mass_kg()
+
+    run(plant, 1.0)  # outlet closed: the hopper holds
+    assert plant.hopper.level_kg == 1_000.0 and plant.discharge_flow_kg_s == 0.0
+
+    plant.outlet.command(True)
+    run(plant, 5.0)
+    assert plant.hopper.level_kg < 1_000.0 and plant.discharge_flow_kg_s > 0.0
+
+    plant.downstream.stopped = True
+    held = plant.hopper.level_kg
+    run(plant, 2.0)
+    assert plant.hopper.level_kg == held and plant.discharge_flow_kg_s == 0.0
+    assert plant.spilled_kg == 0.0
+    assert plant.downstream.ready is False
+    assert plant.accounted_mass_kg() == pytest.approx(start)

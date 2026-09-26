@@ -243,6 +243,10 @@ def _apply_outlet_plugged(rig: Rig, value: bool) -> None:
     rig.plant.outlet_plugged = value
 
 
+def _apply_downstream_stopped(rig: Rig, value: bool) -> None:
+    rig.plant.downstream.stopped = value
+
+
 def _apply_outlet_reset(rig: Rig, value: bool) -> None:
     if value:
         rig.plant.outlet.clear_fault()
@@ -317,6 +321,7 @@ APPLY_ACTIONS: dict[str, Callable[[Rig, object], None]] = {
     "outlet_stuck": _apply_outlet_stuck,
     "outlet_plugged": _apply_outlet_plugged,
     "outlet_reset": _apply_outlet_reset,
+    "downstream_stopped": _apply_downstream_stopped,
     "hold_s": _apply_hold_s,
     "bin_b_level_pct": _bin_level("B"),
     "bin_c_level_pct": _bin_level("C"),
@@ -368,6 +373,10 @@ READ_FIELDS: dict[str, Callable[[Rig], object]] = {
     "batches_completed": lambda rig: rig.line.batches_completed,
     "outlet_open": lambda rig: rig.plant.outlet.is_open,
     "outlet_open_commanded": lambda rig: rig.io.read("XV-106.CMD_OPEN"),
+    # The downstream consumer (DS-107): its ready signal as the line sees it,
+    # and material actually leaving the hopper for it (field truth).
+    "downstream_ready": lambda rig: rig.io.read("DS-107.READY"),
+    "discharging": lambda rig: rig.plant.discharge_flow_kg_s > 0,
     # Every bin gate and the outlet at its closed limit switch -- what a start
     # waits for (the gates-closed permissive), so an operator procedure can
     # wait for it after a trip before pressing Start.
