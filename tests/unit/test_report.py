@@ -177,14 +177,16 @@ def test_modes_are_counted_by_the_mode_each_scenario_runs_in():
         (FakeScenario("auto ok"), FakeResult(True)),
         (FakeScenario("manual ok", given={"line_state": "manual"}), FakeResult(True)),
         (FakeScenario("manual bad", given={"line_state": "manual"}), FakeResult(False)),
+        (FakeScenario("batch ok", given={"line_state": "batch"}), FakeResult(True)),
     ])
-    auto, manual = report.mode_counts()
+    auto, manual, batch = report.mode_counts()
     assert (auto.mode, auto.run, auto.passed, auto.status) == ("Auto", 1, 1, "validated")
     assert (manual.mode, manual.run, manual.passed, manual.status) == ("Manual", 2, 1, "failing")
+    assert (batch.mode, batch.run, batch.passed, batch.status) == ("Batch", 1, 1, "validated")
 
 
 def test_a_mode_with_no_scenarios_is_not_run_and_one_seen_only_blind_is_not_observable():
     report = build_report([(FakeScenario("m", given={"line_state": "manual"}), FakeResult(False, not_observable=True))])
-    auto, manual = report.mode_counts()
-    assert auto.status == "not run"
+    auto, manual, batch = report.mode_counts()
+    assert auto.status == "not run" and batch.status == "not run"
     assert manual.status == "not observable"

@@ -142,6 +142,9 @@ def test_repeated_passes_give_a_spread_and_one_combined_verdict(rt):
         assert len(entry.responses) == 2 and all(t is not None for t in entry.responses)
         combined = entry.combined()
         assert combined.passed and combined.elapsed_s == max(entry.responses)
+        # Only the last tag sample is kept per run (a full history per run is
+        # what exhausted memory on a three-pass PLC run); events stay whole.
+        assert all(len(r.tags.samples) == 1 and r.events for r in entry.runs)
 
 
 def test_a_controller_without_a_status_block_is_judged_on_the_field_alone(rt):

@@ -32,7 +32,7 @@ from importlib import metadata
 from pathlib import Path
 
 from services.testing.commissioning_report import RealtimeConditions, _phase, describe
-from services.testing.report import CoverageReport
+from services.testing.report import CoverageReport, scenario_mode
 from services.testing.verdict import LABELS, _fmt
 
 SCHEMA = "controllab.commissioning-report/1"
@@ -112,7 +112,7 @@ def report_dict(
             "file": _rel(scenario.path, scenarios_root),
             "description": scenario.description,
             "interlock": scenario.interlock,
-            "mode": "Manual" if scenario.given.get("line_state") == "manual" else "Auto",
+            "mode": scenario_mode(scenario),
             "result": _result_key(result),
             "passed": result.passed,
             "warning": _is_warning(result),

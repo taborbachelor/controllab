@@ -176,14 +176,15 @@ class CoverageReport:
         return counts
 
 
-MODES = ("Auto", "Manual")
+MODES = ("Auto", "Manual", "Batch")
 
 
 def scenario_mode(scenario: Scenario) -> str:
-    """The mode a scenario runs in: Manual when its `given` selects it,
-    otherwise Auto (the default mode). A scenario that asks for a mode
-    change from Auto -- and is refused -- runs in Auto."""
-    return "Manual" if scenario.given.get("line_state") == "manual" else "Auto"
+    """The mode a scenario runs in: Manual or Batch when its `given`
+    selects it, otherwise Auto (the default mode). A scenario that asks for
+    a mode change from Auto -- and is refused -- runs in Auto. (Batch had no
+    row until 2026-09-25: its scenarios were counted as Auto.)"""
+    return {"manual": "Manual", "batch": "Batch"}.get(scenario.given.get("line_state"), "Auto")
 
 
 @dataclass(frozen=True)

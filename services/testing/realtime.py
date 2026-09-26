@@ -405,13 +405,21 @@ def run_suite_realtime(
     """The whole suite, `repeat` times over (each pass complete before the
     next starts, so the passes are independent), every scenario from its
     own restarted controller. `on_result(pass_number, scenario, result)`
-    reports progress; a real PLC takes several seconds per scenario."""
+    reports progress; a real PLC takes several seconds per scenario.
+
+    Each run keeps its events but only the last sample of its tag history
+    (the report needs no more than the run's final plant time): a full
+    history is every tag every 0.1 s, and a three-pass run against a PLC
+    holding all of them was killed by the host for low memory at 160 of
+    174 runs (2026-09-24)."""
     if repeat < 1:
         raise ValueError("repeat must be at least 1")
     collected = [RepeatedRuns(s, []) for s in scenarios]
     for n in range(1, repeat + 1):
         for entry in collected:
             result = run_realtime(entry.scenario, plant, controller, speed=speed, latency_s=latency_s, status=status)
+            if result.tags is not None:
+                del result.tags.samples[:-1]
             entry.runs.append(result)
             if on_result is not None:
                 on_result(n, entry.scenario, result)
