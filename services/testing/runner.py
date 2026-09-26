@@ -153,7 +153,7 @@ def run_scenario(scenario: Scenario, external: bool = False, status: bool = True
     try:
         if not status:
             rig.line = StatusWithheld(rig.line)
-        telemetry = _Telemetry(EventLog(rig.line, controller_state=status), TagHistory(rig.io))
+        telemetry = _Telemetry(EventLog(rig.line, controller_state=status), TagHistory(rig.io, rig.plant.readings))
         return execute(rig, scenario, lambda: _tick(rig, telemetry), Invariants(rig), telemetry)
     finally:
         if external:

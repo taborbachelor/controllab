@@ -45,7 +45,7 @@ still plugged.
 - Mass is conserved to the milligram and checked on every scan, and every
   run is deterministic, so the same scenario gives the same result every
   time.
-- 1,022 automated tests, run on every push (Python 3.12 and 3.13; the badge
+- 1,027 automated tests, run on every push (Python 3.12 and 3.13; the badge
   above is the latest run). The demo site is rebuilt from the current code
   on every push too, so it can't drift from the repository.
 
@@ -342,7 +342,7 @@ Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md).
 
 ## Status
 
-All roadmap phases are complete, and 1,022 tests pass.
+All roadmap phases are complete, and 1,027 tests pass.
 
 | Phase | Focus | Status |
 |---|---|---|

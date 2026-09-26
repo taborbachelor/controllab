@@ -72,6 +72,7 @@ def build_frames(events: list[Event], tags: TagHistory, initial_state: str = "id
                 "t": sample.t,
                 "state": state,
                 "values": sample.values,
+                "plant": sample.plant,
                 "alarms": [vars(a).copy() for a in sorted(board.values(), key=lambda a: a.id)],
                 "events": fired,
             }

@@ -35,7 +35,8 @@ side effect of anything else.
 from __future__ import annotations
 
 import csv
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from services.simulation.engine.io_image import IOImage, TagValue
@@ -45,11 +46,19 @@ from services.simulation.engine.io_image import IOImage, TagValue
 class TagSample:
     t: float
     values: dict[str, TagValue]
+    # Plant readings no instrument measures (Plant.readings()), kept apart
+    # from `values` so they can never pass for I/O. Empty if not recorded.
+    plant: dict[str, float] = field(default_factory=dict)
 
 
 class TagHistory:
-    def __init__(self, io: IOImage) -> None:
+    """`readings`, optional: a callable returning plant readings to record
+    beside each sample (in practice Plant.readings). Generic still: this
+    class never learns what they are."""
+
+    def __init__(self, io: IOImage, readings: Callable[[], dict[str, float]] | None = None) -> None:
         self.io = io
+        self.readings = readings
         self.samples: list[TagSample] = []
 
     def record(self, t: float) -> None:
@@ -57,7 +66,7 @@ class TagHistory:
         every tick, or at whatever cadence a caller wants -- this class
         has no opinion on sampling rate."""
         values = {name: self.io.read(name) for name in self.io.names()}
-        self.samples.append(TagSample(t=t, values=values))
+        self.samples.append(TagSample(t=t, values=values, plant=self.readings() if self.readings else {}))
 
     @property
     def tag_names(self) -> list[str]:

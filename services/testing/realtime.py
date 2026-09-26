@@ -256,7 +256,7 @@ def run_realtime(
 
         latency_ticks = math.ceil(latency_s / DT - 1e-9)
         invariants = Invariants(rig, feeder_grace_ticks=max(1, latency_ticks))
-        pacer.telemetry = _Telemetry(EventLog(rig.line, controller_state=status), TagHistory(rig.io))
+        pacer.telemetry = _Telemetry(EventLog(rig.line, controller_state=status), TagHistory(rig.io, rig.plant.readings))
         try:
             result = execute(
                 rig, scenario, pacer.step, invariants, pacer.telemetry,

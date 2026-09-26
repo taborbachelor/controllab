@@ -50,7 +50,8 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 from services.protocols.line_map import LINE_REGISTER_MAP
-from services.telemetry.events import Event, EventLog
+from services.control.line_state import inhibit_names
+from services.telemetry.events import REFUSABLE, Event, EventLog
 from services.telemetry.tag_history import TagHistory
 from services.simulation.equipment.instruments import InstrumentFault
 from services.testing.invariants import InvariantViolation, Invariants
@@ -124,6 +125,21 @@ PLANT = {
 }
 
 
+def _previews(line) -> dict[str, dict]:
+    """The controller's own preview of every request it can refuse, as the
+    page reads it: {command: {accepted, inhibits, reasons}}, `inhibits` the
+    StartInhibit names ([] when accepted). Only the controller computes
+    these; the page never infers a permissive."""
+    out = {}
+    for command in sorted(REFUSABLE):
+        if command == "select_batch" and line.outlet_ctrl is None:
+            continue  # no Batch mode on a line without an outlet
+        p = line.preview(command)
+        out[command] = {"accepted": p.accepted, "inhibits": [] if p.accepted else inhibit_names(p.inhibit),
+                        "reasons": list(p.reasons)}
+    return out
+
+
 class LiveSession:
     """`external=True` runs the plant with NO built-in controller (Phase 7
     step 3): an external controller owns the outputs over Modbus, operator
@@ -167,7 +183,7 @@ class LiveSession:
         self.rig = (build_rig(with_controller=not self.external) if line_cls is None
                     else build_rig(line_cls=line_cls))
         self.invariants = Invariants(self.rig)
-        self.tags = TagHistory(self.rig.io)
+        self.tags = TagHistory(self.rig.io, self.rig.plant.readings)
         self.tags.record(self.rig.plant.time_s)
         if self.external:
             # No LineController to diff, so EventLog cannot run; commands
@@ -317,7 +333,7 @@ class LiveSession:
             self.verifying = scenario.name
             # Unsampled recorders: execute() takes the first sample itself.
             self.events = EventLog(self.rig.line)
-            self.tags = TagHistory(self.rig.io)
+            self.tags = TagHistory(self.rig.io, self.rig.plant.readings)
         telemetry = _Telemetry(self.events, self.tags)
 
         def step() -> None:
@@ -465,6 +481,8 @@ class LiveSession:
                     "last_start_refusal": [], "alarms": [], "start_step": None, "line_mode": None,
                     "source_bin": "ABC"[self.handshake.setpoints.get("source_bin", 1) - 1], "active_bin": None,
                     "batch": None,
+                    # An external controller can't be asked in advance: it decides when pressed.
+                    "preview": None,
                 }
             else:
                 controller = {
@@ -484,6 +502,9 @@ class LiveSession:
                     },
                     "fault_reason": line.fault_reason,
                     "last_start_refusal": list(line.last_start_refusal),
+                    # What each refusable request would get if pressed now
+                    # (LineController.preview): informs, never blocks.
+                    "preview": _previews(line),
                     "start_step": line.start_step.name.lower() if line.start_step else None,
                     "alarms": [
                         {
@@ -502,6 +523,7 @@ class LiveSession:
                 **controller,
                 "t": plant.time_s,
                 "values": self.tags.samples[-1].values,
+                "plant": self.tags.samples[-1].plant,
                 "events": [{"t": e.t, "type": e.type, **e.data} for e in events[since:]],
                 "event_count": len(events),
                 "session": self.session_number,

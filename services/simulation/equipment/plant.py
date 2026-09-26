@@ -116,6 +116,14 @@ class Plant:
         # What left the hopper for the downstream consumer this tick, kg/s.
         self.discharge_flow_kg_s = 0.0
 
+    def readings(self) -> dict[str, float]:
+        """Ground truth no instrument on the line measures, for pictures and
+        recordings only: the controller never sees these, and nothing that
+        judges the controller may read them as if it could. The belt's load
+        is how an HMI draws a belt that stopped holding material (a trip
+        with material stranded on it), which no I/O tag can show."""
+        return {"belt_load_kg": round(self.conveyor.mass_on_belt_kg, 3)}
+
     def total_mass_kg(self) -> float:
         """Material still in the system right now (bins + belt + hopper)."""
         bins = sum(b.level_kg for b, _ in self.bins.values())

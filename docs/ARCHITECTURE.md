@@ -1340,6 +1340,13 @@ issue and propose the change"):
   the answer a request would get if consumed now, from the same
   evaluators; changes nothing. `COMMANDS` lists what it answers. For the
   HMI's "Can't reset yet: ..." before the press; it informs, never blocks.
+- **`Plant.readings()`**: ground truth no instrument measures
+  (`belt_load_kg`), for pictures only. **`TagHistory(io, readings)`**
+  records it beside each sample as `TagSample.plant`, never in `values`.
+  **`LiveSession.snapshot()`** carries `plant` and `preview`
+  (`_previews()`: the controller's answer for each request in
+  `REFUSABLE`; `None` for an external controller); `build_frames()`
+  carries `plant` into every replay frame.
 
 ## The self-explaining replay (readable cold)
 
