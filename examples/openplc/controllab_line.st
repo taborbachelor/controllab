@@ -107,6 +107,7 @@ PROGRAM controllab_line
     step_scans : INT := 0;
     purge_scans : INT := 0;
     clearing : BOOL := FALSE;       (* FAULTED on an upstream trip: the conveyor still clearing the belt *)
+    stop_belt_proven : BOOL := FALSE; (* STOPPING: the belt has proven moving during this stop *)
     feed_demand : BOOL := TRUE;
 
     (* one-shot operator requests, consumed by this scan *)
@@ -503,7 +504,7 @@ PROGRAM controllab_line
         M103_RUN := FALSE; M104_RUN := clearing; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE; XV106_CMD_OPEN := FALSE; purge_scans := 0;
         state := 4; fault_reason := trip; start_step := 0;
       ELSIF stop_req THEN
-        state := 3; M103_RUN := FALSE; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE; XV106_CMD_OPEN := FALSE; purge_scans := 0;
+        state := 3; M103_RUN := FALSE; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE; XV106_CMD_OPEN := FALSE; purge_scans := 0; stop_belt_proven := conveyor_confirmed;
       ELSIF start_step = 0 THEN
         step_scans := step_scans + 1;
         IF conveyor_confirmed THEN
@@ -551,7 +552,7 @@ PROGRAM controllab_line
         M103_RUN := FALSE; M104_RUN := clearing; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE; XV106_CMD_OPEN := FALSE; purge_scans := 0;
         state := 4; fault_reason := trip;
       ELSIF stop_req THEN
-        state := 3; M103_RUN := FALSE; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE; XV106_CMD_OPEN := FALSE; purge_scans := 0;
+        state := 3; M103_RUN := FALSE; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE; XV106_CMD_OPEN := FALSE; purge_scans := 0; stop_belt_proven := conveyor_confirmed;
       ELSE
         (* hopper hysteresis: stop feeding at LSH, resume below 60 % *)
         IF hopper_high THEN feed_demand := FALSE;
@@ -562,10 +563,14 @@ PROGRAM controllab_line
       END_IF;
 
     3: (* STOPPING -- upstream first, conveyor purges the belt *)
+      IF conveyor_confirmed THEN stop_belt_proven := TRUE; END_IF;
       trip := 0;
       IF hopper_high_high THEN trip := 2;
       ELSIF M104_OL THEN trip := 4;
       ELSIF conveyor_overcurrent THEN trip := 12;
+      ELSIF M104_RUN AND conv_proof_fault THEN trip := 6;       (* never proved after a Stop mid-startup *)
+      ELSIF M104_RUN AND stop_belt_proven AND NOT conveyor_confirmed THEN   (* the purge needs a moving belt *)
+        IF conveyor_current_high THEN trip := 12; ELSE trip := 8; END_IF;
       ELSIF M103_FAULT THEN trip := 3;
       ELSIF LSH_103 THEN trip := 10;
       ELSIF gate_any_fault THEN trip := 9;
@@ -728,7 +733,7 @@ PROGRAM controllab_line
         M103_RUN := FALSE; M104_RUN := clearing; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE; XV106_CMD_OPEN := FALSE; purge_scans := 0;
         state := 4; fault_reason := trip;
       ELSIF stop_req THEN                                                  (* Stop aborts the batch *)
-        state := 3; M103_RUN := FALSE; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE; XV106_CMD_OPEN := FALSE; purge_scans := 0;
+        state := 3; M103_RUN := FALSE; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE; XV106_CMD_OPEN := FALSE; purge_scans := 0; stop_belt_proven := conveyor_confirmed;
       ELSIF state = 7 THEN                                                 (* LOADING *)
         IF WT_105 > batch_start_raw THEN loaded_raw := INT_TO_DINT(WT_105 - batch_start_raw); ELSE loaded_raw := 0; END_IF;
         IF batch_step = 0 THEN                                             (* prove the belt *)

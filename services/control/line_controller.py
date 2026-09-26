@@ -159,6 +159,9 @@ class LineController:
 
         self._step_elapsed_s = 0.0
         self._purge_elapsed_s = 0.0
+        # STOPPING: the belt has proven moving during this stop, so losing
+        # motion now is a trip, not a purge that counts on regardless.
+        self._stop_belt_proven = False
         # FAULTED on an upstream trip: the conveyor is still clearing the belt.
         self.clearing_belt = False
         self._start_requested = False
@@ -612,8 +615,11 @@ class LineController:
         self.feeder_ctrl.command_run(False)
         self._close_gates()
         self._purge_elapsed_s = 0.0
+        self._stop_belt_proven = self.interlocks.conveyor_confirmed_running
 
     def _scan_stopping(self, dt: float) -> None:
+        if self.interlocks.conveyor_confirmed_running:
+            self._stop_belt_proven = True
         reason = self._stopping_trip_reason()
         if reason is not None:
             self._enter_faulted(reason)
@@ -637,6 +643,16 @@ class LineController:
             return "conveyor trip"
         if self.interlocks.conveyor_overcurrent:
             return "conveyor jam"
+        if self.conveyor_ctrl.commanded_run:
+            # The purge only clears the belt if the belt moves: a slip during
+            # it would otherwise count down and leave the line IDLE with
+            # material stranded on the belt (found in the 2026-09-23 logic
+            # review). A belt still proving after a Stop mid-startup that
+            # never proves is the start sequence's own fail-to-start.
+            if self.conveyor_ctrl.start_proof_fault:
+                return "conveyor failed to prove running"
+            if self._stop_belt_proven and not self.interlocks.conveyor_confirmed_running:
+                return self._motion_loss_reason()
         if self.feeder_ctrl.faulted:
             return "feeder trip"
         if self.interlocks.feeder_plugged:

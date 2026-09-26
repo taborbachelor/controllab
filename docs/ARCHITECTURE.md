@@ -1293,6 +1293,10 @@ issue and propose the change"):
   `LSH-105` made it goes straight to RUNNING with the feed held. The ST
   port does the same (`feed_demand := TRUE` at Start; the hysteresis
   block in `start_step = 1`).
+- **`LineController._stopping_trip_reason()`**: while the conveyor is
+  commanded, a start-proof fault or (once `_stop_belt_proven`) a loss of
+  belt motion trips STOPPING, so the purge can't count down on a belt that
+  isn't moving. ST: `stop_belt_proven`, set on each entry to state 3.
 - **`services/testing/runner.py`** `_line_running()`: on field evidence
   (a status-less controller), a started line with the feed held at
   `LSH-105` counts as running.

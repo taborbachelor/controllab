@@ -1,0 +1,34 @@
+name: Belt Slip During The Stop Purge Trips The Line
+description: "A normal stop runs the conveyor on for the purge time so the belt clears. If the belt slips during the purge it isn't clearing anything: the line must trip rather than count the purge down and go idle with material left on the belt."
+title: "Stop: feed and gate off, the conveyor purges the belt"
+
+given:
+  line_state: running
+
+when:
+  stop: true
+
+trigger: stop
+
+expect:
+  line_state: stopping
+  feeder_run_commanded: false
+  gate_open_commanded: false
+  conveyor_run_commanded: true
+
+within:
+  seconds: 0.5
+
+then:
+  - title: "The belt slips mid-purge: the line trips instead of going idle"
+    when:
+      belt_slip: true
+    expect:
+      line_state: faulted
+      fault_reason: "conveyor lost confirmation"
+      conveyor_run_commanded: false
+      belt_empty: false
+    within:
+      seconds: 0.5
+
+interlock: "Conveyor proven running"

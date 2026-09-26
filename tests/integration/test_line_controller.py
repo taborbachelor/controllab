@@ -236,6 +236,38 @@ def test_stop_during_starting_aborts_the_sequence():
     assert plant.conveyor.motor.running is False
 
 
+def test_stop_mid_startup_with_a_conveyor_that_never_proves_trips():
+    """The purge needs a moving belt: a Stop pressed while the conveyor is
+    still proving hands the proof to STOPPING, which trips when it fails
+    instead of purging with a belt that never moved."""
+    plant, io, line = make_rig()
+    plant.conveyor.motor.fail_to_start = True
+    line.start()
+    tick(plant, io, line)
+    line.stop()
+    tick(plant, io, line)
+    assert line.state == LineState.STOPPING
+    run(plant, io, line, 1.5)  # the 1 s proof window on this rig, then a scan
+    assert line.state == LineState.FAULTED
+    assert line.fault_reason == "conveyor failed to prove running"
+    assert plant.conveyor.motor.run_command is False
+
+
+def test_belt_slip_during_the_stop_purge_trips_and_leaves_the_load_visible():
+    plant, io, line = make_rig()
+    line.start()
+    run(plant, io, line, 4.0)
+    assert plant.conveyor.mass_on_belt_kg > 0.0
+    line.stop()
+    tick(plant, io, line)
+    plant.conveyor.motion_switch_stuck_false = True  # belt slip, as the vocabulary injects it
+    run(plant, io, line, 0.5)
+    assert line.state == LineState.FAULTED
+    assert line.fault_reason == "conveyor lost confirmation"
+    assert plant.conveyor.motor.run_command is False
+    assert plant.conveyor.mass_on_belt_kg > 0.0  # the purge didn't clear it, and the line says so
+
+
 def test_starting_fault_conveyor_fails_to_prove_running():
     plant, io, line = make_rig()
     plant.conveyor.motor.fail_to_start = True
