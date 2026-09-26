@@ -95,6 +95,8 @@ class StartInhibit(IntFlag):
     RECIPE_EMPTY = 1024  # a batch start with no bin in the recipe
     RECIPE_TOO_LARGE = 2048  # the recipe wouldn't fit under the hopper's high switch
     HOPPER_NOT_EMPTY = 4096  # a batch starts only from an empty hopper
+    # Hardening (2026-09-25):
+    GATE_NOT_CLOSED = 8192  # a bin gate or the outlet not proven closed at its closed limit switch
 
 
 def inhibit_names(inhibit: StartInhibit) -> list[str]:

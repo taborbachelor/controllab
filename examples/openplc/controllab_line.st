@@ -465,6 +465,7 @@ PROGRAM controllab_line
         END_FOR;
         IF hopper_high_high THEN start_inhibit := start_inhibit OR 16#0002; END_IF;
         IF WT105_FLT THEN start_inhibit := start_inhibit OR 16#0020; END_IF;
+        IF NOT (ZSC_102 AND ZSC_112 AND ZSC_122 AND ZSC_106) THEN start_inhibit := start_inhibit OR 16#2000; END_IF;  (* GATE_NOT_CLOSED *)
         IF unacked_trip THEN start_inhibit := start_inhibit OR 16#0004; END_IF;
         IF start_inhibit = 0 THEN
           batch_index := 0; batch_start_raw := WT_105; loaded_raw := 0; batch_out_of_tol := FALSE;
@@ -477,6 +478,7 @@ PROGRAM controllab_line
         IF bin_low_src THEN start_inhibit := start_inhibit OR 16#0001; END_IF;
         IF unacked_trip THEN start_inhibit := start_inhibit OR 16#0004; END_IF;
         IF WT105_FLT THEN start_inhibit := start_inhibit OR 16#0020; END_IF;   (* unknown means stopped *)
+        IF NOT (ZSC_102 AND ZSC_112 AND ZSC_122 AND ZSC_106) THEN start_inhibit := start_inhibit OR 16#2000; END_IF;  (* GATE_NOT_CLOSED *)
         IF start_inhibit = 0 THEN
           state := 1; start_step := 0; step_scans := 0; active_bin := source_bin;
           feed_demand := TRUE;                                     (* HopperHysteresis.rearm *)

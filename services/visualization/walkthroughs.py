@@ -58,6 +58,13 @@ def all_acknowledged(s: dict, ev: list[dict]) -> bool:
     return all(a["acknowledged"] for a in s["alarms"])
 
 
+def ready_to_start(s: dict, ev: list[dict]) -> bool:
+    """IDLE with every gate back at its closed limit switch: after a trip
+    the gates take their travel time to close, and Start waits for them
+    (the gates-closed permissive)."""
+    return s["state"] == "idle" and all(s["values"].get(t, True) for t in ("ZSC-102", "ZSC-112", "ZSC-122", "ZSC-106"))
+
+
 # ---- reusable steps ----------------------------------------------------------
 
 START = Step(
@@ -78,9 +85,9 @@ RESET = Step(
     say="Press Reset.",
     do=(("reset", True),),
     target='[data-cmd="reset"]',
-    until=state_is("idle"),
+    until=ready_to_start,
     then="The cause is gone and the alarm is acknowledged, so the controller accepted the reset. The line is "
-    "stopped and ready again.",
+    "stopped, its gates are closed, and it's ready again.",
 )
 
 

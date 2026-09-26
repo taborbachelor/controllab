@@ -1,0 +1,43 @@
+name: A Gate Stuck Open Blocks The Next Start
+description: "The bin gate sticks, so the stop ends in a travel-fault trip with the gate short of closed. Once the alarm is acknowledged and the line reset it rests at idle, but Start must still be refused: a start permissive requires every gate proven closed at its closed limit switch, and this one isn't."
+title: "Stop with the gate stuck: the line trips on the travel fault"
+
+given:
+  line_state: running
+
+when:
+  gate_stuck: true
+  stop: true
+
+trigger: gate_stuck
+
+expect:
+  line_state: faulted
+  fault_reason: "gate travel fault"
+  first_out: "XV-102.TRAVEL_FAULT"
+
+within:
+  seconds: 3.0
+
+then:
+  - title: "Acknowledge and reset: the line rests at idle, the gate still not closed"
+    when:
+      acknowledge: true
+      reset: true
+    expect:
+      line_state: idle
+      any_unacknowledged_trip: false
+      gates_closed: false
+    within:
+      seconds: 1.0
+  - title: "Start is refused: a gate isn't proven closed"
+    when:
+      start: true
+    expect:
+      line_state: idle
+      start_inhibit: ["GATE_NOT_CLOSED"]
+      conveyor_run_commanded: false
+    within:
+      seconds: 0.5
+
+interlock: "Gates proven closed"

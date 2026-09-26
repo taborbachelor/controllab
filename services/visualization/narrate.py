@@ -124,6 +124,9 @@ _REFUSALS: list[tuple[str, str, str]] = [
      "Restore it (Engineer tools → Instrument faults → WT-105 → Restore)"),
     ("unacknowledged alarm", "an alarm hasn't been acknowledged yet (someone has to confirm they've seen it)",
      "Press Acknowledge"),
+    ("gate not closed", "a gate isn't proven closed at its closed limit switch: it may be stuck, or still closing",
+     "Wait a moment for it to close; if it's stuck, clear the gate fault at the equipment (Engineer tools), "
+     "then reset the gate"),
     # Batch mode (master specification, item 7)
     ("recipe is empty", "the recipe has no bin in it", "Enter a recipe (kg from at least one bin) and press Apply recipe"),
     ("recipe is more than fits", "the recipe is more than the hopper takes under its high switch",
@@ -142,7 +145,8 @@ _REFUSALS: list[tuple[str, str, str]] = [
     ("mode change to", "the mode only changes at rest: with the line stopped in Auto, or with every device off "
      "in Manual", "Stop the line (or every device) first, then select the mode again"),
 ]
-_START_PERMISSIVES = ("bin low", "hopper at high-high", "hopper weight signal failed", "unacknowledged alarm")
+_START_PERMISSIVES = ("bin low", "hopper at high-high", "hopper weight signal failed", "unacknowledged alarm",
+                      "gate not closed")
 
 _START_STEPS = {
     "conveyor": "Step 1 of 3: starting the conveyor, and waiting for its motion switch to prove the belt is moving.",

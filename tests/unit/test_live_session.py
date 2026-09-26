@@ -49,7 +49,7 @@ def test_full_operator_recovery_after_a_fault():
     s.command("acknowledge")
     steps(s, 2)  # let the cleared fault tag publish before Control's reset
     s.command("reset")
-    steps(s, 3)
+    steps(s, 12)  # Start waits for the gates to finish closing (the gates-closed permissive)
     s.command("start")
     steps(s, 20)
     assert s.snapshot()["state"] == "running"

@@ -29,13 +29,16 @@ within:
   seconds: 2.0
 
 then:
-  - title: "The drive is repaired; acknowledge and reset return the line to idle"
+  # Start waits for every gate to show closed (the gates-closed permissive):
+  # after the trip the gate takes its travel time to close.
+  - title: "The drive is repaired; acknowledge and reset return the line to idle, and the gates show closed"
     when:
       feeder_fail_to_start: false
       acknowledge: true
       reset: true
     expect:
       line_state: idle
+      gates_closed: true
     within:
       seconds: 1.0
   - title: "The line restarts and material flows"

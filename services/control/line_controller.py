@@ -417,6 +417,9 @@ class LineController:
         unacked_trips = self._unacked_trip_ids()
         if unacked_trips:
             reasons.append(f"unacknowledged alarm: {', '.join(unacked_trips)}")
+        open_gates = self._gates_not_closed()
+        if open_gates:
+            reasons.append(f"gate not closed: {', '.join(open_gates)}")
         self.last_start_refusal = reasons
         inhibit = StartInhibit.NONE
         if self.interlocks.hopper_high_high:  # the same reads start_permissives_ok() just made
@@ -427,6 +430,8 @@ class LineController:
             inhibit |= StartInhibit.SENSOR_FAILED
         if unacked_trips:
             inhibit |= StartInhibit.UNACKNOWLEDGED_ALARM
+        if open_gates:
+            inhibit |= StartInhibit.GATE_NOT_CLOSED
         self.start_inhibit = inhibit
         if not reasons:
             self._begin_start_sequence()
@@ -438,6 +443,17 @@ class LineController:
             gate.command_open(False)
         if outlet:
             self._close_outlet()
+
+    def _gates_not_closed(self) -> list[str]:
+        """A start permissive: every bin gate and the hopper outlet proven
+        closed at its closed limit switch. A gate stuck open while IDLE
+        otherwise let a start through that then tripped on the wrong words
+        ("gate failed to prove open"), or fed from two bins at once (found
+        in the 2026-09-23 logic review)."""
+        gates = list(self.gates.values())
+        if self.outlet_ctrl is not None:
+            gates.append(self.outlet_ctrl)
+        return [g.command_tag.split(".")[0] for g in gates if not g.is_closed]
 
     def _close_outlet(self) -> None:
         if self.outlet_ctrl is not None:
@@ -975,6 +991,10 @@ class LineController:
         if self.interlocks.hopper_weight_failed:
             inhibit |= StartInhibit.SENSOR_FAILED
             reasons.append("hopper weight signal failed")
+        open_gates = self._gates_not_closed()
+        if open_gates:
+            inhibit |= StartInhibit.GATE_NOT_CLOSED
+            reasons.append(f"gate not closed: {', '.join(open_gates)}")
         inhibit, reasons = self._unacked_refusal(inhibit, reasons)
         self.start_inhibit = inhibit
         self.last_start_refusal = reasons

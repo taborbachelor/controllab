@@ -64,6 +64,8 @@ INTERLOCKS: list[InterlockRow] = [
         "never trips later; see tests/integration/test_line_controller.py::"
         "test_bin_low_while_running_stays_a_warning_for_the_whole_run",
     ),
+    # Hardening (2026-09-25): a gate stuck open no longer lets a start through.
+    InterlockRow("Gates proven closed", "Permissive"),
     InterlockRow(
         "Conveyor proven running",
         "Permissive + trip for feeder",

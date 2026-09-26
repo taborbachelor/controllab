@@ -61,6 +61,7 @@ LABELS: dict[str, str] = {
     "gate_open_commanded": "Gate open command",
     "feeder_flowing": "Material flowing from the feeder",
     "gate_open": "Gate open",
+    "gates_closed": "Every gate proven closed",
     "estop_healthy": "E-stop healthy",
     "spilled_kg": "Material spilled (kg)",
     "spilled": "Any material spilled",

@@ -161,7 +161,9 @@ def test_external_mode_takes_the_same_path_as_the_built_in_controller():
         command("start"); record(20)
         stimulus("feeder_trip", True); record(5)
         stimulus("feeder_trip", False); stimulus("feeder_drive_reset", True); command("acknowledge"); record(3)
-        command("reset"); record(3)
+        # Reset, then wait for the gate to show closed before Start: the
+        # gates-closed permissive refuses a start while it's still closing.
+        command("reset"); record(12)
         command("start"); record(20)
         stimulus("estop", "tripped"); record(3)
         # Release first, THEN acknowledge + reset -- the real operator
@@ -171,7 +173,7 @@ def test_external_mode_takes_the_same_path_as_the_built_in_controller():
         # modes would legitimately resolve it differently (found by this
         # test; see docs/CONTROL-LAB.md Phase 7 step 3).
         stimulus("estop", "healthy"); record(2)
-        command("acknowledge"); command("reset"); record(3)
+        command("acknowledge"); command("reset"); record(12)
         command("start"); record(20)
         command("stop"); record(40)
         return trace

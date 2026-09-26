@@ -368,6 +368,10 @@ READ_FIELDS: dict[str, Callable[[Rig], object]] = {
     "batches_completed": lambda rig: rig.line.batches_completed,
     "outlet_open": lambda rig: rig.plant.outlet.is_open,
     "outlet_open_commanded": lambda rig: rig.io.read("XV-106.CMD_OPEN"),
+    # Every bin gate and the outlet at its closed limit switch -- what a start
+    # waits for (the gates-closed permissive), so an operator procedure can
+    # wait for it after a trip before pressing Start.
+    "gates_closed": lambda rig: all(rig.io.read(t) for t in ("ZSC-102", "ZSC-112", "ZSC-122", "ZSC-106")),
     "estop_healthy": lambda rig: rig.plant.estop.healthy,
     "spilled_kg": lambda rig: rig.plant.spilled_kg,
     "spilled": lambda rig: rig.plant.spilled_kg > 1e-9,

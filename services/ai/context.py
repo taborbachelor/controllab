@@ -105,6 +105,7 @@ VALUE_SHAPES: dict[str, str] = {
     "gate_open_commanded": "true/false (the controller's gate open output; the gate itself takes its travel time)",
     "feeder_flowing": "true/false (material actually leaving the feeder; false while running = jammed)",
     "gate_open": "true/false",
+    "gates_closed": "true/false (every bin gate and the outlet at its closed limit switch)",
     "estop_healthy": "true/false",
     "spilled_kg": "number",
     "spilled": "true/false",

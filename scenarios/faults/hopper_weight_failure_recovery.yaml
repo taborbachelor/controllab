@@ -38,11 +38,14 @@ then:
       latched_alarm_ids: []
     within:
       seconds: 1.0
-  - title: "Reset is accepted once the signal is back"
+  # Start waits for every gate to show closed (the gates-closed permissive):
+  # after the trip the gate takes its travel time to close.
+  - title: "Reset is accepted once the signal is back, and the gates show closed"
     when:
       reset: true
     expect:
       line_state: idle
+      gates_closed: true
     within:
       seconds: 1.0
   - title: "The line restarts and material flows"

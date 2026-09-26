@@ -10,7 +10,7 @@ real for that.
 """
 import pytest
 
-from services.control.line_state import LineState, StartStep
+from services.control.line_state import LineState, StartInhibit, StartStep
 from services.simulation.engine.plant_io import scan as plant_scan
 from services.simulation.equipment.gate import GateState
 from services.simulation.equipment.motor import MotorState
@@ -479,9 +479,11 @@ def test_reset_succeeds_once_a_passthrough_cause_clears():
 def test_reset_from_a_latched_fault_gives_a_fresh_chance_but_a_persistent_problem_refaults():
     """A latched timing diagnostic (gate travel_fault) has no independent
     "still broken" signal Control can check -- reset() clears it
-    unconditionally, and if the underlying problem is still there, the
-    next start attempt simply fails again on its own. Proves reset()
-    doesn't silently paper over a persistent problem."""
+    unconditionally. A persistent problem is still caught: with the gate
+    stuck short of closed, the next start is refused by the gates-closed
+    permissive. (Before 2026-09-25 that start was accepted and re-faulted
+    as "gate failed to prove open" -- the logic review's third minor.)
+    Proves reset() doesn't silently paper over a persistent problem."""
     plant, io, line = make_rig()
     plant.gate.stuck = True
     line.start()
@@ -495,13 +497,21 @@ def test_reset_from_a_latched_fault_gives_a_fresh_chance_but_a_persistent_proble
 
     # reset() and acknowledge() are deliberately separate (docs/CONTROL-LAB.md
     # §10's Phase 4 step 2 entry) -- without this, the retry below would be
-    # refused outright by the new "no unacknowledged alarm" permissive,
-    # never reaching STARTING to re-fault on its own.
+    # refused on the unacknowledged alarm as well.
     line.acknowledge()
     line.start()
-    run(plant, io, line, 5.0)
-    assert line.state == LineState.FAULTED
-    assert line.fault_reason == "gate failed to prove open"
+    tick(plant, io, line)
+    assert line.state == LineState.IDLE
+    assert line.start_inhibit == StartInhibit.GATE_NOT_CLOSED
+    assert line.last_start_refusal == ["gate not closed: XV-102"]
+
+    # Repaired at the gate: it closes, and the same start is accepted.
+    plant.gate.stuck = False
+    plant.gate.clear_fault()
+    run(plant, io, line, 2.0)
+    line.start()
+    run(plant, io, line, 3.0)
+    assert line.state == LineState.RUNNING
 
 
 def test_start_is_refused_after_reset_until_the_alarm_is_acknowledged():
@@ -509,9 +519,9 @@ def test_start_is_refused_after_reset_until_the_alarm_is_acknowledged():
     alarms"): reset() alone clears FAULTED, but the alarm it left behind
     still blocks a fresh start on its own -- an operator has to have
     actually acknowledged what tripped, not just cleared the state
-    machine. Once acknowledged, a start is allowed to proceed -- and, gate
-    still stuck, re-faults on its own exactly like the reset()-only test
-    above, just reached the long way round."""
+    machine. Once acknowledged, the alarm no longer refuses the start --
+    the gate, still stuck short of closed, does (the gates-closed
+    permissive), exactly like the reset()-only test above."""
     plant, io, line = make_rig()
     plant.gate.stuck = True
     line.start()
@@ -533,8 +543,9 @@ def test_start_is_refused_after_reset_until_the_alarm_is_acknowledged():
     assert line.alarms.get("XV-102.TRAVEL_FAULT").latched is False
 
     line.start()
-    run(plant, io, line, 5.0)
-    assert line.state == LineState.FAULTED  # gate is still stuck
+    tick(plant, io, line)
+    assert line.state == LineState.IDLE  # the gate is still stuck short of closed
+    assert line.start_inhibit == StartInhibit.GATE_NOT_CLOSED
 
 
 def test_acknowledge_is_one_shot_and_does_not_suppress_a_later_alarm():

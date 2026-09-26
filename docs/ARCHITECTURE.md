@@ -1297,6 +1297,12 @@ issue and propose the change"):
   commanded, a start-proof fault or (once `_stop_belt_proven`) a loss of
   belt motion trips STOPPING, so the purge can't count down on a belt that
   isn't moving. ST: `stop_belt_proven`, set on each entry to state 3.
+- **`LineController._gates_not_closed()`**: the gates-closed start
+  permissive (every bin gate and the outlet at `ZSC`), checked by
+  `_scan_idle()` and `_request_batch()`, reported as
+  `StartInhibit.GATE_NOT_CLOSED`. The vocabulary's `gates_closed` read
+  field is the same four switches; `narrate.py` words the refusal and
+  `walkthroughs.ready_to_start` makes the shared Reset step wait for it.
 - **`services/testing/runner.py`** `_line_running()`: on field evidence
   (a status-less controller), a started line with the feed held at
   `LSH-105` counts as running.

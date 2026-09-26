@@ -57,6 +57,25 @@ def test_a_refused_start_says_why_and_how_to_fix_it():
     assert any("Set bin A/B/C level" in x["text"] for x in st["steps"])
 
 
+def test_a_start_refused_on_a_gate_not_closed_says_why():
+    """The gates-closed permissive (2026-09-25): a gate stuck short of
+    closed refuses Start, and the page says which check and what to do."""
+    s = running_session()
+    s.stimulus("gate_stuck", True)
+    s.command("stop")
+    steps(s, 30)
+    assert s.snapshot()["state"] == "faulted"
+    s.command("acknowledge")
+    s.command("reset")
+    steps(s, 2)
+    s.command("start")
+    steps(s, 2)
+    st = story(s)
+    assert st["headline"] == "Stopped. The last Start was refused."
+    assert "isn't proven closed at its closed limit switch" in st["detail"]
+    assert [x["text"] for x in st["steps"]][-1] == "Press Start again"
+
+
 def test_a_trip_gives_the_recovery_checklist_and_ticks_it_off():
     s = running_session()
     s.stimulus("feeder_trip", True)
