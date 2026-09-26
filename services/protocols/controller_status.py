@@ -15,7 +15,7 @@ controller every scan (see line_map.py for the addresses):
     alarms_active   bit i = ALARMS[i] active
     alarms_unacked  bit i = ALARMS[i] unacknowledged
     first_out       1 + index into ALARMS of the first-out alarm (0 = none)
-    start_inhibit   StartInhibit bits: why the most recent start was refused
+    start_inhibit   StartInhibit bits: why the most recent start, reset or mode request was refused
                     (added in Phase 8, appended after the HMI ack word so no
                     existing address moved)
 
@@ -197,10 +197,12 @@ def render_markdown() -> str:
     lines += ["", "### Alarm bits (`alarms_active`, `alarms_unacked`; `first_out` = bit + 1)", "",
               "| Bit | Alarm | Description | Class |", "|---:|---|---|---|"]
     lines += [f"| {i} | `{a}` | {d} | {'warning' if w else 'trip'} |" for i, (a, d, w) in enumerate(ALARMS)]
-    lines += ["", "### `start_inhibit` bits (why the most recent start or mode request was refused; 0 = NONE)", "",
+    lines += ["", "### `start_inhibit` bits (why the most recent start, reset or mode request was refused; 0 = NONE)", "",
               "| Bit value | Reason |", "|---:|---|"]
     lines += [f"| {int(m)} | {m.name} |" for m in StartInhibit if m]
-    lines += ["", "Set only when a start (line or Manual device) or a mode change is evaluated: NONE after an "
-              "accepted one, unchanged when none is requested -- so it proves the request was actually issued.", ""]
+    lines += ["", "Set whenever a start (line or Manual device), a reset or a mode change is consumed, in any "
+              "state: NONE after an accepted one (or one with nothing to do), unchanged when none is requested -- so "
+              "it proves the request was actually issued. Cleared when the line comes to rest. All 16 bits are "
+              "assigned.", ""]
     lines += ["", f"A value this table doesn't know is published as {UNKNOWN} rather than guessed.", ""]
     return "\n".join(lines)

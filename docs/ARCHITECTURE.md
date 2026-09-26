@@ -1317,6 +1317,26 @@ issue and propose the change"):
   (a status-less controller), a started line with the feed held at
   `LSH-105` counts as running.
 
+## Module responsibilities (every refusal reported)
+
+- **`LineController`**: the refusable requests (start, reset, the mode
+  selections, the Manual device starts) are each decided by one evaluator,
+  `_start_refusal()`, `_reset_refusal()`, `_mode_refusal()` or
+  `_device_refusal()`, which reads state and changes nothing; the scan acts
+  on the answer and `_report()` publishes it as `start_inhibit` and
+  `last_start_refusal`. Every refusable request is evaluated whenever it is
+  consumed, in any state, and `_clear_report()` empties the report when the
+  line comes to rest (unless that scan made one). `standing_cause()` is
+  public: the causes a Reset waits out. `StartInhibit.CAUSE_STANDING`
+  (32768) fills the 16-bit register.
+- **`services/telemetry/events.py`**: `EventLog.sample()` emits
+  `command_refused` (`{commands, inhibit}`) when a request in `REFUSABLE`
+  was consumed this tick and the controller's `start_inhibit` is not NONE.
+  Derived from what the controller publishes, not pushed, so an
+  `ObservedLine` across Modbus yields the same event.
+- **`examples/openplc/controllab_line.st`**: the same rules (`any_req` is
+  `_reported`), `16#8000` for a standing cause.
+
 ## The self-explaining replay (readable cold)
 
 A replay of a scenario run carries the run's summary

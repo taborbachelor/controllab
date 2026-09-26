@@ -28,6 +28,14 @@ then:
       line_state: estopped
     within:
       seconds: 0.5
+  - title: "Reset with the E-stop still pressed: refused"
+    when:
+      reset: true
+    expect:
+      line_state: estopped
+      start_inhibit: ["ESTOP_ACTIVE"]
+    within:
+      seconds: 0.5
   - title: "E-stop released: still ESTOPPED until someone resets"
     when:
       estop: healthy
@@ -66,6 +74,7 @@ then:
       reset: true
     expect:
       line_state: idle
+      start_inhibit: ["NONE"]
     within:
       seconds: 1.0
 

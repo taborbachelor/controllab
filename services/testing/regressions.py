@@ -53,9 +53,9 @@ class JamTripRemoved(LineController):
 
 class ResetIgnoresJam(LineController):
     """Reset allowed while the chute is still plugged: "operators need to
-    reset faster". Production's _standing_cause, minus one branch."""
+    reset faster". Production's standing_cause, minus one branch."""
 
-    def _standing_cause(self) -> str | None:
+    def standing_cause(self) -> str | None:
         if self.interlocks.hopper_high_high:
             return "hopper high-high"
         if self.conveyor_ctrl.faulted:

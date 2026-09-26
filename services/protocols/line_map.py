@@ -118,7 +118,7 @@ LINE_REGISTER_MAP = RegisterMap(
 LINE_REGISTER_MAP = dataclasses.replace(
     LINE_REGISTER_MAP,
     status_registers=LINE_REGISTER_MAP.status_registers
-    + (StatusRegister("start_inhibit", 7, "Why the most recent start or mode request was refused (bits; 0 = none)"),),
+    + (StatusRegister("start_inhibit", 7, "Why the most recent start, reset or mode request was refused (bits; 0 = none)"),),
 )
 # Manual mode (completing Phase 2): the mode register, APPENDED at 8 for the
 # same reason; the controller write range grows to 0-8.

@@ -52,9 +52,9 @@ def test_copied_methods_differ_from_production_only_by_the_marked_change():
     branch = "if self.interlocks.feeder_plugged:\n    return 'feeder jam'\n"
     assert prod.count(branch) == 1
     assert _body(JamTripRemoved, "_running_trip_reason") == prod.replace(branch, "")
-    prod = _body(LineController, "_standing_cause")
+    prod = _body(LineController, "standing_cause")
     assert prod.count(branch) == 1  # the same jam branch, in the reset check
-    assert _body(ResetIgnoresJam, "_standing_cause") == prod.replace(branch, "")
+    assert _body(ResetIgnoresJam, "standing_cause") == prod.replace(branch, "")
     prod = _body(LineController, "_manual_feeder_refusal")
     branch = ("if not self._manual_conveyor_proven:\n    inhibit |= StartInhibit.CONVEYOR_NOT_RUNNING\n"
               "    reasons.append('conveyor not proven running')\n")

@@ -50,7 +50,7 @@ def test_a_passing_multistage_run():
     s = summarize(scenario, run_scenario(scenario), "Python controller", root=SCENARIOS)
     assert s.verdict == "PASS" and s.passed and s.qualifier == ""
     assert [st.status for st in s.stages] == ["passed"] * 6
-    assert s.checks_passed == s.checks_evaluated == s.checks_total == 15
+    assert s.checks_passed == s.checks_evaluated == s.checks_total == 17  # 15 + the two start_inhibit checks (2026-09-26)
     assert s.first_out == "LSH-103.JAM"  # from the event log
     assert s.invariants == "held on every tick" and s.first_divergence is None
     assert s.stages[1].title == "Reset is refused while the chute is still plugged"

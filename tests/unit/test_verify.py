@@ -47,7 +47,7 @@ def test_a_verification_result_on_the_python_runtime():
     v = Verifier(LiveSession(), plc_url=NO_PLC)
     v.start("faults/feeder_jam_recovery.yaml", background=False)
     (run,) = v.latest["runs"]
-    assert run["verdict"] == "PASS" and run["checks_passed"] == run["checks_evaluated"] == 15
+    assert run["verdict"] == "PASS" and run["checks_passed"] == run["checks_evaluated"] == 17  # 15 + two start_inhibit checks
     assert run["first_out"] == "LSH-103.JAM" and run["runtime_id"] == "python" and v.busy is None
 
 

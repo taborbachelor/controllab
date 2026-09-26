@@ -73,5 +73,12 @@ def test_published_and_decoded_over_the_status_block():
     assert decode(registers).start_inhibit == rig.line.start_inhibit
 
 
-def test_unknown_bits_are_dropped_not_guessed():
-    assert decode([0, 0, 0, 0, 0, 0x8000 | 1, 0, 0, 0, 1, 0, 0, 0]).start_inhibit == StartInhibit.BIN_LOW
+def test_every_bit_of_the_register_is_assigned():
+    """CAUSE_STANDING (2026-09-26) took the last free bit of the 16-bit
+    register (it replaced a test that used 0x8000 as an unknown bit): every
+    value now decodes whole, and a seventeenth reason needs a second register."""
+    all_bits = 0
+    for member in StartInhibit:
+        all_bits |= int(member)
+    assert all_bits == 0xFFFF
+    assert decode([0, 0, 0, 0, 0, 0xFFFF, 0, 0, 0, 1, 0, 0, 0]).start_inhibit == StartInhibit(0xFFFF)

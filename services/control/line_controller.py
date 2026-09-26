@@ -21,9 +21,10 @@ boundary.py), which scans every module in services/control/.
 
 Start()/Stop()/Reset() are one-shot requests, like real momentary
 pushbuttons: call the method to raise the request, scan() consumes it (at
-most once) on however many scans it takes to become relevant, and it's a
-no-op if the current state doesn't act on it (e.g. start() while already
-RUNNING).
+most once) on however many scans it takes to become relevant. A request
+the current state can't act on is refused and reported, not dropped
+(start() while RUNNING: "line not at rest"); one with nothing to do is a
+no-op (stop() while IDLE, reset() with nothing tripped).
 
 The four commands are also the one place Control reports anything
 outward (Phase 5 step 3): an optional `command_sink` callable, None by
@@ -35,6 +36,16 @@ can't see by construction. Unconfigured, it's a no-op: no behavior
 change, no I/O, no import of anything telemetry-related (the sink is a
 plain callable; tests/unit/test_control_boundary.py enforces that
 services/control/ never imports services.telemetry).
+
+Every refusal reported (2026-09-26). The requests that can be refused --
+start, reset, the mode selections and the device starts -- are each
+decided by exactly one evaluator (`_start_refusal`, `_reset_refusal`,
+`_mode_refusal`, `_device_refusal`), and the scan acts on that
+evaluator's answer and nothing else. Each is evaluated whenever it is
+consumed, in any state, so `start_inhibit` is always the outcome of the
+most recent one (NONE: accepted, or nothing to do). That is what lets the
+event log derive a `command_refused` event from what the controller
+publishes, the same way for this class, over Modbus and on a PLC.
 """
 from __future__ import annotations
 
@@ -60,7 +71,9 @@ CLEAR_BELT_ON = frozenset({
 
 # Manual mode's device pushbuttons (one-shot, like start()/stop()). A stop
 # and a start of the same device in one scan leaves it stopped.
-DEVICE_STARTS = frozenset({"start_conveyor", "open_gate", "start_feeder", "open_outlet"})
+# In the order a scan evaluates them (a fixed order, so reports are deterministic).
+DEVICE_START_ORDER = ("start_conveyor", "open_gate", "open_outlet", "start_feeder")
+DEVICE_STARTS = frozenset(DEVICE_START_ORDER)
 DEVICE_STOPS = frozenset({"stop_conveyor", "close_gate", "stop_feeder", "close_outlet"})
 BATCH_STATES = frozenset({LineState.LOADING, LineState.PROCESSING, LineState.DISCHARGING, LineState.CLEANING})
 
@@ -181,6 +194,7 @@ class LineController:
         # services/telemetry/events.py's EventLog.record_command); never
         # read by anything in Control itself.
         self.command_sink: Callable[[str], None] | None = None
+        self._reported = False  # this scan reported a request's outcome (see _clear_report)
 
     # ---- operator/HMI-style commands ----------------------------------
 
@@ -294,6 +308,7 @@ class LineController:
         self.interlocks.scan(dt)
         self.level_checks.scan(self.interlocks, dt)
         self.alarms.scan()
+        self._reported = False
 
         if self._acknowledge_requested:
             self.alarms.acknowledge()
@@ -305,6 +320,13 @@ class LineController:
             self._change_mode(self._mode_request)
         if self.state != LineState.MANUAL:
             self._refuse_device_starts()
+        if self._start_requested and self.state not in (LineState.IDLE, LineState.MANUAL):
+            # Start acts only at rest (IDLE here; MANUAL reports it with its
+            # device requests). Anywhere else it is refused, and says so.
+            self._report([("start", *self._start_refusal())])
+        if self._reset_requested and self.state not in (LineState.FAULTED, LineState.ESTOPPED):
+            # Nothing tripped, nothing to reset: accepted, and does nothing.
+            self._report([("reset", *self._reset_refusal())])
 
         if self.state == LineState.IDLE:
             self._scan_idle()
@@ -342,21 +364,21 @@ class LineController:
         """docs/CONTROL-LAB.md §6.1: the mode changes only at rest. A refusal
         is reported like a refused start (StartInhibit.LINE_NOT_IDLE), so a
         scenario can tell a refused mode change from one never requested."""
-        if mode == self.mode:
-            self.start_inhibit = StartInhibit.NONE
-            self.last_start_refusal = []
-            return
-        if mode == LineMode.BATCH and self.outlet_ctrl is None:
+        if mode != self.mode and mode == LineMode.BATCH and self.outlet_ctrl is None:
             raise ValueError("this line has no hopper outlet gate, so no Batch mode")
-        if self.state == LineState.IDLE or (self.state == LineState.MANUAL and not self._any_device_commanded()):
+        refused, why = self._mode_refusal(mode)
+        self._report([(f"select_{mode.name.lower()}", refused, why)])
+        if not refused and mode != self.mode:
             self.mode = mode
             self._enter_rest()
-            self.start_inhibit = StartInhibit.NONE
-            self.last_start_refusal = []
-            return
+
+    def _mode_refusal(self, mode: LineMode) -> tuple[StartInhibit, list[str]]:
+        if mode == self.mode or self.state == LineState.IDLE or (
+            self.state == LineState.MANUAL and not self._any_device_commanded()
+        ):
+            return StartInhibit.NONE, []
         why = "stop every device first" if self.state == LineState.MANUAL else f"the line is {self.state.name.lower()}"
-        self.start_inhibit = StartInhibit.LINE_NOT_IDLE
-        self.last_start_refusal = [f"mode change to {mode.name.lower()} refused: {why}"]
+        return StartInhibit.LINE_NOT_IDLE, [f"mode change to {mode.name.lower()} refused: {why}"]
 
     def _any_device_commanded(self) -> bool:
         return (self.feeder_ctrl.commanded_run or self.conveyor_ctrl.commanded_run
@@ -373,23 +395,39 @@ class LineController:
         self.batch_step = None
         self._manual_conveyor_proven = False
         self._manual_conveyor_elapsed_s = 0.0
+        self._clear_report()
+
+    # ---- refusals: reporting ----------------------------------------------
+
+    def _report(self, outcomes: list[tuple[str, StartInhibit, list[str]]]) -> None:
+        """The outcome of this scan's evaluated requests, each (command,
+        inhibit, reasons), as start_inhibit and last_start_refusal: every
+        request's reasons, in order, once each."""
+        inhibit, reasons = StartInhibit.NONE, []
+        for _command, refused, why in outcomes:
+            inhibit |= refused
+            reasons += [r for r in why if r not in reasons]
+        self.start_inhibit = inhibit
+        self.last_start_refusal = reasons
+        self._reported = True
+
+    def _clear_report(self) -> None:
+        """The line at rest again: a refusal from the run just ended no
+        longer describes anything, so it isn't left standing -- unless
+        this very scan reported one (a Start refused in the scan the stop
+        finished), which stays to be read."""
+        if not self._reported:
+            self.start_inhibit = StartInhibit.NONE
+            self.last_start_refusal = []
 
     def _refuse_device_starts(self) -> None:
         """A device start outside MANUAL is refused and reported -- in Auto,
         the master spec's "operator manual override during automatic"; in
         Manual mode, the line is FAULTED or ESTOPPED. Device stops outside
         MANUAL are no-ops, like stop() while IDLE."""
-        if not self._device_requests & DEVICE_STARTS:
-            return
-        if self.mode != LineMode.MANUAL:  # Auto or Batch (it read "== AUTO", so Batch said "faulted")
-            self.start_inhibit = StartInhibit.WRONG_MODE
-            self.last_start_refusal = ["device commands need Manual mode"]
-        elif self.state == LineState.ESTOPPED:
-            self.start_inhibit = StartInhibit.ESTOP_ACTIVE
-            self.last_start_refusal = ["e-stop active"]
-        else:
-            self.start_inhibit = StartInhibit.LINE_FAULTED
-            self.last_start_refusal = [f"line faulted: {self.fault_reason}"]
+        requested = [c for c in DEVICE_START_ORDER if c in self._device_requests]
+        if requested:
+            self._report([(c, *self._device_refusal(c)) for c in requested])
 
     # ---- IDLE -----------------------------------------------------------
 
@@ -405,7 +443,27 @@ class LineController:
         if self.mode == LineMode.BATCH:
             self._request_batch()
             return
+        refused, reasons = self._start_refusal()
+        self._report([("start", refused, reasons)])
+        if not reasons:
+            self._begin_start_sequence()
 
+    # ---- refusals: one evaluator per request --------------------------------
+
+    def _start_refusal(self) -> tuple[StartInhibit, list[str]]:
+        """Whether Start would be acted on now, and why not. Start acts only
+        at rest: IDLE (Auto's permissives, or the batch's in Batch mode)."""
+        if self.state == LineState.ESTOPPED:
+            return StartInhibit.ESTOP_ACTIVE, ["e-stop active"]
+        if self.state == LineState.FAULTED:
+            return StartInhibit.LINE_FAULTED, [f"line faulted: {self.fault_reason}"]
+        if self.state == LineState.MANUAL:
+            return StartInhibit.WRONG_MODE, ["line Start is an Auto command; in Manual start each device"]
+        if self.state != LineState.IDLE:
+            return StartInhibit.LINE_NOT_IDLE, [f"line not at rest: {self.state.name.lower()}"]
+        if self.mode == LineMode.BATCH:
+            inhibit, reasons, _ = self._batch_check()
+            return inhibit, reasons
         check = self.interlocks.start_permissives_ok(self.source_bin)
         reasons = list(check.reasons)
         # "No active latched alarms" (docs/CONTROL-LAB.md §6.3) lives here,
@@ -420,7 +478,6 @@ class LineController:
         open_gates = self._gates_not_closed()
         if open_gates:
             reasons.append(f"gate not closed: {', '.join(open_gates)}")
-        self.last_start_refusal = reasons
         inhibit = StartInhibit.NONE
         if self.interlocks.hopper_high_high:  # the same reads start_permissives_ok() just made
             inhibit |= StartInhibit.HOPPER_HIGH_HIGH
@@ -432,9 +489,43 @@ class LineController:
             inhibit |= StartInhibit.UNACKNOWLEDGED_ALARM
         if open_gates:
             inhibit |= StartInhibit.GATE_NOT_CLOSED
-        self.start_inhibit = inhibit
-        if not reasons:
-            self._begin_start_sequence()
+        return inhibit, reasons
+
+    def _reset_refusal(self) -> tuple[StartInhibit, list[str]]:
+        """Whether Reset would be acted on now, and why not. Only FAULTED and
+        ESTOPPED act on it; anywhere else there is nothing to reset, and it
+        is neither acted on nor refused."""
+        if self.state == LineState.ESTOPPED and not self.interlocks.estop_healthy:
+            return StartInhibit.ESTOP_ACTIVE, ["e-stop still pressed"]
+        if self.state == LineState.FAULTED:
+            cause = self.standing_cause()
+            if cause is not None:
+                return StartInhibit.CAUSE_STANDING, [f"trip cause still present: {cause}"]
+        return StartInhibit.NONE, []
+
+    def _device_refusal(self, command: str) -> tuple[StartInhibit, list[str]]:
+        """Whether a Manual device pushbutton would be acted on now, and why
+        not. Stops are never refused."""
+        if command not in DEVICE_STARTS:
+            return StartInhibit.NONE, []
+        if self.mode != LineMode.MANUAL:  # Auto or Batch (it read "== AUTO", so Batch said "faulted")
+            return StartInhibit.WRONG_MODE, ["device commands need Manual mode"]
+        if self.state == LineState.ESTOPPED:
+            return StartInhibit.ESTOP_ACTIVE, ["e-stop active"]
+        if self.state != LineState.MANUAL:
+            return StartInhibit.LINE_FAULTED, [f"line faulted: {self.fault_reason}"]
+        if command == "start_conveyor":
+            return self._manual_conveyor_refusal()
+        if command == "start_feeder":
+            return self._manual_feeder_refusal()
+        if command == "open_outlet" and not self.interlocks.downstream_ready:
+            # Draining the hopper by hand is a Manual-mode job (after an aborted
+            # batch, say), but only into a downstream that can take it: the
+            # discharge permissive holds in every mode.
+            return StartInhibit.DOWNSTREAM_NOT_READY, ["downstream not ready"]
+        # open_gate: no permissive beyond the E-stop -- the gate alone moves no
+        # material, and stroking it to check its limit switches is what Manual is for.
+        return StartInhibit.NONE, []
 
     def _close_gates(self, outlet: bool = True) -> None:
         """Every bin gate -- and the hopper outlet, unless `outlet` is False
@@ -665,6 +756,7 @@ class LineController:
             self.state = LineState.IDLE
             self.active_bin = None
             self._purge_elapsed_s = 0.0
+            self._clear_report()
 
     def _stopping_trip_reason(self) -> str | None:
         if self.interlocks.hopper_high_high:
@@ -721,37 +813,34 @@ class LineController:
                     or self.interlocks.hopper_weight_failed):
                 self.clearing_belt = False
         self.conveyor_ctrl.command_run(self.clearing_belt)
-        if self._start_requested:
-            # Refused exactly as before (FAULTED never acts on start); only
-            # the reporting is new.
-            self.start_inhibit = StartInhibit.LINE_FAULTED
+        # (A Start here is refused, and reported, in scan(): FAULTED never acts on it.)
 
         if not self._reset_requested:
             return
-        if self._fault_cause_cleared():
+        refused, why = self._reset_refusal()
+        self._report([("reset", refused, why)])
+        if not refused:
             self._clear_all_device_faults()
             self.clearing_belt = False  # rest means off; a reset ends any belt clearing,
             self.conveyor_ctrl.command_run(False)  # in this same scan
             self._enter_rest()
         # else: refused, stays FAULTED, fault_reason unchanged
 
-    def _fault_cause_cleared(self) -> bool:
-        """Whether the underlying condition is still directly observable
-        as active. Only covers PASS-THROUGH/level conditions Control can
-        check independently (hopper high-high, a motor's own fault tag)
-        -- NOT the latched timing diagnostics (start_proof_fault,
-        travel_fault), which have no independent "still broken" signal to
-        check: Control can only re-test them by trying again.
-        clear_fault() on those happens unconditionally in
-        _clear_all_device_faults() once this passes; if the underlying
-        problem is still there, the next start attempt fails again on
-        its own."""
-        return self._standing_cause() is None
-
-    def _standing_cause(self) -> str | None:
+    def standing_cause(self) -> str | None:
         """The trip cause still observably present, or None: what a reset
         from FAULTED -- and from ESTOPPED -- has to wait out. One list, so
-        the two reset paths can't drift apart."""
+        the two reset paths can't drift apart. Public (2026-09-26) because
+        the HMI's explanation of a trip reads it: "Reset refused, the chute
+        is still plugged".
+
+        Only covers PASS-THROUGH/level conditions Control can check
+        independently (hopper high-high, a motor's own fault tag) -- NOT
+        the latched timing diagnostics (start_proof_fault, travel_fault),
+        which have no independent "still broken" signal to check: Control
+        can only re-test them by trying again. clear_fault() on those
+        happens unconditionally in _clear_all_device_faults() once a reset
+        is accepted; if the underlying problem is still there, the next
+        start attempt fails again on its own."""
         if self.interlocks.hopper_high_high:
             return "hopper high-high"
         if self.conveyor_ctrl.faulted:
@@ -794,11 +883,12 @@ class LineController:
         self.conveyor_ctrl.command_run(False)
         self._close_gates()
 
-        if self._start_requested:
-            # Refused exactly as before (ESTOPPED never acts on start); only
-            # the reporting is new.
-            self.start_inhibit = StartInhibit.ESTOP_ACTIVE
-        if self.interlocks.estop_healthy and self._reset_requested:
+        # (A Start here is refused, and reported, in scan(): ESTOPPED never acts on it.)
+        if not self._reset_requested:
+            return
+        refused, why = self._reset_refusal()
+        self._report([("reset", refused, why)])
+        if not refused:
             self._clear_all_device_faults()
             # A reset out of ESTOPPED clears the E-stop, not whatever else is
             # still wrong: with a standing cause the line goes to FAULTED on
@@ -806,15 +896,14 @@ class LineController:
             # straight to IDLE, so an E-stop cycle got around "reset refused
             # while the chute is plugged" and a start was accepted onto a
             # known fault -- found in the 2026-09-23 logic review.)
-            standing = self._standing_cause()
+            standing = self.standing_cause()
             if standing is not None:
                 self.state = LineState.FAULTED
                 self.fault_reason = standing
             else:
                 self._enter_rest()
-        # else: stays ESTOPPED -- either e-stop is still tripped, or no
-        # reset yet. Both conditions are required
-        # (docs/CONTROL-LAB.md §6.2's diagram).
+        # else: refused, stays ESTOPPED -- the e-stop is still tripped. A
+        # release and a reset are both required (docs/CONTROL-LAB.md §6.2's diagram).
 
     # ---- MANUAL -----------------------------------------------------------
 
@@ -823,6 +912,11 @@ class LineController:
         reason = self._manual_trip_reason()
         if reason is not None:
             self._enter_faulted(reason)
+            # This scan's requests meet a tripped line: refused, and reported.
+            outcomes = [("start", *self._start_refusal())] if self._start_requested else []
+            outcomes += [(c, *self._device_refusal(c)) for c in DEVICE_START_ORDER if c in self._device_requests]
+            if outcomes:
+                self._report(outcomes)
             return
 
         requests = set(self._device_requests)
@@ -840,52 +934,41 @@ class LineController:
             self._manual_conveyor_proven = False
             self._manual_conveyor_elapsed_s = 0.0
 
-        inhibit = StartInhibit.NONE
-        reasons: list[str] = []
-        evaluated = False
+        outcomes: list[tuple[str, StartInhibit, list[str]]] = []
         if self._start_requested:
-            evaluated = True
-            inhibit |= StartInhibit.WRONG_MODE
-            reasons.append("line Start is an Auto command; in Manual start each device")
+            outcomes.append(("start", *self._start_refusal()))
+        for command, stop in (("start_conveyor", "stop_conveyor"), ("open_gate", "close_gate"),
+                              ("open_outlet", "close_outlet"), ("start_feeder", "stop_feeder")):
+            if command in requests and (stop in requests or (command == "open_outlet" and self.outlet_ctrl is None)):
+                # Its own stop in the same scan wins (or there's no outlet):
+                # nothing to refuse, and nothing started.
+                outcomes.append((command, StartInhibit.NONE, []))
         if "start_conveyor" in requests and "stop_conveyor" not in requests:
-            evaluated = True
-            refused, why = self._manual_conveyor_refusal()
-            inhibit |= refused
-            reasons += why
+            refused, why = self._device_refusal("start_conveyor")
+            outcomes.append(("start_conveyor", refused, why))
             if not refused and not self.conveyor_ctrl.commanded_run:
                 self.conveyor_ctrl.command_run(True)
                 self._manual_conveyor_proven = False
                 self._manual_conveyor_elapsed_s = 0.0
         if "open_gate" in requests and "close_gate" not in requests:
-            # No permissive beyond the E-stop (already diverted to ESTOPPED):
-            # the gate alone moves no material, and stroking it to check its
-            # limit switches is what Manual is for.
-            evaluated = True
+            outcomes.append(("open_gate", *self._device_refusal("open_gate")))
             # One bin at a time, in every mode: opening the selected bin's gate
             # closes any other.
             for letter, gate in self.gates.items():
                 gate.command_open(letter == self.source_bin)
         if "open_outlet" in requests and "close_outlet" not in requests and self.outlet_ctrl is not None:
-            # Draining the hopper by hand is a Manual-mode job (after an aborted
-            # batch, say), but only into a downstream that can take it: the
-            # discharge permissive holds in every mode.
-            evaluated = True
-            if self.interlocks.downstream_ready:
+            refused, why = self._device_refusal("open_outlet")
+            outcomes.append(("open_outlet", refused, why))
+            if not refused:
                 self.outlet_ctrl.command_open(True)
-            else:
-                inhibit |= StartInhibit.DOWNSTREAM_NOT_READY
-                reasons.append("downstream not ready")
         if "start_feeder" in requests and "stop_feeder" not in requests:
-            evaluated = True
-            refused, why = self._manual_feeder_refusal()
-            inhibit |= refused
-            reasons += why
+            refused, why = self._device_refusal("start_feeder")
+            outcomes.append(("start_feeder", refused, why))
             if not refused:
                 self.feeder_ctrl.command_run(True)
                 self.feeder_ctrl.command_speed(self.feed_speed_pct)
-        if evaluated:
-            self.start_inhibit = inhibit
-            self.last_start_refusal = reasons
+        if outcomes:
+            self._report(outcomes)
 
         # Enforced every scan, not only at start: the feeder runs only onto a
         # proven belt (an operator stopping the conveyor takes the feeder with
@@ -991,6 +1074,25 @@ class LineController:
 
     def _request_batch(self) -> None:
         """A start in Batch mode: the batch permissives, then LOADING."""
+        inhibit, reasons, (plan, weight) = self._batch_check()
+        self._report([("start", inhibit, reasons)])
+        if inhibit:
+            return
+        self._batch_plan = plan
+        self._batch_index = 0
+        self._batch_start_kg = weight
+        self.batch_loaded_kg = 0.0
+        self._batch_out_of_tolerance = False
+        self._batch_conveyor_proven = False
+        self._batch_elapsed_s = 0.0
+        self.active_bin = plan[0][0]
+        self.state = LineState.LOADING
+        self.batch_step = BatchStep.CONVEYOR
+        self.conveyor_ctrl.command_run(True)
+
+    def _batch_check(self) -> tuple[StartInhibit, list[str], tuple[list[tuple[str, float]], float]]:
+        """The batch permissives, with the plan and starting weight a start
+        would take."""
         plan = [(b, self.recipe[b]) for b in BINS if b in self.gates and self.recipe[b] > 0]
         weight = self.interlocks.io.read("WT-105")
         room = self.interlocks.hopper_capacity_kg * self.level_checks.lsh.switch_pct / 100.0
@@ -1018,21 +1120,7 @@ class LineController:
             inhibit |= StartInhibit.GATE_NOT_CLOSED
             reasons.append(f"gate not closed: {', '.join(open_gates)}")
         inhibit, reasons = self._unacked_refusal(inhibit, reasons)
-        self.start_inhibit = inhibit
-        self.last_start_refusal = reasons
-        if inhibit:
-            return
-        self._batch_plan = plan
-        self._batch_index = 0
-        self._batch_start_kg = weight
-        self.batch_loaded_kg = 0.0
-        self._batch_out_of_tolerance = False
-        self._batch_conveyor_proven = False
-        self._batch_elapsed_s = 0.0
-        self.active_bin = plan[0][0]
-        self.state = LineState.LOADING
-        self.batch_step = BatchStep.CONVEYOR
-        self.conveyor_ctrl.command_run(True)
+        return inhibit, reasons, (plan, weight)
 
     def _batch_trip_reason(self) -> str | None:
         """The trips of a running line, applied to whatever the batch has

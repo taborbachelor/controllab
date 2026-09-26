@@ -54,6 +54,16 @@ ordering it before the same tick's diffs keeps cause ahead of effect in
 the log (command_issued "start" precedes state_changed idle->starting,
 same t).
 
+`command_refused` (2026-09-26) is derived, not pushed: the refusable
+requests (REFUSABLE) are evaluated by the controller whenever they are
+consumed, so after the tick that consumed one, the controller's published
+`start_inhibit` is that request's outcome. Non-NONE means refused, and
+the event records the request(s) with the inhibit's reason names, right
+after the tick's command_issued events. Reading only `start_inhibit` is
+what keeps it identical for the built-in controller and one reached over
+Modbus (whose reason text never crosses the wire). Two refusable requests
+in one tick share one event: the register is their combined outcome.
+
 File output is a separate, standalone function (write_jsonl()), not a
 method -- EventLog itself never imports json or pathlib. Mirrors
 tag_history.py's write_csv() and services/testing/report.py /
@@ -66,7 +76,11 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from services.control.line_controller import LineController
+from services.control.line_controller import DEVICE_START_ORDER, LineController
+from services.control.line_state import StartInhibit, inhibit_names
+
+# The requests the controller can refuse, by their command_issued names.
+REFUSABLE = frozenset({"start", "reset", "select_auto", "select_manual", "select_batch", *DEVICE_START_ORDER})
 
 
 @dataclass
@@ -104,8 +118,12 @@ class EventLog:
         exception: a command is a recorded fact, not a diff, so there's
         no baseline to establish for it and it's emitted even on the
         first call."""
+        refusable = [c for c in self._pending_commands if c in REFUSABLE]
         self._flush_commands(t)
         if self.controller_state:
+            if refusable and self.line.start_inhibit != StartInhibit.NONE:
+                self.events.append(Event(t=t, type="command_refused", data={
+                    "commands": refusable, "inhibit": inhibit_names(self.line.start_inhibit)}))
             self._sample_state(t)
             self._sample_alarms(t)
 

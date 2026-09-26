@@ -84,10 +84,12 @@ PROGRAM controllab_line
     ST_ALARMS_UNACKED AT %QW104 : WORD;
     ST_FIRST_OUT AT %QW105 : INT;     (* 1 + alarm bit, 0 = none *)
     HMI_ACK AT %QW106 : WORD;
-    ST_START_INHIBIT AT %QW107 : WORD; (* why the last start was refused: 1 bin low, 2 hopper HH,
+    ST_START_INHIBIT AT %QW107 : WORD; (* why the last start/reset/mode request was refused: 1 bin low, 2 hopper HH,
                                           4 unacked alarm, 8 e-stop, 16 faulted, 32 sensor failed,
                                           64 conveyor not running, 128 hopper high, 256 wrong mode,
-                                          512 line not idle; 0 = none *)
+                                          512 line not idle, 1024 recipe empty, 2048 recipe too large,
+                                          4096 hopper not empty, 8192 gate not closed,
+                                          16384 downstream not ready, 32768 trip cause standing; 0 = none *)
     ST_MODE AT %QW108 : INT;          (* controller_status.MODES code: 0 AUTO, 1 MANUAL *)
     ST_ALARMS_ACTIVE_2 AT %QW109 : WORD;  (* alarm bits 16-31 *)
     ST_ALARMS_UNACKED_2 AT %QW110 : WORD;
@@ -125,7 +127,8 @@ PROGRAM controllab_line
     feed_start_req : BOOL;
     feed_stop_req : BOOL;
     ack_bits : WORD := 16#0000;
-    start_inhibit : WORD := 16#0000;   (* outcome of the most recent start request -- StartInhibit *)
+    start_inhibit : WORD := 16#0000;   (* outcome of the most recent start, reset or mode request -- StartInhibit *)
+    any_req : BOOL;                    (* a refusable request was consumed this scan (_reported) *)
 
     (* device supervision -- MotorControl / GateControl *)
     conv_last_cmd : BOOL := FALSE;
@@ -439,6 +442,18 @@ PROGRAM controllab_line
     END_IF;
   END_IF;
 
+  (* every refusal reported (_start_refusal / _reset_refusal): Start acts only at rest (IDLE here,
+     MANUAL below), anywhere else it is refused; a Reset with nothing tripped is accepted, does nothing *)
+  IF start_req AND state <> 0 AND state <> 6 THEN
+    IF state = 5 THEN start_inhibit := 16#0008;                      (* ESTOP_ACTIVE *)
+    ELSIF state = 4 THEN start_inhibit := 16#0010;                   (* LINE_FAULTED *)
+    ELSE start_inhibit := 16#0200;                                   (* LINE_NOT_IDLE *)
+    END_IF;
+  END_IF;
+  IF reset_req AND state <> 4 AND state <> 5 THEN start_inhibit := 16#0000; END_IF;
+  any_req := start_req OR reset_req OR mode_req >= 0 OR conv_start_req OR gate_open_req OR feed_start_req
+             OR outlet_open_req;
+
   (* ================= the line state machine ================= *)
   CASE state OF
     0: (* IDLE -- off, continuously enforced *)
@@ -592,6 +607,7 @@ PROGRAM controllab_line
         purge_scans := purge_scans + 1;
         IF purge_scans >= LIM_PURGE THEN
           M104_RUN := FALSE; state := 0; purge_scans := 0; active_bin := 0;
+          IF NOT any_req THEN start_inhibit := 16#0000; END_IF;    (* _clear_report *)
         END_IF;
       END_IF;
 
@@ -606,8 +622,11 @@ PROGRAM controllab_line
         END_IF;
       END_IF;
       M104_RUN := clearing;
-      IF start_req THEN start_inhibit := 16#0010; END_IF;          (* refused, as always; now reported *)
-      IF reset_req AND NOT hopper_high_high AND NOT M104_OL AND NOT M103_FAULT AND NOT LSH_103 AND NOT WT105_FLT THEN
+      (* a Start here is refused, and reported, above *)
+      IF reset_req AND (hopper_high_high OR M104_OL OR M103_FAULT OR LSH_103 OR WT105_FLT) THEN
+        start_inhibit := 16#8000;                                  (* CAUSE_STANDING: standing_cause() *)
+      ELSIF reset_req THEN
+        start_inhibit := 16#0000;
         conv_proof_fault := FALSE; conv_proof_scans := 0;
         feed_proof_fault := FALSE; feed_proof_scans := 0;
         gate_travel_fault := FALSE; gate_scans := 0;
@@ -621,8 +640,11 @@ PROGRAM controllab_line
     5: (* ESTOPPED -- off; reset once the e-stop is healthy again; a trip cause
           still standing sends the line to FAULTED on it, never to IDLE *)
       M103_RUN := FALSE; M104_RUN := FALSE; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE; XV106_CMD_OPEN := FALSE;
-      IF start_req THEN start_inhibit := 16#0008; END_IF;          (* refused, as always; now reported *)
-      IF ES_001 AND reset_req THEN
+      (* a Start here is refused, and reported, above *)
+      IF reset_req AND NOT ES_001 THEN
+        start_inhibit := 16#0008;                                  (* ESTOP_ACTIVE: the e-stop still pressed *)
+      ELSIF reset_req THEN
+        start_inhibit := 16#0000;
         conv_proof_fault := FALSE; conv_proof_scans := 0;
         feed_proof_fault := FALSE; feed_proof_scans := 0;
         gate_travel_fault := FALSE; gate_scans := 0;
@@ -673,6 +695,10 @@ PROGRAM controllab_line
         clearing := M104_RUN AND (trip = 3 OR trip = 5 OR trip = 7 OR trip = 9 OR trip = 10);
         M103_RUN := FALSE; M104_RUN := clearing; XV102_CMD_OPEN := FALSE; XV112_CMD_OPEN := FALSE; XV122_CMD_OPEN := FALSE; XV106_CMD_OPEN := FALSE; purge_scans := 0;
         state := 4; fault_reason := trip;
+        (* this scan's requests meet a tripped line: refused, and reported *)
+        IF start_req OR conv_start_req OR gate_open_req OR feed_start_req OR outlet_open_req THEN
+          start_inhibit := 16#0010;                                (* LINE_FAULTED *)
+        END_IF;
       ELSE
         (* the line Stop stops every device; stops before starts *)
         IF stop_req THEN feed_stop_req := TRUE; gate_close_req := TRUE; conv_stop_req := TRUE; outlet_close_req := TRUE; END_IF;
@@ -682,6 +708,10 @@ PROGRAM controllab_line
         IF conv_stop_req THEN M104_RUN := FALSE; man_conv_proven := FALSE; man_conv_scans := 0; END_IF;
         evaluated := FALSE; inh := 16#0000;
         IF start_req THEN evaluated := TRUE; inh := inh OR 16#0100; END_IF;       (* WRONG_MODE *)
+        IF (conv_start_req AND conv_stop_req) OR (gate_open_req AND gate_close_req)
+           OR (outlet_open_req AND outlet_close_req) OR (feed_start_req AND feed_stop_req) THEN
+          evaluated := TRUE;                                       (* its own stop wins: nothing refused *)
+        END_IF;
         IF conv_start_req AND NOT conv_stop_req THEN                              (* _manual_conveyor_refusal *)
           evaluated := TRUE; refused := 16#0000;
           IF hopper_high_high THEN refused := refused OR 16#0002; END_IF;
@@ -823,6 +853,7 @@ PROGRAM controllab_line
         ELSIF ZSC_106 THEN
           batches_completed := batches_completed + 1;
           state := 0; fault_reason := 0; active_bin := 0; batch_step := 0;   (* _enter_rest: Batch rests at IDLE *)
+          IF NOT any_req THEN start_inhibit := 16#0000; END_IF;
         END_IF;
       END_IF;
   END_CASE;

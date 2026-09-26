@@ -23,9 +23,9 @@ within:
   seconds: 0.5
 
 then:
-  # Reset is refused while the drive itself is still faulted. The ack in the
-  # same press is what proves the reset was evaluated: both are consumed in
-  # one scan, so no unacknowledged trip can only hold after that scan.
+  # Reset is refused while the drive itself is still faulted, and the
+  # refusal says why (CAUSE_STANDING, 2026-09-26). The ack in the same press
+  # was, before that, the only proof the reset had been evaluated.
   - title: "Reset is refused while the drive is still faulted"
     when:
       acknowledge: true
@@ -33,6 +33,7 @@ then:
     expect:
       line_state: faulted
       any_unacknowledged_trip: false
+      start_inhibit: ["CAUSE_STANDING"]
     within:
       seconds: 1.0
   # Clear the cause and reset the drive at the field; its (acknowledged)

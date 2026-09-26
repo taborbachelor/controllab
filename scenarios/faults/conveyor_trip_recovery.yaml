@@ -22,8 +22,7 @@ within:
   seconds: 0.5
 
 then:
-  # The ack in the same press proves the reset was evaluated (both are
-  # consumed in one scan), as in the feeder trip recovery.
+  # The refusal says why (CAUSE_STANDING, 2026-09-26).
   - title: "Reset is refused while the overload is still tripped"
     when:
       acknowledge: true
@@ -31,6 +30,7 @@ then:
     expect:
       line_state: faulted
       any_unacknowledged_trip: false
+      start_inhibit: ["CAUSE_STANDING"]
     within:
       seconds: 1.0
   - title: "Clearing the fault and resetting the overload clears the alarm"

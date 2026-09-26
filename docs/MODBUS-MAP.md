@@ -78,7 +78,7 @@ Written by the controller in external-controller mode (FC 16); read-only with th
 | 4 | 40005 | `alarms_unacked` | Bit per alarm: not yet acknowledged (latched = active or unacked) | | |
 | 5 | 40006 | `first_out` | 1 + bit number of the first-out alarm (0 = none) | | |
 | 6 | 40007 | `hmi_ack` | HMI acknowledge word (controller → ControlLab) | | |
-| 7 | 40008 | `start_inhibit` | Why the most recent start or mode request was refused (bits; 0 = none) | | |
+| 7 | 40008 | `start_inhibit` | Why the most recent start, reset or mode request was refused (bits; 0 = none) | | |
 | 8 | 40009 | `mode` | Operator-selected mode (0 = AUTO, 1 = MANUAL) | | |
 | 9 | 40010 | `alarms_active_2` | Alarm bits 16-31: condition active | | |
 | 10 | 40011 | `alarms_unacked_2` | Alarm bits 16-31: not yet acknowledged | | |
@@ -207,7 +207,7 @@ Values the operator enters, read by the controller in the same range as the requ
 | 20 | `HOP-105.NOT_EMPTYING` | Batch discharge didn't empty the hopper | trip |
 | 21 | `BATCH.TOLERANCE` | Batch weighed in out of tolerance | warning |
 
-### `start_inhibit` bits (why the most recent start or mode request was refused; 0 = NONE)
+### `start_inhibit` bits (why the most recent start, reset or mode request was refused; 0 = NONE)
 
 | Bit value | Reason |
 |---:|---|
@@ -226,8 +226,9 @@ Values the operator enters, read by the controller in the same range as the requ
 | 4096 | HOPPER_NOT_EMPTY |
 | 8192 | GATE_NOT_CLOSED |
 | 16384 | DOWNSTREAM_NOT_READY |
+| 32768 | CAUSE_STANDING |
 
-Set only when a start (line or Manual device) or a mode change is evaluated: NONE after an accepted one, unchanged when none is requested -- so it proves the request was actually issued.
+Set whenever a start (line or Manual device), a reset or a mode change is consumed, in any state: NONE after an accepted one (or one with nothing to do), unchanged when none is requested -- so it proves the request was actually issued. Cleared when the line comes to rest. All 16 bits are assigned.
 
 
 A value this table doesn't know is published as 65535 rather than guessed.

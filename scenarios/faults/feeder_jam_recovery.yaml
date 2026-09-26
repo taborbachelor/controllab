@@ -19,8 +19,9 @@ within:
   seconds: 1.0
 
 then:
-  # The chute is still plugged: reset is refused. (The ack in the same press
-  # proves the reset was evaluated -- both are consumed in one scan.)
+  # The chute is still plugged: reset is refused, and says so
+  # (CAUSE_STANDING, 2026-09-26; before that, only the ack consumed in the
+  # same scan could prove the reset had been evaluated).
   - title: "Reset is refused while the chute is still plugged"
     when:
       acknowledge: true
@@ -29,6 +30,7 @@ then:
       line_state: faulted
       fault_reason: "feeder jam"
       any_unacknowledged_trip: false
+      start_inhibit: ["CAUSE_STANDING"]
     within:
       seconds: 1.0
   - title: "The conveyor runs the belt empty, then stops"
@@ -52,6 +54,7 @@ then:
       reset: true
     expect:
       line_state: idle
+      start_inhibit: ["NONE"]
     within:
       seconds: 1.0
   # Restart: material flows again.

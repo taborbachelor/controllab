@@ -63,10 +63,10 @@ class BatchStep(Enum):
 
 class StartInhibit(IntFlag):
     """Why the most recent start request was refused -- a line start, a
-    Manual device start, or a mode change (Phase 8 prerequisite;
-    docs/CONTROL-LAB.md §10). A flag, not a single code, because a start
-    can be refused for several reasons at once -- a hopper at high-high
-    also latches its own unacknowledged alarm.
+    Manual device start, a mode change, or (since 2026-09-26) a Reset
+    (Phase 8 prerequisite; docs/CONTROL-LAB.md §10). A flag, not a single
+    code, because a start can be refused for several reasons at once -- a
+    hopper at high-high also latches its own unacknowledged alarm.
 
     Deliberately the *outcome of the last start request*, not a live "why
     can't it start right now" status: it's set only when a start command
@@ -75,7 +75,9 @@ class StartInhibit(IntFlag):
     which is exactly what made the original start-blocked scenarios
     unable to tell a refused start from no start at all.
 
-    NONE after an accepted start; unchanged when no start is requested.
+    NONE after an accepted start (or accepted Reset or mode change), and
+    cleared when the line comes to rest, so a report never outlives the
+    run it was about; unchanged when no request is made.
     Values are append-only -- they're published over Modbus
     (services/protocols/controller_status.py)."""
 
@@ -98,6 +100,9 @@ class StartInhibit(IntFlag):
     # Hardening (2026-09-25):
     GATE_NOT_CLOSED = 8192  # a bin gate or the outlet not proven closed at its closed limit switch
     DOWNSTREAM_NOT_READY = 16384  # Manual outlet open while the downstream consumer (DS-107) isn't ready
+    # Every refusal reported (2026-09-26). The last bit of the 16-bit register:
+    # a further reason needs a second register.
+    CAUSE_STANDING = 32768  # Reset while FAULTED with the trip's cause still observably present
 
 
 def inhibit_names(inhibit: StartInhibit) -> list[str]:
