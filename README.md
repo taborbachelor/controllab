@@ -99,18 +99,20 @@ reaches equipment.
 
 ## 3. What does the virtual plant represent?
 
-A bulk-material handling line: a storage **bin** → a slide **gate** → a
-screw **feeder** → an inclined **conveyor** → a weighed **hopper**, plus an
-**E-stop**. It has the instrumentation a real one would:
+A bulk-material handling line: three storage **bins**, each behind its own
+slide **gate** → one screw **feeder** → an inclined **conveyor** → a weighed
+**hopper** → an **outlet gate**, plus an **E-stop**. It has the
+instrumentation a real one would:
 
 - motor run commands and running feedback;
 - a conveyor motion switch (a motor can run while its belt slips);
+- conveyor motor current and a belt scale;
 - gate limit switches;
 - a discharge-chute plug switch that catches a feeder jam;
 - bin low-level and hopper high / high-high level switches;
-- a hopper weight transmitter.
+- a hopper weight transmitter with an input-channel diagnostic.
 
-That's 19 I/O tags in all ([`docs/CONTROL-LAB.md`](docs/CONTROL-LAB.md) §5.3).
+That's 34 I/O tags in all ([`docs/CONTROL-LAB.md`](docs/CONTROL-LAB.md) §5.3).
 Material moves through it with mass conserved (checked to a milligram
 every scan), spillage accounted for, and every scan deterministic: the same scenario gives
 identical results every run.
