@@ -16,6 +16,72 @@ the same repo) is the other; leave it alone. The two sessions collided on
 this filename once (2026-09-26); the design session moved its file, so
 this name stays with the controls work.
 
+## Update — 2026-09-26, second controls session (read this first)
+
+**Where this section and §1–§6 below disagree, this section wins.**
+
+**Division of work (Tabor, 2026-09-26):** the frontend session does the UI
+and design; the controls session does everything else needed functionally.
+This session changed no rendering. Its only touches in
+`services/visualization/` are additive data: `live.py` (snapshot keys
+`preview`, `plant`; `TagHistory` wiring) and `replay.py` (frames carry
+`plant`).
+
+**Built and pushed (CI green):**
+
+| Commit | What |
+|---|---|
+| `ca1259c` | Every refusal reported: one evaluator per refusable request, evaluated whenever consumed in any state; `StartInhibit.CAUSE_STANDING` = 32768 (**the register's last bit**); refused Reset reports why; Start away from rest reports `LINE_NOT_IDLE`; report cleared at rest; public `standing_cause()`; `EventLog` derives `command_refused` `{commands, inhibit}` from the published register (not a push sink: that would have broken the built-in vs Modbus event-log identity). ST port updated. |
+| `a93f8b6` | `LineController.preview(command) -> Preview(accepted, inhibit, reasons)`, same evaluators, no side effects; proven over all 65 scenarios (114 requests, 0 mismatches). |
+| `b46373e` | Snapshot `preview` (`{command: {accepted, inhibits, reasons}}`, `None` for an external controller) and `plant` (`Plant.readings()`: `belt_load_kg`); `TagHistory` records `plant` apart from `values`; replay frames carry it. |
+| `af06f62` | Real-time runs: a second client writing the plant makes the run invalid (`ModbusServer.peer`, `RealtimePlant.writers`); `ModbusServer` no longer sets `allow_reuse_address` on Windows (it let two servers share a port). Downstream-stop test strengthened. |
+
+**Numbers now:** 65 scenarios, 19 §6.3 rows, 35 I/O tags, **1,030 tests**
+(1,024 run anywhere + 6 need the Mosquitto broker).
+
+**Verified:** in-process and Modbus lockstep, everything; the reference
+controller free-running at 4x over Modbus **65/65, 19/19 rows, no
+tolerance used**; OpenPLC: MatIEC compiled today's program first time, the
+four scenarios the contract changed passed; Mosquitto 6/6. **The three-pass
+OpenPLC report did not land:** started from a Claude Code background shell,
+it was stopped by Claude Code's low-memory reaper after its first scenario
+(`batch_cycle`, pass 1/3, PASS), exactly as on 2026-09-25. Don't retry it
+from a background shell; run it in a normal terminal (the PLC container is
+already set up with today's program):
+
+```
+py scripts/scenario_report.py --realtime openplc --repeat 3 --markdown examples/openplc/COMMISSIONING-REPORT.md
+```
+
+**Gotcha found today:** a container left running (`controllab-openplc`,
+polling `host.docker.internal:5020`) silently drove the plant during a
+real-time reference run. Now detected (run invalid, connections named),
+but run `docker ps` before any real-time run anyway, and use
+`--modbus-port 5021` for the reference controller while OpenPLC is up.
+
+**For the frontend workstream (their spec needs these folded in):**
+- §10.5's plain-name table needs `CAUSE_STANDING` (suggested wording:
+  "Trip cause cleared").
+- `command_refused` carries request names and inhibit **names only**, no
+  reason text, so it is identical across runtimes; reason text is in the
+  in-process snapshot's `last_start_refusal`.
+- Previews are not recorded into replays (a recording has no controller to
+  ask). If the cause chain's link 5 needs a preview at record time, that is
+  a new decision: record `preview` per frame in the runner, or accept
+  `null` in replays.
+
+**Still open (controls side):**
+1. The three-pass OpenPLC report, if it didn't land: then README's OpenPLC
+   lines, `examples/openplc/COMMISSIONING-REPORT.md`, `docs/CONTROL-LAB.md`
+   line 3 status and the §10 wrap-up tick.
+2. `docs/images/dashboard-parity.jpg` (one-bin line): a UI screenshot, and
+   `docs/images/` is proposed frontend-owned; agree who retakes it.
+3. The demo's `batch.html` is ~2 MB (finding in §10): lower recording
+   rate for the page, or trim the run; a decision for Tabor, with the
+   replay redesign.
+4. Unchanged: keep or drop `fallbacks="default"` in `services/ai/provider.py`;
+   no paid model calls.
+
 ## 0. Read order for a cold start
 
 1. `CLAUDE.md` — project identity, architecture rules, dev rules for the agent.
