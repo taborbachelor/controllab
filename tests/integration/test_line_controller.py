@@ -49,7 +49,7 @@ def test_full_normal_cycle_conserves_material():
     assert line.state == LineState.RUNNING
 
     run(plant, io, line, 5.0)  # let material actually reach the hopper
-    assert plant.hopper.level_kg > 0.0
+    assert plant.hopper.level_kg + plant.hopper.total_discharged_kg > 0.0  # (and on, downstream)
     assert plant.spilled_kg == 0.0
     assert plant.accounted_mass_kg() == pytest.approx(starting_total)
 

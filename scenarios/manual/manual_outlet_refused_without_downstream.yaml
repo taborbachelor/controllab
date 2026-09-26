@@ -1,0 +1,47 @@
+name: Manual Outlet Open Refused While The Downstream Isn't Ready
+description: "Draining the hopper by hand is a Manual-mode job, but only into a downstream that can take the material: with the downstream stopped the open pushbutton is refused and says why; with it ready the outlet opens; and if the downstream stops again, the outlet closes by itself."
+title: "Downstream stopped: the outlet open pushbutton is refused"
+
+given:
+  line_state: manual
+  downstream_stopped: true
+
+when:
+  open_outlet: true
+
+trigger: open_outlet
+
+expect:
+  line_state: manual
+  start_inhibit: ["DOWNSTREAM_NOT_READY"]
+  outlet_open_commanded: false
+
+within:
+  seconds: 0.3
+
+then:
+  - title: "The downstream is ready: the same pushbutton opens the outlet"
+    when:
+      downstream_stopped: false
+    expect:
+      downstream_ready: true
+    within:
+      seconds: 0.5
+  - title: "Outlet opened by hand"
+    when:
+      open_outlet: true
+    expect:
+      outlet_open_commanded: true
+      start_inhibit: ["NONE"]
+    within:
+      seconds: 0.3
+  - title: "The downstream stops: the outlet closes by itself"
+    when:
+      downstream_stopped: true
+    expect:
+      outlet_open_commanded: false
+      line_state: manual
+    within:
+      seconds: 0.5
+
+interlock: "Downstream ready for discharge"

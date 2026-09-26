@@ -459,6 +459,12 @@ class LineController:
         if self.outlet_ctrl is not None:
             self.outlet_ctrl.command_open(False)
 
+    def _enable_discharge(self, wanted: bool) -> None:
+        """The outlet as an interlocked discharge-enablement device: open
+        only when `wanted` and the downstream consumer is ready."""
+        if self.outlet_ctrl is not None:
+            self.outlet_ctrl.command_open(wanted and self.interlocks.downstream_ready)
+
     @property
     def _active_gate(self) -> GateControl:
         return self.gates[self.active_bin or self.source_bin]
@@ -580,6 +586,14 @@ class LineController:
             self.feeder_ctrl.command_speed(self.feed_speed_pct)
         else:
             self.feeder_ctrl.command_run(False)
+
+        # The hopper is a buffer between the upstream feed and the downstream
+        # consumer (DS-107): the outlet is enabled while the line runs and the
+        # consumer is ready, and closes in the same scan when it isn't -- a
+        # normal hand-off, not a trip. Level plays no part in it: the feed's
+        # 60 %/80 % hysteresis above keeps the buffer topped up behind the
+        # draw. (Stop, every trip and E-stop close it with the other gates.)
+        self._enable_discharge(True)
 
         # bin_low is a WARNING while running, not a trip
         # (docs/CONTROL-LAB.md §6.3) -- there's nothing to actively DO
@@ -852,10 +866,15 @@ class LineController:
             for letter, gate in self.gates.items():
                 gate.command_open(letter == self.source_bin)
         if "open_outlet" in requests and "close_outlet" not in requests and self.outlet_ctrl is not None:
-            # No permissive beyond the E-stop: draining the hopper by hand is a
-            # Manual-mode job (after an aborted batch, say).
+            # Draining the hopper by hand is a Manual-mode job (after an aborted
+            # batch, say), but only into a downstream that can take it: the
+            # discharge permissive holds in every mode.
             evaluated = True
-            self.outlet_ctrl.command_open(True)
+            if self.interlocks.downstream_ready:
+                self.outlet_ctrl.command_open(True)
+            else:
+                inhibit |= StartInhibit.DOWNSTREAM_NOT_READY
+                reasons.append("downstream not ready")
         if "start_feeder" in requests and "stop_feeder" not in requests:
             evaluated = True
             refused, why = self._manual_feeder_refusal()
@@ -874,6 +893,9 @@ class LineController:
         # the high switch.
         if not self._manual_feed_permitted():
             self.feeder_ctrl.command_run(False)
+        # Likewise the outlet: it closes the scan the downstream stops being ready.
+        if not self.interlocks.downstream_ready:
+            self._close_outlet()
 
     def _manual_feed_permitted(self) -> bool:
         return self._manual_conveyor_proven and not self.interlocks.hopper_high
@@ -1119,12 +1141,17 @@ class LineController:
         if self._batch_elapsed_s >= self.hold_s:
             self.state = LineState.DISCHARGING
             self._batch_elapsed_s = 0.0
-            self.outlet_ctrl.command_open(True)
+            self._enable_discharge(True)
 
     def _scan_discharging(self, dt: float) -> None:
         if self._batch_common():
             return
-        self._batch_elapsed_s = round(self._batch_elapsed_s + dt, 9)
+        # Discharge waits for the downstream: the outlet is enabled only while
+        # it's ready, and the timeout counts only while it is, so it still
+        # means "the hopper won't empty", never "the downstream isn't taking".
+        self._enable_discharge(True)
+        if self.interlocks.downstream_ready:
+            self._batch_elapsed_s = round(self._batch_elapsed_s + dt, 9)
         if self.outlet_ctrl.is_open and self.interlocks.io.read("WT-105") <= self.batch_empty_kg:
             # Empty: clean the belt out while the outlet drains the rest.
             self.state = LineState.CLEANING
@@ -1139,6 +1166,7 @@ class LineController:
         if self._batch_common():
             return
         if self.conveyor_ctrl.commanded_run:
+            self._enable_discharge(True)  # the outlet drains the rest, while the downstream takes it
             proven_before = self._batch_conveyor_proven
             proven = self._batch_prove_conveyor(dt)
             if proven is False:

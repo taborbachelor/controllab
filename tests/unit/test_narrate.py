@@ -99,7 +99,7 @@ def test_every_fault_reason_the_controller_can_give_is_explained():
 def test_the_stuck_switch_story_explains_the_disagreement():
     s = running_session()
     s.stimulus("sensor_stuck", "LSHH-105")
-    s.stimulus("hopper_level_pct", 97)
+    s.stimulus("hopper_level_pct", 98)  # 97 % plus a margin: the consumer draws it down until the trip
     steps(s, 15)
     assert "one of them is wrong" in story(s)["detail"]
 
@@ -122,7 +122,7 @@ def test_paused_says_so_and_lists_what_is_waiting():
 def test_the_checklist_ticks_off_the_fix_once_the_cause_is_gone():
     s = running_session()
     s.stimulus("sensor_stuck", "LSHH-105")
-    s.stimulus("hopper_level_pct", 97)
+    s.stimulus("hopper_level_pct", 98)  # 97 % plus a margin: the consumer draws it down until the trip
     steps(s, 15)
     first = story(s)["steps"]
     assert first[0] == {"text": "Repair LSHH-105 (Engineer tools → Instrument faults → LSHH-105 → Restore)", "done": False}
@@ -233,3 +233,22 @@ def test_a_batch_narrates_where_it_is():
     st = story(s)
     assert st["headline"] == "Batch: Loading." and "bin B" in st["detail"]
     assert [x["done"] for x in st["steps"]] == [False, False, False, False]
+
+
+def test_a_downstream_stop_while_running_is_explained_as_a_hand_off():
+    s = running_session()
+    s.stimulus("downstream_stopped", True)
+    steps(s, 2)
+    st = story(s)
+    assert st["tone"] == "ok" and "outlet is closed" in st["detail"] and "not a fault" in st["detail"]
+
+
+def test_a_refused_manual_outlet_open_says_the_downstream_isnt_ready():
+    s = manual_session()
+    s.stimulus("downstream_stopped", True)
+    s.step()
+    s.command("open_outlet")
+    steps(s, 2)
+    st = story(s)
+    assert "downstream process isn't ready" in st["detail"]
+    assert any("Downstream stops" in x["text"] for x in st["steps"])

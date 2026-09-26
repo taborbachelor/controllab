@@ -146,13 +146,13 @@ def test_without_a_field_reset_the_tripped_drive_blocks_recovery():
 
 def test_instrument_faults_from_the_dashboard_show_the_level_protection():
     """The dashboard's instrument panel: LSHH-105 stuck healthy, the hopper
-    set to 97 %, and WT-105 still trips the line (1oo2); the cross-check
+    set to 98 %, and WT-105 still trips the line (1oo2); the cross-check
     then names the switch."""
     s = LiveSession()
     s.command("start")
     steps(s, 20)
     s.stimulus("sensor_stuck", "LSHH-105")
-    s.stimulus("hopper_level_pct", 97)
+    s.stimulus("hopper_level_pct", 98)  # 97 % plus a margin: the consumer draws it down until the trip
     steps(s, 8)  # the transmitter's vote holds for 0.5 s before it counts
     snap = s.snapshot()
     assert snap["state"] == "faulted" and snap["injected"]["instruments"] == {"LSHH-105": "stuck"}

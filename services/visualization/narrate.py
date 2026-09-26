@@ -142,6 +142,8 @@ _REFUSALS: list[tuple[str, str, str]] = [
      "the devices", "Select Manual (with the line stopped) to drive each device yourself"),
     ("line Start is an Auto command", "Start runs the automatic sequence, and Manual mode bypasses it",
      "Start each device with its own button, or select Auto"),
+    ("downstream not ready", "the downstream process isn't ready to take material, and the outlet only opens into "
+     "a ready downstream", "Wait for it (Engineer tools → Downstream stops, click it off), then press Open again"),
     ("mode change to", "the mode only changes at rest: with the line stopped in Auto, or with every device off "
      "in Manual", "Stop the line (or every device) first, then select the mode again"),
 ]
@@ -250,8 +252,10 @@ def _batch(s: dict, v: dict, notes: list[str]) -> dict:
                    "little early so the material still on the belt makes up the rest.",
         "processing": f"Loaded {loaded:.0f} kg against a recipe of {target:.0f} kg. Holding for "
                       f"{b.get('hold_s', 0):g} s (the process step) before the discharge.",
-        "discharging": "The hopper's outlet gate is open and the batch is leaving the hopper; the gate closes once "
-                       "the hopper is empty.",
+        "discharging": ("The hopper's outlet gate is open and the batch is leaving the hopper; the gate closes once "
+                        "the hopper is empty." if v.get("DS-107.READY", True) else
+                        "The batch is ready to discharge, but the downstream process isn't ready to take it, so the "
+                        "outlet stays closed and the batch waits (the discharge timeout doesn't count while it does)."),
         "cleaning": "The hopper is empty. The conveyor runs a little longer to clear the belt, then the outlet "
                     "closes and the line is ready for the next batch.",
     }[s["state"]]
@@ -333,6 +337,13 @@ def narrate(s: dict) -> dict:
             "The hopper has reached its high mark (80 %), so the feeder is paused; it starts again when the "
             "hopper drops below 60 %. The conveyor and gate stay as they are."
         )
+        # The hopper as a buffer: what the outlet is doing, and why.
+        if v.get("DS-107.READY") is False:
+            detail += (" The downstream process isn't ready to take material, so the hopper's outlet is closed and the "
+                       "hopper holds what it has (the feeder still tops it up to 80 %). It reopens when the downstream "
+                       "is ready: a normal hand-off, not a fault.")
+        elif v.get("XV-106.CMD_OPEN"):
+            detail += " The hopper supplies the downstream process through its open outlet."
         warn = [a for a in alarms if a["active"] and a["is_warning"]]
         if any(a["id"] == "LSL-101.LOW" for a in warn):
             detail += " The bin is running low: a warning, not a trip."

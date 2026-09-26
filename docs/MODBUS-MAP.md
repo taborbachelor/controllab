@@ -225,6 +225,7 @@ Values the operator enters, read by the controller in the same range as the requ
 | 2048 | RECIPE_TOO_LARGE |
 | 4096 | HOPPER_NOT_EMPTY |
 | 8192 | GATE_NOT_CLOSED |
+| 16384 | DOWNSTREAM_NOT_READY |
 
 Set only when a start (line or Manual device) or a mode change is evaluated: NONE after an accepted one, unchanged when none is requested -- so it proves the request was actually issued.
 

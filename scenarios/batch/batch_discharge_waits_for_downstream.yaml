@@ -1,0 +1,47 @@
+name: A Batch Discharge Waits For The Downstream
+description: "Batch mode stays an explicit fill, then discharge. A small batch loads and holds while the downstream is stopped; at the end of the hold the batch goes to DISCHARGING but the outlet stays closed, and the discharge timeout doesn't count, until the downstream is ready. Then the outlet opens, the hopper empties, and the batch cleans out and completes."
+title: "A small batch loads and holds; the downstream is stopped"
+
+given:
+  line_state: batch
+  recipe: {A: 50}
+  hold_s: 1
+  downstream_stopped: true
+
+when:
+  start: true
+
+trigger: start
+
+expect:
+  line_state: processing
+  outlet_open_commanded: false
+
+within:
+  seconds: 40
+
+then:
+  - title: "The hold ends: the batch discharges, but the outlet waits for the downstream"
+    expect:
+      line_state: discharging
+      outlet_open_commanded: false
+      downstream_ready: false
+    within:
+      seconds: 3
+  - title: "The downstream is ready: the outlet opens and the hopper empties into it"
+    when:
+      downstream_stopped: false
+    expect:
+      outlet_open_commanded: true
+      discharging: true
+    within:
+      seconds: 2
+  - title: "Empty, cleaned out, back at rest: the batch is complete"
+    expect:
+      line_state: idle
+      batches_completed: 1
+      outlet_open: false
+    within:
+      seconds: 60
+
+interlock: "Downstream ready for discharge"

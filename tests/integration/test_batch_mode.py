@@ -22,7 +22,7 @@ def batch_rig(**recipe):
     return rig
 
 
-def run_batch(rig, limit_s=600.0):
+def run_batch(rig, limit_s=1200.0):  # 1,200 kg: 240 s to load, 400 s to discharge at 3 kg/s
     inv = Invariants(rig)
     rig.line.start()
     for _ in range(round(limit_s / DT)):
@@ -117,7 +117,7 @@ def test_the_outlet_in_manual_drains_the_hopper_and_is_refused_in_auto():
     rig.line.select_manual()
     tick(rig)
     rig.line.open_outlet()
-    run(rig, 25.0)
+    run(rig, 75.0)  # 200 kg at the consumer's 3 kg/s
     assert rig.plant.hopper.level_kg == 0.0
     rig.line.close_outlet()
     run(rig, 1.5)

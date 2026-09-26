@@ -41,9 +41,13 @@ DEFAULT_PLANT_CONFIG = dict(
     conveyor_speed_m_s=2.0,
     conveyor_start_delay_s=0.2,
     hopper_capacity_kg=2_000.0,
-    # Downstream draw through the hopper's outlet gate, which only a batch
-    # discharge (or Manual) opens: with the outlet closed the hopper holds.
-    hopper_draw_rate_kg_s=10.0,
+    # The downstream consumer's rate (DS-107), through the hopper's outlet:
+    # below the feed rate, as on a real buffered line (and the plant default,
+    # 3 kg/s against 5), so in Auto the hopper fills, holds at the high switch
+    # and cycles 60 %/80 % behind the draw. It was 10 kg/s while only a batch
+    # discharge opened the outlet; with Auto discharging, that outran the feed
+    # and the hopper could never fill.
+    hopper_draw_rate_kg_s=3.0,
     hopper_high_pct=80.0,
     hopper_high_high_pct=95.0,
 )
@@ -61,7 +65,7 @@ DEFAULT_LINE_CONFIG = dict(
     batch_preact_kg=10.0,
     batch_empty_kg=2.0,
     batch_tolerance_kg=5.0,
-    discharge_timeout_s=240.0,
+    discharge_timeout_s=600.0,  # the largest recipe (1,600 kg) takes 533 s at the 3 kg/s draw; real default 900
 )
 
 DEFAULT_DEVICE_PROOF_TIMEOUT_S = 1.0

@@ -229,7 +229,7 @@ PROGRAM controllab_line
     LIM_EMPTY_RAW : INT := 20;        (* batch: "empty" is 2 kg or less *)
     LIM_TOLERANCE_RAW : DINT := 50;   (* batch: a weigh-in within 5 kg of the recipe *)
     LIM_ROOM_RAW : DINT := 16000;     (* batch: a recipe must fit under the high switch, 1600 kg *)
-    LIM_DISCHARGE : DINT := 2400;     (* batch: 240 s for the discharge to empty the hopper *)
+    LIM_DISCHARGE : DINT := 6000;     (* batch: 600 s for the discharge to empty the hopper *)
   END_VAR
 
   (* ================= HMI request/acknowledge (4-phase) ================= *)
@@ -563,6 +563,9 @@ PROGRAM controllab_line
         END_IF;
         M103_RUN := feed_demand;
         IF feed_demand THEN SC_103 := LIM_FEED_SPEED; END_IF;
+        (* the outlet as discharge enablement: open while running and DS-107 is ready, closed in
+           the same scan when it isn't (no trip); level plays no part (_enable_discharge) *)
+        XV106_CMD_OPEN := DS107_READY;
       END_IF;
 
     3: (* STOPPING -- upstream first, conveyor purges the belt *)
@@ -693,8 +696,9 @@ PROGRAM controllab_line
           evaluated := TRUE;                   (* one bin at a time: only the selected bin's gate *)
           XV102_CMD_OPEN := source_bin = 1; XV112_CMD_OPEN := source_bin = 2; XV122_CMD_OPEN := source_bin = 3;
         END_IF;
-        IF outlet_open_req AND NOT outlet_close_req THEN                          (* no permissive but the e-stop *)
-          evaluated := TRUE; XV106_CMD_OPEN := TRUE;
+        IF outlet_open_req AND NOT outlet_close_req THEN                          (* only into a ready downstream *)
+          evaluated := TRUE;
+          IF DS107_READY THEN XV106_CMD_OPEN := TRUE; ELSE inh := inh OR 16#4000; END_IF;   (* DOWNSTREAM_NOT_READY *)
         END_IF;
         IF feed_start_req AND NOT feed_stop_req THEN                              (* _manual_feeder_refusal *)
           evaluated := TRUE; refused := 16#0000;
@@ -712,6 +716,8 @@ PROGRAM controllab_line
         IF evaluated THEN start_inhibit := inh; END_IF;
         (* every scan: the feeder only onto a proven belt, and never past the high switch *)
         IF NOT man_conv_proven OR hopper_high THEN M103_RUN := FALSE; END_IF;
+        (* ... and the outlet closes the scan the downstream stops being ready *)
+        IF NOT DS107_READY THEN XV106_CMD_OPEN := FALSE; END_IF;
       END_IF;
     7, 8, 9, 10: (* LOADING / PROCESSING / DISCHARGING / CLEANING -- the batch sequence *)
       (* _batch_trip_reason, in the same order *)
@@ -783,10 +789,12 @@ PROGRAM controllab_line
       ELSIF state = 8 THEN                                                 (* PROCESSING: the hold *)
         batch_scans := batch_scans + 1;
         IF batch_scans >= INT_TO_DINT(SP_HOLD_S) * 10 THEN
-          state := 9; batch_scans := 0; XV106_CMD_OPEN := TRUE;
+          state := 9; batch_scans := 0; XV106_CMD_OPEN := DS107_READY;
         END_IF;
       ELSIF state = 9 THEN                                                 (* DISCHARGING *)
-        batch_scans := batch_scans + 1;
+        (* waits for the downstream: the outlet only while it's ready, the timeout only while it is *)
+        XV106_CMD_OPEN := DS107_READY;
+        IF DS107_READY THEN batch_scans := batch_scans + 1; END_IF;
         IF ZSO_106 AND WT_105 <= LIM_EMPTY_RAW THEN
           state := 10; batch_scans := 0; batch_conv_proven := FALSE; M104_RUN := TRUE;
         ELSIF batch_scans >= LIM_DISCHARGE THEN
@@ -796,6 +804,7 @@ PROGRAM controllab_line
         END_IF;
       ELSE                                                                 (* CLEANING *)
         IF M104_RUN THEN
+          XV106_CMD_OPEN := DS107_READY;                                   (* drains the rest, into a ready downstream *)
           proven_before := batch_conv_proven;
           IF conveyor_confirmed THEN batch_conv_proven := TRUE; END_IF;
           IF batch_conv_proven THEN

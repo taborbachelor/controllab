@@ -34,7 +34,7 @@ still plugged.
 
 **What's verified:**
 
-- 61 scenarios covering all 18 interlocks in the spec, in Auto, Manual
+- 65 scenarios covering all 19 interlocks in the spec, in Auto, Manual
   and Batch mode: trips, recoveries, E-stop, and instrument faults (stuck,
   failed, noisy, drifting and slow sensors, a 1oo2 overfill trip with a
   switch/transmitter disagreement alarm).
@@ -45,7 +45,7 @@ still plugged.
 - Mass is conserved to the milligram and checked on every scan, and every
   run is deterministic, so the same scenario gives the same result every
   time.
-- 930 automated tests, run on every push (Python 3.12 and 3.13; the badge
+- 947 automated tests, run on every push (Python 3.12 and 3.13; the badge
   above is the latest run). The demo site is rebuilt from the current code
   on every push too, so it can't drift from the repository.
 
@@ -172,7 +172,7 @@ E-stop. The result is an engineering record:
 
 Nothing in that record is inferred beyond what the runner observed.
 
-The repository has 61 scenarios covering all 18 interlock rows of the
+The repository has 65 scenarios covering all 19 interlock rows of the
 specification, in Auto, Manual and Batch mode. New scenarios, hand-written or AI-generated, go through a
 deterministic review gate that rejects a scenario that is vacuous (it still
 passes with its fault, or any later stage's actions, removed),
@@ -282,7 +282,9 @@ real model. Details: [`docs/AI.md`](docs/AI.md).
   a cause remains; a machine-readable reason for every refused start.
   Overfill protection is built as on a real line: fail-safe level switches,
   a 1oo2 high-high vote between the switch and the weight transmitter, and
-  an alarm when they disagree.
+  an alarm when they disagree. The hopper is a buffer: its outlet opens only
+  into a ready downstream consumer, and the feed's 60 %/80 % hysteresis keeps
+  it topped up behind the draw.
 - **Dashboard** (`python scripts/dashboard.py`):
   - the plant running live, and scenarios verified live on the picture;
   - a plain-English status card;
@@ -340,7 +342,7 @@ Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md).
 
 ## Status
 
-All roadmap phases are complete, and 930 tests pass.
+All roadmap phases are complete, and 947 tests pass.
 
 | Phase | Focus | Status |
 |---|---|---|

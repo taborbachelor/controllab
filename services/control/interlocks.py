@@ -117,6 +117,13 @@ class Interlocks:
         return self.io.read("ES-001")
 
     @property
+    def downstream_ready(self) -> bool:
+        """DS-107.READY: the downstream consumer can take material -- the
+        outlet's discharge permissive in every mode. Fail-safe: 1 = ready,
+        so a lost signal disables discharge."""
+        return self.io.read("DS-107.READY")
+
+    @property
     def bin_low(self) -> bool:
         """Bin A's low switch (the original single bin)."""
         return self.io.read("LSL-101")

@@ -1301,6 +1301,12 @@ issue and propose the change"):
   DS-107): the consumer the hopper feeds; `Plant` discharges the hopper
   through the open outlet only while it's ready, and records
   `discharge_flow_kg_s`. Published as the fail-safe DI `DS-107.READY`.
+- **`LineController._enable_discharge()`**: the hopper outlet as a
+  discharge-enablement device -- open only while `Interlocks.downstream_ready`
+  (`DS-107.READY`); called by RUNNING, DISCHARGING and CLEANING, and Manual
+  refuses its open pushbutton (`DOWNSTREAM_NOT_READY`) and closes the outlet
+  when the downstream stops. The ST port mirrors each (`XV106_CMD_OPEN :=
+  DS107_READY`). The rig's consumer draws 3 kg/s against a 5 kg/s feed.
 - **`LineController._gates_not_closed()`**: the gates-closed start
   permissive (every bin gate and the outlet at `ZSC`), checked by
   `_scan_idle()` and `_request_batch()`, reported as

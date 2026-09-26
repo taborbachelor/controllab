@@ -31,8 +31,10 @@ then:
       fault_reason: "discharge timeout"
       first_out: "HOP-105.NOT_EMPTYING"
       outlet_open_commanded: false
+    # The rig's discharge timeout (600 s: its largest recipe drains in 533 s at
+    # the consumer's 3 kg/s) plus a margin.
     within:
-      seconds: 250
+      seconds: 610
 
 trigger: start
 interlock: "Hopper discharges"

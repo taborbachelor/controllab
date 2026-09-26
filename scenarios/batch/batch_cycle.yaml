@@ -45,12 +45,13 @@ then:
       outlet_open_commanded: true
     within:
       seconds: 6
+  # 500 kg leaves at the downstream consumer's rate, 3 kg/s: about 167 s.
   - title: "Empty: cleanout runs the belt while the outlet drains the rest"
     expect:
       line_state: cleaning
       conveyor_run_commanded: true
     within:
-      seconds: 90
+      seconds: 200
   - title: "Clean: the outlet closes and the line is back at rest, one batch done"
     expect:
       line_state: idle

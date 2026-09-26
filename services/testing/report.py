@@ -89,6 +89,8 @@ INTERLOCKS: list[InterlockRow] = [
     InterlockRow("Batch dose flows", "Trip"),
     InterlockRow("Hopper discharges", "Trip"),
     InterlockRow("Batch weighed in within tolerance", "Alarm"),
+    # The hopper as a buffer (2026-09-25): the outlet discharges only into a ready downstream.
+    InterlockRow("Downstream ready for discharge", "Permissive"),
 ]
 
 

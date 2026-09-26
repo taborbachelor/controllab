@@ -81,16 +81,24 @@
         <line id="lshh-mark" x1="672" x2="828" stroke="var(--trip)" stroke-width="1.5" stroke-dasharray="4 3"/>
         <line id="lsh-mark" x1="672" x2="828" stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="4 3"/>
         <path id="hop-shell" d="M680 110 H820 V270 L775 310 H725 L680 270 Z" fill="none" stroke="var(--line)" stroke-width="2.5"/>
-        <text x="750" y="100" text-anchor="middle" font-weight="600">Hopper<title>The hopper: the destination. It's weighed continuously (WT-105) and has two level switches: high (80 %, where the feeder pauses) and high-high (95 %, where the line trips).</title></text>
+        <text x="750" y="100" text-anchor="middle" font-weight="600">Hopper<title>The hopper: a buffer between the feed and the downstream process it supplies. It's weighed continuously (WT-105) and has two level switches: high (80 %, where the feeder pauses until the level falls below 60 %) and high-high (95 %, where the line trips).</title></text>
         <text id="wt105" x="690" y="298" text-anchor="end" font-size="13"></text>
         <text x="690" y="313" text-anchor="end" font-size="11" fill="var(--muted)">hopper weight · WT-105</text>
         <!-- XV-106: the hopper's outlet gate (master specification, item 7) -->
         <g id="outlet">
         <line x1="750" y1="310" x2="750" y2="316" stroke="var(--line)" stroke-width="2.5"/>
-        <path id="xv106" d="M738 316 L762 316 L750 328 Z M738 340 L762 340 L750 328 Z" stroke="var(--line)" stroke-width="2.5" fill="var(--hollow)"><title>XV-106, the hopper's outlet gate: material leaves the hopper only through it. A batch holds it shut while loading, then opens it to discharge.</title></path>
+        <path id="xv106" d="M738 316 L762 316 L750 328 Z M738 340 L762 340 L750 328 Z" stroke="var(--line)" stroke-width="2.5" fill="var(--hollow)"><title>XV-106, the hopper's outlet gate: material leaves the hopper only through it, into the downstream process (DS-107), and only while the downstream is ready. In Auto it's open while the line runs; a batch holds it shut while loading, then opens it to discharge.</title></path>
         <text x="772" y="327" font-size="10" fill="var(--muted)">Outlet XV-106</text>
         <text id="xv106-txt" x="772" y="340" font-size="10" fill="var(--muted)"></text>
         <line id="discharge-flow" x1="750" y1="341" x2="750" y2="358" stroke="var(--material)" stroke-width="5" stroke-dasharray="6 6" opacity="0"/>
+        </g>
+        <!-- DS-107: the downstream consumer the hopper feeds -->
+        <g id="downstream"><title>DS-107, the downstream process the hopper supplies. It signals when it's ready to take material (DS-107.READY); the outlet opens only while it is. The hopper buffers between it and the feed.</title>
+        <line x1="750" y1="350" x2="732" y2="350" stroke="var(--line)" stroke-width="2"/>
+        <rect x="585" y="326" width="147" height="30" rx="3" fill="none" stroke="var(--line)" stroke-width="2"/>
+        <circle id="ds107-lamp" cx="597" cy="341" r="6" stroke="var(--line)" stroke-width="2" fill="var(--hollow)"/>
+        <text x="608" y="338" font-size="11" font-weight="600">Downstream <tspan font-weight="400" fill="var(--muted)" font-size="10">DS-107</tspan></text>
+        <text id="ds107-txt" x="608" y="351" font-size="10" fill="var(--muted)"></text>
         </g>
         <g id="lsh105"><title>LSH-105, the high level switch (80 %): the feeder pauses here.</title><circle cx="840" cy="0" r="7" stroke="var(--line)" stroke-width="2" fill="var(--hollow)"/>
           <text x="851" y="4" font-size="11" fill="var(--muted)">high</text></g>

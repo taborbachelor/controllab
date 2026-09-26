@@ -161,6 +161,7 @@ def test_a_deadband_holds_a_tag_until_it_moves_a_whole_band_from_the_last_publis
     s = LiveSession()
     pub, client = publisher(s, deadbands={"WT-105": 50.0})
     pub.publish_changes()
+    s.stimulus("downstream_stopped", True)  # nothing drawn off: the weight rises steadily
     s.command("start")
     published = []
     for _ in range(600):

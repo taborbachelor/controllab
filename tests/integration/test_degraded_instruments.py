@@ -104,6 +104,7 @@ def test_noise_near_high_high_never_trips_a_running_line():
     peaks cross 95 % again and again, and the 0.5 s vote debounce holds."""
     rig = build_rig()
     rig.plant.hopper.level_kg = 1_880.0  # 94 %; the line doesn't feed past the high switch
+    rig.plant.downstream.stopped = True  # and nothing draws it down: the level stays put
     rig.line.start()
     run(rig, 3.0)
     assert rig.line.state == LineState.RUNNING
@@ -121,6 +122,7 @@ def test_without_the_debounce_the_same_noise_trips_the_line():
     rig = build_rig()
     rig.line.interlocks.hh_weight_debounce_s = 0.0
     rig.plant.hopper.level_kg = 1_880.0
+    rig.plant.downstream.stopped = True
     rig.line.start()
     run(rig, 3.0)
     rig.plant.instruments.add_noise("WT-105", 30.0)

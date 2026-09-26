@@ -45,6 +45,7 @@ def test_a_plc_reads_the_idle_line(line):
 
 def test_an_hmi_coil_starts_the_line_and_the_outputs_follow(line):
     session, client = line
+    session.stimulus("downstream_stopped", True)  # nothing drawn off, so the weight can only rise
     assert not client.write_coil(START, True).isError()
     steps(session, 20)
     assert session.snapshot()["state"] == "running"

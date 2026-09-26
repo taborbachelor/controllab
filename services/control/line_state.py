@@ -97,6 +97,7 @@ class StartInhibit(IntFlag):
     HOPPER_NOT_EMPTY = 4096  # a batch starts only from an empty hopper
     # Hardening (2026-09-25):
     GATE_NOT_CLOSED = 8192  # a bin gate or the outlet not proven closed at its closed limit switch
+    DOWNSTREAM_NOT_READY = 16384  # Manual outlet open while the downstream consumer (DS-107) isn't ready
 
 
 def inhibit_names(inhibit: StartInhibit) -> list[str]:

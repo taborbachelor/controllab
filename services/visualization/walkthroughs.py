@@ -261,8 +261,8 @@ WALKTHROUGHS: tuple[Walkthrough, ...] = (
                 "seized switch behaves.",
             ),
             Step(
-                say="Now overfill the hopper: set it to 97 % (Engineer tools → Set hopper level).",
-                do=(("hopper_level_pct", 97),),
+                say="Now overfill the hopper: set it to 98 % (Engineer tools → Set hopper level).",
+                do=(("hopper_level_pct", 98),),
                 target='[data-level="hopper_level_pct"]',
                 until=state_is("faulted"),
                 then="It tripped anyway. The overfill trip listens to two independent measurements, the switch "

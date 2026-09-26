@@ -1,0 +1,36 @@
+name: The Hopper Buffers Between The Feed And A Ready Downstream
+description: "The hopper is a buffer between the upstream feed and the downstream consumer (DS-107). Started with the hopper above its high switch, the line runs with the outlet open into the ready downstream and the feed held; the downstream draws the level down, and once it falls below the 60 % restart point the feeder starts again. The outlet never opens because of a level: it opens because the line runs and the downstream is ready."
+title: "Start with the buffer above its high switch: the outlet opens to the ready downstream, the feed is held"
+
+given:
+  line_state: idle
+  hopper_level_pct: 85
+
+when:
+  start: true
+
+trigger: start
+
+expect:
+  line_state: running
+  downstream_ready: true
+  outlet_open_commanded: true
+  discharging: true
+  feeder_run_commanded: false
+
+within:
+  seconds: 4.0
+
+then:
+  # The downstream has drawn the buffer down to just above the restart point
+  # (from 85 % that takes about 140 s at its 3 kg/s; set here to keep the run short).
+  - title: "The downstream draws the buffer below 60 %: the feed restarts behind it"
+    when:
+      hopper_level_pct: 61
+    expect:
+      feeder_run_commanded: true
+      feeder_running: true
+      discharging: true
+      line_state: running
+    within:
+      seconds: 12.0

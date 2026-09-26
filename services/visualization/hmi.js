@@ -47,9 +47,16 @@ function renderMimic(v, animate) {
     $("xv106").setAttribute("stroke-dasharray", oFb === oCmd ? "none" : "6 4");
     $("xv106-txt").textContent = (oOpen ? "Open" : oClosed ? "Closed" : oCmd ? "Opening…" : "Closing…") +
       (oFb !== null && oFb !== oCmd ? ` (told to ${oCmd ? "open" : "close"})` : "");
-    const draining = oOpen && v["WT-105"] > 0;
+    // The downstream consumer; absent from recordings made before it existed (then: always ready).
+    const dsPresent = v["DS-107.READY"] !== undefined, dsReady = dsPresent ? v["DS-107.READY"] : true;
+    const draining = oOpen && v["WT-105"] > 0 && dsReady;
     $("discharge-flow").setAttribute("opacity", draining ? 1 : 0);
     $("discharge-flow").classList.toggle("flowing", draining && animate);
+    $("downstream").style.display = dsPresent ? "" : "none";
+    if (dsPresent) {
+      $("ds107-lamp").setAttribute("fill", dsReady ? RUN : OFF);
+      $("ds107-txt").textContent = dsReady ? (draining ? "Ready, taking material" : "Ready") : "Not ready: not taking";
+    }
   }
   let anyGateOpen = false;  // the feeder moves material only through an open gate
   // The three bins and their gates. A recording made before bins B and C

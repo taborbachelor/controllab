@@ -1,0 +1,34 @@
+name: A Downstream Stop Closes The Outlet Without Tripping The Line
+description: "The downstream consumer stops taking material. The outlet must close in the same scan -- discharging into a downstream that isn't ready would back up its chute -- while the line keeps running and feeding the buffer: a normal hand-off, not a trip. When the downstream is ready again, the outlet reopens."
+title: "The downstream stops: the outlet closes, the line keeps running"
+
+given:
+  line_state: running
+
+when:
+  downstream_stopped: true
+
+trigger: downstream_stopped
+
+expect:
+  downstream_ready: false
+  outlet_open_commanded: false
+  line_state: running
+  feeder_run_commanded: true
+  any_unacknowledged_trip: false
+
+within:
+  seconds: 0.5
+
+then:
+  - title: "The downstream is ready again: the outlet reopens"
+    when:
+      downstream_stopped: false
+    expect:
+      downstream_ready: true
+      outlet_open_commanded: true
+      line_state: running
+    within:
+      seconds: 0.5
+
+interlock: "Downstream ready for discharge"
