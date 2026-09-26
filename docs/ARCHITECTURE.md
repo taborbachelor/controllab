@@ -1324,6 +1324,12 @@ dashboard's *Watch this run* both produce this page; `scripts/replay.py
 --regression NAME` records a run against a deliberate-regression build. A
 live-session recording has no summary and gets the plain replay.
 
+**On a narrow screen** (`hmi.css`, so the dashboard, every replay and the
+public demo alike): the picture sits in a `.mimic-wrap` that keeps it
+readable and scrolls sideways under 700 px, and under 1000 px a shown test
+(`#test-view` open, or a replay with its test) is ordered right under the
+picture; `.wide-only` / `.narrow-only` spans keep left/right wording true.
+
 **The public demo** (`scripts/build_site.py`,
 https://taborbachelor.github.io/controllab/) is four of these pages linked
 as tabs: feeder jam recovery, the same test against the `reset-ignores-jam`

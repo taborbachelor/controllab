@@ -22,9 +22,9 @@
   <span class="meta">Automated commissioning tests for industrial control logic, against a simulated line.
     The question it answers: <strong>can we change control software without breaking the machine?</strong></span></div>
   <ol class="orient" aria-label="What you're looking at">
-    <li><strong>The line</strong> (left) is simulated: three bins → gates → feeder → conveyor → hopper, with the motors,
+    <li><strong>The line</strong> <span class="wide-only">(left)</span><span class="narrow-only">(the picture)</span> is simulated: three bins → gates → feeder → conveyor → hopper, with the motors,
       switches and weigh-scale a real one has. Its control program sees only that I/O, as a PLC would.</li>
-    <li><strong>Scenarios</strong> (right) are the tests. Press <em>Run &amp; verify</em>: the test operates the line,
+    <li><strong>Scenarios</strong> <span class="wide-only">(right)</span><span class="narrow-only">(further down)</span> are the tests. Press <em>Run &amp; verify</em>: the test operates the line,
       injects its fault, and checks the controller's response stage by stage against time limits.</li>
     <li><strong>Or drive it yourself:</strong> Start/Stop below (or Manual mode, one device at a time), a guided walkthrough, or <em>Engineer tools</em> to
       break it on purpose. The status card always says what's happening, and why.</li>
@@ -63,7 +63,10 @@
   <div class="col">
     <section aria-label="Line mimic">
       <h2>Line</h2>
+      <div class="mimic-wrap">
 <!--__MIMIC_SVG__-->
+      </div>
+      <p class="mimic-hint">Swipe the picture sideways to see the whole line.</p>
       <div class="controls">
         <button id="run" type="button">⏸ Pause</button>
         <select id="speed" aria-label="Simulation speed">

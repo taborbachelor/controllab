@@ -179,7 +179,7 @@ def _alarm_notes(alarms: list[dict]) -> list[str]:
 
 def _verifying(s: dict, busy: dict) -> dict:
     live = s.get("verifying") is not None
-    where = ("The picture shows it live, and the test on the right ticks off each stage as it passes." if live else
+    where = ("The picture shows it live, and the test beside it (below it, on a narrow screen) ticks off each stage as it passes." if live else
              "It runs in the background against that runtime; the picture below is not part of this run.")
     step = f" (runtime {busy['step']} of {busy['of']})" if busy.get("of", 1) > 1 else ""
     return {
@@ -384,7 +384,7 @@ def narrate(s: dict) -> dict:
                 "tone": "info" if not unacked else "warn",
                 "headline": "Stopped and ready.",
                 "detail": "Press Start: the conveyor starts first, then the bin gate opens, then the feeder runs, "
-                "moving material from the bin up into the hopper. Or run a scenario (right) to have the controller verified "
+                "moving material from the bin up into the hopper. Or run a scenario (in the Scenarios panel) to have the controller verified "
                 "automatically, stage by stage."
                 + (" There's an alarm to acknowledge first (press Acknowledge)." if unacked else ""),
                 "steps": [],

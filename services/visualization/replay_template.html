@@ -88,8 +88,8 @@
   </div>
   <div>
   <p class="rp-what"><strong>What you're looking at:</strong> a recording of one automated commissioning test.
-    On the left, a simulated bulk-material line (three bins → gates → feeder → conveyor → hopper) run by its control
-    program, which sees only I/O, exactly as a PLC would. On the right, the test: it operates the line, injects the
+    <span class="wide-only">On the left</span><span class="narrow-only">In the picture</span>, a simulated bulk-material line (three bins → gates → feeder → conveyor → hopper) run by its control
+    program, which sees only I/O, exactly as a PLC would. <span class="wide-only">On the right</span><span class="narrow-only">Below it</span>, the test: it operates the line, injects the
     fault, and checks the controller's response stage by stage, each against a time limit. The playback is the
     run's own recorded telemetry, not an animation.</p>
   <p class="rp-note" id="rp-note" hidden></p>
@@ -105,7 +105,10 @@
     <section aria-label="Line mimic">
       <div class="now" id="now" aria-live="polite" hidden><p class="now-k" id="now-k"></p><p class="now-t" id="now-t"></p></div>
       <h2 id="line-h">Line</h2>
+      <div class="mimic-wrap">
 <!--__MIMIC_SVG__-->
+      </div>
+      <p class="mimic-hint">Swipe the picture sideways to see the whole line.</p>
       <div class="controls">
         <button id="play" type="button" aria-label="Play">▶ Play</button>
         <button id="prev-ev" type="button" title="Previous event (←)">⏮ Event</button>
