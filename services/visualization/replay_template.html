@@ -42,6 +42,9 @@
   .rp-nav a[aria-current="page"] { border-color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); font-weight: 600; }
   .rp-nav .n { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 3px; color: #fff; background: var(--run); }
   .rp-nav .n.fail { background: var(--trip); }
+  /* A phone: one row of tabs that scrolls sideways, not a block of them above the run. */
+  @media (max-width: 700px) { .rp-nav { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; }
+                              .rp-nav a { flex: none; white-space: nowrap; } }
   .rp-intro { margin: 12px 20px 0; padding: 14px 18px; background: var(--panel); border: 1px solid var(--grid); border-radius: 8px;
               display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 32px; }
   @media (max-width: 1000px) { .rp-intro { grid-template-columns: minmax(0, 1fr); } }
@@ -89,7 +92,7 @@
   <div>
   <p class="rp-what"><strong>What you're looking at:</strong> a recording of one automated commissioning test.
     <span class="wide-only">On the left</span><span class="narrow-only">In the picture</span>, a simulated bulk-material line (three bins → gates → feeder → conveyor → hopper) run by its control
-    program, which sees only I/O, exactly as a PLC would. <span class="wide-only">On the right</span><span class="narrow-only">Below it</span>, the test: it operates the line, injects the
+    program, which sees only I/O, exactly as a PLC would. <span class="wide-only">On the right</span><span class="narrow-only">Below it</span>, the test: it operates the line, injects any
     fault, and checks the controller's response stage by stage, each against a time limit. The playback is the
     run's own recorded telemetry, not an animation.</p>
   <p class="rp-note" id="rp-note" hidden></p>
@@ -178,6 +181,8 @@ if (S) {
     $("rp-nav").innerHTML = M.nav.map((n) =>
       `<a href="${esc(n.href)}"${n.current ? ' aria-current="page"' : ""}>${esc(n.label)}` +
       `<span class="n ${n.passed ? "" : "fail"}">${n.passed ? "PASS" : "FAIL"}</span></a>`).join("");
+    const cur = $("rp-nav").querySelector('[aria-current="page"]');
+    if (cur) $("rp-nav").scrollLeft = cur.offsetLeft - 20;  // on a phone, the current tab in view
   }
   $("rp-intro").hidden = false;
   $("rp-kicker").textContent = S.regression

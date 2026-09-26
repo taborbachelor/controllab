@@ -36,6 +36,8 @@ RUNS: tuple[tuple[str, str, str, str | None], ...] = (
     ("bad-change.html", "A bad code change, caught", "faults/feeder_jam_recovery.yaml", "reset-ignores-jam"),
     ("overfill.html", "Overfill protection with a stuck switch", "faults/hopper_high_high_switch_stuck_weight_trips.yaml", None),
     ("normal.html", "Normal start and stop", "startup/normal_operation.yaml", None),
+    ("batch.html", "A batch: load, hold, discharge, clean out", "batch/batch_cycle.yaml", None),
+    ("manual.html", "Manual mode: each device by hand", "manual/manual_operation.yaml", None),
 )
 
 

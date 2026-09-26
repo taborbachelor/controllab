@@ -24,13 +24,14 @@ def embedded(path: Path) -> dict:
 def test_the_demo_site_is_real_runs_and_rebuilds_identically(tmp_path):
     site = load_script()
     results = dict(site.build(tmp_path / "a"))
-    assert results == {"index.html": True, "bad-change.html": False, "overfill.html": True, "normal.html": True}
+    assert results == {"index.html": True, "bad-change.html": False, "overfill.html": True, "normal.html": True,
+                       "batch.html": True, "manual.html": True}
     bad = embedded(tmp_path / "a" / "bad-change.html")
     assert bad["summary"]["regression"] == "reset-ignores-jam"
     assert bad["summary"]["first_divergence"]["stage"] == 2
     index = embedded(tmp_path / "a" / "index.html")
     assert [n["href"] for n in index["meta"]["nav"]] == [f for f, *_ in site.RUNS]
-    assert [n["current"] for n in index["meta"]["nav"]] == [True, False, False, False]
+    assert [n["current"] for n in index["meta"]["nav"]] == [True] + [False] * (len(site.RUNS) - 1)
     assert (tmp_path / "a" / ".nojekyll").exists()
 
     site.build(tmp_path / "b")

@@ -5,9 +5,9 @@ engineer. It takes about ten minutes, fifteen with OpenPLC. Every result
 you'll show is produced live, by the same code the test suite runs.
 
 No time to set up? The [recorded demo](https://taborbachelor.github.io/controllab/)
-plays four real runs in the browser (feeder jam recovery, a regression
-caught, overfill protection with a stuck switch, a normal start/stop) with
-the test shown beside the line.
+plays six real runs in the browser (feeder jam recovery, a regression
+caught, overfill protection with a stuck switch, a normal start/stop, a
+batch cycle, and Manual mode) with the test shown beside the line.
 
 ## What you're demonstrating
 

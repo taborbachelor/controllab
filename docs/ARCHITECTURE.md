@@ -1331,10 +1331,12 @@ readable and scrolls sideways under 700 px, and under 1000 px a shown test
 picture; `.wide-only` / `.narrow-only` spans keep left/right wording true.
 
 **The public demo** (`scripts/build_site.py`,
-https://taborbachelor.github.io/controllab/) is four of these pages linked
+https://taborbachelor.github.io/controllab/) is six of these pages linked
 as tabs: feeder jam recovery, the same test against the `reset-ignores-jam`
 regression (it fails at stage 2), overfill protection with a stuck
-high-high switch, and a normal start/stop. Each page is a real run made at
+high-high switch, a normal start/stop, a full batch (load from two bins,
+hold, discharge, clean out) and Manual mode device by device. On a phone
+the tabs are one row that scrolls sideways. Each page is a real run made at
 build time; the tab badges are those runs' verdicts. The build is
 deterministic (tested byte-identical across rebuilds), and
 `.github/workflows/pages.yml` rebuilds and deploys it from the current code
