@@ -29,12 +29,14 @@ What changes, and why each is explicit rather than hidden:
   operator procedure (acknowledge, reset) until the controller reports a
   clean IDLE. A controller's memory would otherwise leak from one
   scenario into the next: a latched alarm, or `start_inhibit`, which
-  holds the outcome of the most recent start request.
+  holds the outcome of the most recent request.
 - **A run that can't be trusted says so instead of passing or failing
   on the logic.** If the controller stops writing its outputs, the run
   stops there; if the plant falls behind the wall clock (which silently
   speeds up a PLC's wall-clock timers relative to the plant), the run is
-  invalid. Either way the result fails with that reason as its detail.
+  invalid, and so is one in which more than one client wrote the plant's
+  outputs (a second controller left polling the port). Either way the
+  result fails with that reason as its detail.
   And a `given.line_state: running` the controller never reaches is a
   failed result about the controller, not a broken scenario file
   (GivenUnreachable).
@@ -157,6 +159,9 @@ class RealtimePlant:
         self.rig = build_rig(with_controller=False)
         self.writes = 0
         self.last_write = time.monotonic()
+        # Every client connection that wrote outputs since watch_writers():
+        # more than one means two controllers are driving this plant.
+        self.writers: set = set()
         store = IOImageDataStore(
             register_map, lambda: self.rig.io, outputs_writable=True,
             handshake=self.handshake, on_output_write=self._note_write,
@@ -175,6 +180,13 @@ class RealtimePlant:
     def _note_write(self) -> None:  # called under the server's lock
         self.writes += 1
         self.last_write = time.monotonic()
+        self.writers.add(self.server.peer)
+
+    def watch_writers(self) -> None:
+        """Start counting writers afresh: the controller under test is up
+        (a restart's old connection may still have written before this)."""
+        with self.lock:
+            self.writers = set()
 
     def fresh(self) -> Rig:
         with self.lock:
@@ -253,6 +265,7 @@ def run_realtime(
         not_ready = _bring_to_clean_idle(plant, rig, pacer, ready_timeout_s)
         if not_ready is not None:
             return ScenarioResult(scenario, False, 0.0, not_ready)
+        plant.watch_writers()
 
         latency_ticks = math.ceil(latency_s / DT - 1e-9)
         invariants = Invariants(rig, feeder_grace_ticks=max(1, latency_ticks))
@@ -350,6 +363,19 @@ def _invalid(scenario: Scenario, pacer: _Pacer, why: str) -> ScenarioResult:
 
 
 def _judge_timing(result: ScenarioResult, pacer: _Pacer) -> ScenarioResult:
+    with pacer.plant.lock:
+        writers = sorted(pacer.plant.writers, key=repr)
+    if len(writers) > 1:
+        # Found 2026-09-26: an OpenPLC container left polling 5020 wrote the
+        # plant alongside the reference controller, and the run reported
+        # plausible-looking failures ("discharge timeout" in a bin scenario).
+        result.passed = False
+        result.detail = (
+            f"run invalid, not a verdict on the logic: {len(writers)} clients wrote this plant's outputs during the "
+            f"run ({', '.join(f'{h}:{p}' for h, p in writers)}); is another controller (a PLC left polling this "
+            f"port?) connected? (was: {result.detail})"
+        )
+        return result
     if pacer.max_lag > MAX_LAG_S:
         result.passed = False
         result.detail = (

@@ -44,15 +44,25 @@ def test_auto_cycles_the_buffer_between_60_and_80_percent_behind_the_draw():
 
 
 def test_a_downstream_stop_is_not_an_alarm_and_the_buffer_fills_to_the_switch():
+    """A hand-off both ways: the outlet closes when the downstream stops and
+    reopens when it resumes. (It first asserted only the closed outlet, so a
+    controller that never opened it passed too; the open outlet before the
+    stop and after the resume is what only discharge enablement does.)"""
     rig = build_rig(plant_overrides={"bin_level_kg": 9_000.0})
     rig.line.start()
     run(rig, 3.0)
+    assert rig.io.read("XV-106.CMD_OPEN")  # discharging into a ready downstream
     rig.plant.downstream.stopped = True
     run(rig, 0.2)
     assert not rig.io.read("XV-106.CMD_OPEN")
     run(rig, 400.0)  # nothing drawn off: the hopper fills to the high switch and the feed holds
     assert rig.plant.hopper.level_pct >= 80.0 and not rig.io.read("M-103.RUN")
     assert rig.line.state == LineState.RUNNING and rig.line.alarms.latched_alarms == []
+    full = rig.plant.hopper.level_kg
+    rig.plant.downstream.stopped = False
+    run(rig, 10.0)
+    assert rig.io.read("XV-106.CMD_OPEN") and rig.plant.hopper.level_kg < full  # drawing again
+    assert rig.line.alarms.latched_alarms == []
 
 
 def test_a_batch_discharge_waiting_for_the_downstream_never_times_out():

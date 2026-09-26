@@ -42,6 +42,7 @@ choice for the caller to make.
 """
 from __future__ import annotations
 
+import os
 import socketserver
 import struct
 import threading
@@ -266,6 +267,7 @@ class _Handler(socketserver.BaseRequestHandler):
             if rest is None:
                 return
             with self.server.lock:
+                self.server.peer = self.client_address  # who this request is from, for the store's callbacks
                 response = handle_adu(self.server.store, header + rest)
             if response is not None:
                 self.request.sendall(response)
@@ -280,11 +282,16 @@ class ModbusServer(socketserver.ThreadingTCPServer):
     common unprivileged convention."""
 
     daemon_threads = True
-    allow_reuse_address = True
+    # POSIX: SO_REUSEADDR only lets a restarted server rebind past TIME_WAIT.
+    # Windows: it lets a second server bind a port already being served, and
+    # clients then land on either one -- two plants silently sharing 5020.
+    # So not there: a second server on a busy port fails loudly instead.
+    allow_reuse_address = os.name != "nt"
 
     def __init__(self, store: DataStore, host: str = "127.0.0.1", port: int = 5020, lock: threading.Lock | None = None) -> None:
         self.store = store
         self.lock = lock or threading.Lock()
+        self.peer: tuple | None = None  # the client whose request is being handled (under `lock`)
         super().__init__((host, port), _Handler)
 
 

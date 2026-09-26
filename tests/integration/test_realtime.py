@@ -198,3 +198,52 @@ def rt_relocated():
     yield plant, ctl
     ctl.close()
     plant.close()
+
+
+def test_a_second_controller_writing_the_plant_invalidates_the_run(rt):
+    """Found 2026-09-26: an OpenPLC container left polling the plant port
+    wrote its outputs alongside the controller under test, and the run
+    reported plausible failures ("discharge timeout" in a bin scenario).
+    Two writers is now an invalid run, named as such, not a verdict."""
+    from services.protocols.modbus import ModbusClient
+
+    plant, controller = rt
+    ctl = controller()
+    stop = threading.Event()
+
+    def intruder():
+        with ModbusClient(plant.host, plant.port) as client:
+            while not stop.is_set():
+                client.write_coils(0, [False])  # a stray controller driving an output
+                stop.wait(0.05)
+
+    thread = threading.Thread(target=intruder, daemon=True)
+    thread.start()
+    try:
+        result = run_realtime(scenario("startup/normal_start.yaml"), plant, ctl, speed=SPEED)
+    finally:
+        stop.set()
+        thread.join()
+    assert not result.passed
+    assert result.detail.startswith("run invalid, not a verdict on the logic: 2 clients wrote this plant's outputs")
+
+
+def test_the_run_alone_counts_one_writer(rt):
+    plant, controller = rt
+    result = run_rt(scenario("startup/normal_start.yaml"), plant, controller(), speed=SPEED)
+    assert result.passed, result.detail
+    assert len(plant.writers) == 1
+
+
+def test_a_second_server_on_a_busy_port_fails_loudly():
+    """On Windows SO_REUSEADDR let a second server bind a port already served
+    (clients then reach either one); a real-time run and a dashboard could
+    silently share 5020. Now the second bind is refused, on every platform."""
+    from services.protocols.modbus import ModbusServer
+
+    first = ModbusServer(object(), port=0)
+    try:
+        with pytest.raises(OSError):
+            ModbusServer(object(), port=first.server_address[1])
+    finally:
+        first.server_close()

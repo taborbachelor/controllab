@@ -1347,6 +1347,11 @@ issue and propose the change"):
   (`_previews()`: the controller's answer for each request in
   `REFUSABLE`; `None` for an external controller); `build_frames()`
   carries `plant` into every replay frame.
+- **`ModbusServer.peer`**: the client whose request is being handled;
+  **`RealtimePlant.writers`** / `watch_writers()` count the connections
+  that wrote outputs during a run, and `realtime._judge_timing()` makes a
+  run with two invalid. `ModbusServer.allow_reuse_address` is off on
+  Windows (there it meant "share a served port").
 
 ## The self-explaining replay (readable cold)
 
