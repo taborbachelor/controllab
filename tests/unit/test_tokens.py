@@ -16,7 +16,7 @@ from services.visualization.page import HERE, assemble
 
 # The frontend sources the lint covers. tokens.css is the one place a value
 # may be written, so it is left out on purpose.
-SOURCES = ("hmi.css", "hmi.js", "mimic.svg.html", "live_template.html", "replay_template.html")
+SOURCES = ("hmi.css", "hmi.js", "mimic.svg.html", "live_template.html", "replay_template.html", "styleguide.py")
 RAW_COLOUR = re.compile(
     r"(?<![&\w])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b"  # hex, not an entity or an id selector
     r"|\b(?:rgba?|hsla?)\(")

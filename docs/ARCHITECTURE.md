@@ -1426,6 +1426,15 @@ tokens; no layout changed.
   proven to fail on a deliberate break. The lint covers colours only for now;
   spacing values and inline `style=` join it with the application shell
   (step 8).
+- **`services/visualization/styleguide.py`** renders the published style
+  guide (`styleguide.html`, written by `scripts/build_site.py` beside the
+  demo runs): every colour token with its value and use, the 22 contrast
+  pairs recomputed at build time, the type scale, spacing, sizes, shape and
+  motion. It is generated from `tokens.css` and `tokens.py`, so it can't
+  drift from the pages; it needs no script, uses per-token classes instead
+  of inline styles, and rebuilds byte-identically (tested). The components
+  join it, in every state, from step 7. Not linked from the demo pages yet:
+  the demo's footer comes with the replay redesign (step 12).
 
 ## The self-explaining replay (readable cold)
 

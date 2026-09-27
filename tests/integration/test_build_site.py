@@ -35,5 +35,5 @@ def test_the_demo_site_is_real_runs_and_rebuilds_identically(tmp_path):
     assert (tmp_path / "a" / ".nojekyll").exists()
 
     site.build(tmp_path / "b")
-    for f, *_ in site.RUNS:
+    for f in [f for f, *_ in site.RUNS] + [site.STYLEGUIDE]:
         assert (tmp_path / "a" / f).read_bytes() == (tmp_path / "b" / f).read_bytes(), f

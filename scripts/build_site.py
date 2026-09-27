@@ -21,6 +21,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from replay import SCENARIOS_DIR, write_replay  # noqa: E402 -- the sibling script, not a package
 
+from services.visualization import styleguide  # noqa: E402 -- after the sibling import, like it
+
+STYLEGUIDE = "styleguide.html"  # the design system, generated from the same sources as the pages
+
 REPO_URL = "https://github.com/taborbachelor/controllab"
 PLC_NOTE = {
     "text": "Recorded on ControlLab's Python reference controller. The same scenario files run unchanged against "
@@ -52,6 +56,7 @@ def build(out: Path) -> list[tuple[str, bool]]:
         nav = [{"href": f, "label": label, "current": f == file, "passed": results[f]} for f, label, _, _ in RUNS]
         passed = write_replay(SCENARIOS_DIR / scenario, out / file, regression, extra_meta={"nav": nav, "repo": REPO_URL, "note": PLC_NOTE})
         assert passed == results[file], f"{file}: the run was not deterministic"
+    (out / STYLEGUIDE).write_text(styleguide.render(REPO_URL), encoding="utf-8", newline="\n")
     (out / ".nojekyll").write_text("", encoding="utf-8")
     return [(f, results[f]) for f, _, _, _ in RUNS]
 
@@ -62,6 +67,7 @@ def main() -> int:
     args = parser.parse_args()
     for file, passed in build(args.out):
         print(f"{'PASS' if passed else 'FAIL'}  {args.out / file}")
+    print(f"      {args.out / STYLEGUIDE}")
     return 0
 
 
