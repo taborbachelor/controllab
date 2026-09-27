@@ -16,6 +16,27 @@ the same repo) is the other; leave it alone. The two sessions collided on
 this filename once (2026-09-26); the design session moved its file, so
 this name stays with the controls work.
 
+## Update — 2026-09-27, delivery session (read this first)
+
+**Goal (Tabor):** get ControlLab usable by an outside controls engineer who will read it, run it on their own
+machine, and try it against their own control logic. Frontend/UI files stay with the frontend session.
+
+**Done and pushed (CI green):** `4927acd` step 1, your own scenarios (`controllab test <path>`,
+`docs/SCENARIOS.md` + drift test); `d28cfc8` step 2, your own controller (`--runtime external`,
+`--realtime external`, `--restart-cmd`, opt-in `--bind` with a warning, `docs/CONNECTING-A-CONTROLLER.md`).
+Both decisions in step 2 were Tabor's (recommended options). A fresh clone + fresh venv on Windows installs
+and passes (checked before step 1). Now **1,051 tests** (1,045 run anywhere + 6 broker).
+
+**Still open, in order:**
+1. The three-pass OpenPLC report (below, unchanged). Not started from Claude Code: ~1.7 GB free of 16 GB,
+   the condition it was reaped under twice. Tabor runs it in a terminal, or frees memory and says so.
+2. Then: README OpenPLC lines, `examples/openplc/COMMISSIONING-REPORT.md`, `docs/CONTROL-LAB.md` line 3
+   status (still says 51 scenarios / 13 rows / 38/38), the §10 wrap-up tick, a change-log row.
+3. Then a release: `pyproject.toml` version (0.1.0 now), tag, release notes. Install stays clone +
+   `pip install -e .` (the CLI finds `scenarios/` by path); say so in the notes.
+4. `fallbacks="default"` in `services/ai/provider.py`: Tabor's call, still open.
+5. Delete this file when 1-2 are done.
+
 ## Update — 2026-09-26, second controls session (read this first)
 
 **Where this section and §1–§6 below disagree, this section wins.**
