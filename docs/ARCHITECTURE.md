@@ -1387,6 +1387,46 @@ issue and propose the change"):
 - **`docs/CONNECTING-A-CONTROLLER.md`**: the engineer's guide; every
   option it names is checked against the three `--help` outputs.
 
+## Module responsibilities (frontend redesign, step 6: visual tokens)
+
+The frontend redesign is specified in a separate design document (the
+"ControlLab Frontend Design Specification"; file ownership between the
+frontend and controls work is its §16.3). It is built on the
+`frontend/redesign` branch, one step at a time. Step 6 introduces the design
+tokens; no layout changed.
+
+- **`services/visualization/tokens.css`**: the one place a colour, font,
+  size, spacing or duration value is written. It holds the specification's
+  §6 values plus `--ink-inverse` (white text on dark and coloured fills).
+  `page.py` inlines it ahead of `hmi.css` under the same placeholder, so
+  neither template changed. Light theme only; a dark theme would redefine
+  the same names.
+- **`hmi.css`** keeps today's variable names (`--bg`, `--panel`, `--muted`,
+  `--line`, `--run`, `--hollow`, `--accent`, `--grid`) as transitional
+  aliases of the tokens; they go as the new components replace the classes
+  that use them. No raw colour remains in any frontend source. Two pairs
+  that failed contrast now pass: future event rows in a replay (2.19:1
+  before) and secondary text on the page background (3.91:1 before).
+- **The old amber had three meanings; now each has its own token.** A
+  warning is `--warn`. A command its feedback hasn't confirmed yet (the
+  dashed outline) is `--disagree`. A lit warning lamp is `--warn-fill` with
+  a `--warn` outline, so `hmi.js`'s `lamp()` now sets the outline as well as
+  the fill. The old amber (`#d98e04`) was 2.46:1 against the panels, under
+  the 3:1 a graphic needs; each replacement passes.
+- **A walkthrough's target** is a static 3 px outline. The pulse is gone; it
+  was the one animation not switched off under reduced motion.
+- **`services/visualization/tokens.py`** parses `tokens.css` and holds the
+  22 colour pairs the specification verified, each with the ratio the
+  specification records. `tests/unit/test_tokens.py` recomputes every pair
+  against WCAG 2.2 AA (4.5:1 text, 3:1 graphics) and fails when a token
+  change breaks a minimum or moves a recorded ratio (then the specification
+  changes with it). It also lints every frontend source for a colour written
+  outside `tokens.css`, checks that every `var(--name)` used is defined, and
+  checks that every animation stops under reduced motion. Each check was
+  proven to fail on a deliberate break. The lint covers colours only for now;
+  spacing values and inline `style=` join it with the application shell
+  (step 8).
+
 ## The self-explaining replay (readable cold)
 
 A replay of a scenario run carries the run's summary

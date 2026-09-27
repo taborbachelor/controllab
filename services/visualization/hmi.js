@@ -7,6 +7,9 @@
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const TRIP = "var(--trip)", WARN = "var(--warn)", RUN = "var(--run)", OFF = "var(--hollow)", LINE = "var(--line)";
+// The old amber's three meanings, apart (design tokens, build step 6): a warning (WARN),
+// a command its feedback doesn't agree with yet (DISAGREE), a lit warning lamp (WARN_FILL).
+const DISAGREE = "var(--disagree)", WARN_FILL = "var(--warn-fill)", INVERSE = "var(--ink-inverse)";
 
 // Hopper geometry: fill spans y 310 (empty) .. 110 (full), a 200px column.
 const HOP_TOP = 110, HOP_H = 200, BIN_TOP = 40, BIN_H = 130;
@@ -22,15 +25,19 @@ function initMimic(plant) {
   }
 }
 
-function lamp(groupId, on, color) {
-  $(groupId).querySelector("circle").setAttribute("fill", on ? color : OFF);
+// A switch lamp: `fill` when lit, with its own `stroke` (a warn-fill lamp always
+// carries a warn stroke, design spec §6.1); hollow with the line stroke when not.
+function lamp(groupId, on, fill, stroke = LINE) {
+  const c = $(groupId).querySelector("circle");
+  c.setAttribute("fill", on ? fill : OFF);
+  c.setAttribute("stroke", on ? stroke : LINE);
 }
 
 // A device's shape: dark when feedback says running, hollow when stopped,
-// dashed amber when the command and the feedback disagree, red on a trip.
+// dashed --disagree when the command and the feedback disagree, red on a trip.
 function device(el, cmd, fb, trip) {
   el.setAttribute("fill", trip ? TRIP : fb ? RUN : OFF);
-  el.setAttribute("stroke", trip ? TRIP : cmd !== fb ? WARN : LINE);
+  el.setAttribute("stroke", trip ? TRIP : cmd !== fb ? DISAGREE : LINE);
   el.setAttribute("stroke-dasharray", !trip && cmd !== fb ? "6 4" : "none");
 }
 
@@ -43,7 +50,7 @@ function renderMimic(v, animate) {
     const oOpen = v["ZSO-106"], oClosed = v["ZSC-106"], oCmd = v["XV-106.CMD_OPEN"];
     const oFb = oOpen ? true : oClosed ? false : null;
     $("xv106").setAttribute("fill", oOpen ? RUN : OFF);
-    $("xv106").setAttribute("stroke", oFb === oCmd ? LINE : WARN);
+    $("xv106").setAttribute("stroke", oFb === oCmd ? LINE : DISAGREE);
     $("xv106").setAttribute("stroke-dasharray", oFb === oCmd ? "none" : "6 4");
     $("xv106-txt").textContent = (oOpen ? "Open" : oClosed ? "Closed" : oCmd ? "Opening…" : "Closing…") +
       (oFb !== null && oFb !== oCmd ? ` (told to ${oCmd ? "open" : "close"})` : "");
@@ -73,13 +80,13 @@ function renderMimic(v, animate) {
     $(fill).setAttribute("y", BIN_TOP + BIN_H * (1 - binPct / 100));
     $(fill).setAttribute("height", BIN_H * binPct / 100);
     $(lt).textContent = `${binPct.toFixed(1)} %`;
-    lamp(lsl, v[tLsl], WARN);
+    lamp(lsl, v[tLsl], WARN_FILL, WARN);
     const gateOpen = v[tOpen], gateClosed = v[tClosed], gateCmd = v[tCmd];
     const gateFb = gateOpen ? true : gateClosed ? false : null;  // null = travelling
     anyGateOpen = anyGateOpen || !!gateOpen;
     const gate = $(gateId);
     gate.setAttribute("fill", gateOpen ? RUN : OFF);
-    gate.setAttribute("stroke", gateFb === gateCmd ? LINE : WARN);
+    gate.setAttribute("stroke", gateFb === gateCmd ? LINE : DISAGREE);
     gate.setAttribute("stroke-dasharray", gateFb === gateCmd ? "none" : "6 4");
     $(gateTxt).textContent = (gateOpen ? "Open" : gateClosed ? "Closed" : gateCmd ? "Opening…" : "Closing…") +
       (gateFb !== null && gateFb !== gateCmd ? ` (told to ${gateCmd ? "open" : "close"})` : "");
@@ -87,7 +94,7 @@ function renderMimic(v, animate) {
 
   const fRun = v["M-103.RUNNING"], fCmd = v["M-103.RUN"], fTrip = v["M-103.FAULT"], plugged = v["LSH-103"];
   device($("m103"), fCmd, fRun, fTrip);
-  $("m103-l").setAttribute("fill", fRun || fTrip ? "#fff" : "var(--ink)");
+  $("m103-l").setAttribute("fill", fRun || fTrip ? INVERSE : "var(--ink)");
   // LSH-103, the discharge-chute plug switch: a jam. The drive still reports
   // RUNNING through one, so this is the only sign of it on the mimic.
   $("feeder-body").setAttribute("stroke", fTrip || plugged ? TRIP : LINE);
@@ -96,7 +103,7 @@ function renderMimic(v, animate) {
 
   const cRun = v["M-104.RUNNING"], cCmd = v["M-104.RUN"], cTrip = v["M-104.OL"], motion = v["ZSS-104"];
   device($("m104"), cCmd, cRun, cTrip);
-  $("m104-l").setAttribute("fill", cRun || cTrip ? "#fff" : "var(--ink)");
+  $("m104-l").setAttribute("fill", cRun || cTrip ? INVERSE : "var(--ink)");
   $("conv-belt").setAttribute("stroke", cTrip ? TRIP : cRun && !motion ? WARN : LINE);
   $("m104-txt").textContent = (cTrip ? "Overload trip" : cRun && !motion ? "Motor on, belt not moving" : cRun ? "Running" : "Stopped") +
     (!cTrip && cCmd !== cRun ? ` (told to ${cCmd ? "run" : "stop"})` : "");
@@ -120,13 +127,13 @@ function renderMimic(v, animate) {
   // channel fault (WT-105.FLT) says the number is meaningless.
   $("wt105").textContent = v["WT-105.FLT"] ? "Weight signal FAILED" : `${kg.toFixed(0)} kg · ${hopPct.toFixed(1)} % full`;
   // Fail-safe switches: 1 = below the switch point, so the lamp lights on 0.
-  lamp("lsh105", !v["LSH-105"], WARN);
-  lamp("lshh105", !v["LSHH-105"], TRIP);
+  lamp("lsh105", !v["LSH-105"], WARN_FILL, WARN);
+  lamp("lshh105", !v["LSHH-105"], TRIP, TRIP);
 
   const healthy = v["ES-001"];
   $("es001").setAttribute("fill", healthy ? OFF : TRIP);
   $("es001").setAttribute("stroke", healthy ? LINE : TRIP);
-  $("es001-l").setAttribute("fill", healthy ? "var(--ink)" : "#fff");
+  $("es001-l").setAttribute("fill", healthy ? "var(--ink)" : INVERSE);
 }
 
 function renderState(state) {

@@ -1,0 +1,75 @@
+/* Design tokens (frontend redesign, build step 6; the design specification's
+   section 6). The one place a colour, font, size or duration value is written:
+   every other stylesheet, script and SVG uses var(--name). Light theme only;
+   a future dark theme redefines these same names under :root[data-theme="dark"].
+   Every colour pair used for meaning is recomputed by tests/unit/test_tokens.py
+   (services/visualization/tokens.py holds the pairs). */
+:root {
+  /* Colour: neutrals */
+  --page: #e3e5e8;
+  --surface: #f4f5f7;
+  --surface-sunken: #eaecef;
+  --surface-raised: #fbfbfc;
+  --border: #c7ccd2;
+  --border-strong: #7b838c;
+  --ink: #1c2127;
+  --ink-muted: #535a62;
+  --ink-inverse: #ffffff;
+  /* Colour: equipment */
+  --equip-stroke: #4a5058;
+  --equip-on: #394350;
+  --equip-off: #fbfbfc;
+  --material: #8a6f4e;
+  /* Colour: status */
+  --trip: #b42318;
+  --trip-tint: #fdecea;
+  --warn: #8a5a00;
+  --warn-fill: #f2b233;
+  --warn-tint: #fdf3dc;
+  --disagree: #a86400;
+  --info: #245b8f;
+  --info-tint: #e6eef7;
+  --ok: var(--equip-on);
+  --focus: var(--info);
+
+  /* Typography: system fonts only (the replay and demo work offline and build byte-identically) */
+  --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-2xl: 24px;
+
+  /* Space: 4 px base */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --gutter: 20px;
+
+  /* Size */
+  --control-h: 32px;
+  --target-min: 24px;
+  --header-h: 48px;
+  --statusbar-h: 56px;
+  --rail-w: 400px;
+  --indicator: 12px;
+  --marker: 16px;
+
+  /* Shape: no shadows, no gradients */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+
+  /* Motion */
+  --dur: 200ms;
+  --ease: cubic-bezier(.2, 0, 0, 1);
+  --flow-period: .6s;
+}
+@media (max-width: 700px) { :root { --gutter: 16px; } }
+@media (max-width: 1279px) { :root { --rail-w: 360px; } }
+@media (pointer: coarse) { :root { --control-h: 44px; } }
+@media (prefers-reduced-motion: reduce) { :root { --dur: 0ms; --flow-period: 0s; } }
