@@ -60,7 +60,7 @@ DEFAULT_LINE_CONFIG = dict(
     no_flow_s=4.0,  # a belt transit (2 s here) plus margin; real default 15.0
     # Batch commissioning for this rig: the belt carries 5 kg/s x 2 s = 10 kg
     # in flight; empty is 2 kg; the discharge timeout must exceed the largest
-    # batch's discharge (1,600 kg under the high switch at 10 kg/s = 160 s).
+    # batch's discharge (1,600 kg under the high switch at the 3 kg/s draw).
     # It was 120 s, and a 1,200 kg batch timed out: found by the accuracy test.
     batch_preact_kg=10.0,
     batch_empty_kg=2.0,

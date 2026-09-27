@@ -3,6 +3,7 @@ and print an engineering result for each.
 
     controllab test                                 # every scenario, Python controller
     controllab test feeder_jam_recovery             # scenarios whose file or name matches
+    controllab test my_scenarios/                   # your own scenario files (a .yaml file or a directory)
     controllab test --runtime modbus                # the same controller, out of process, over Modbus TCP
     controllab test --runtime openplc jam           # OpenPLC in real time (examples/openplc set up first)
     controllab test --regression jam-trip-removed   # prove the suite catches a deliberate regression
@@ -23,21 +24,36 @@ from pathlib import Path
 
 from services.testing.regressions import REGRESSIONS
 from services.testing.runner import run_scenario
-from services.testing.scenario import Scenario
+from services.testing.scenario import Scenario, ScenarioLoadError
 from services.testing.verdict import RUNTIMES, render_text, summarize
 
 SCENARIOS_DIR = Path(__file__).resolve().parents[1] / "scenarios"
 
 
 def select(patterns: list[str]) -> list[Scenario]:
-    scenarios = Scenario.discover(SCENARIOS_DIR)
-    if not patterns:
-        return scenarios
-    chosen = [s for s in scenarios
-              if any(p.lower() in s.path.relative_to(SCENARIOS_DIR).as_posix().lower() or p.lower() in s.name.lower()
-                     for p in patterns)]
-    if not chosen:
-        raise SystemExit(f"no scenario matches {', '.join(patterns)}")
+    """The scenarios to run. A pattern that is an existing .yaml file or a
+    directory is loaded from there, so an engineer's own scenarios run
+    without being added to the repository's suite; any other pattern is a
+    fragment of a suite scenario's file or name."""
+    paths = [Path(p) for p in patterns if Path(p).is_dir() or (Path(p).is_file() and p.endswith((".yaml", ".yml")))]
+    fragments = [p for p in patterns if Path(p) not in paths]
+    chosen: list[Scenario] = []
+    for path in paths:
+        try:
+            found = Scenario.discover(path) if path.is_dir() else [Scenario.load(path)]
+        except ScenarioLoadError as e:
+            raise SystemExit(f"cannot load scenario: {e}") from None
+        if not found:
+            raise SystemExit(f"no scenario files (*.yaml) under {path}")
+        chosen += found
+    if fragments or not patterns:
+        suite = Scenario.discover(SCENARIOS_DIR)
+        matched = [s for s in suite
+                   if not fragments or any(p.lower() in s.path.relative_to(SCENARIOS_DIR).as_posix().lower()
+                                           or p.lower() in s.name.lower() for p in fragments)]
+        if not matched:
+            raise SystemExit(f"no scenario matches {', '.join(fragments)}")
+        chosen += matched
     return chosen
 
 
@@ -83,12 +99,17 @@ def cmd_test(args) -> int:
     print(f"{len(scenarios)} scenario(s)\n")
 
     summaries = []
-    for scenario, result, wall in _run_all(scenarios, args.runtime, regression, args.plc):
-        s = summarize(scenario, result, RUNTIMES[args.runtime], wall_time_s=wall, root=SCENARIOS_DIR,
-                      regression=regression.name if regression else None)
-        summaries.append(s)
-        mark = s.verdict + ("*" if s.qualifier else "")
-        print(f"  {mark:<15} {s.checks_passed:>2}/{s.checks_evaluated:<2} checks  {s.file}", flush=True)
+    try:
+        for scenario, result, wall in _run_all(scenarios, args.runtime, regression, args.plc):
+            s = summarize(scenario, result, RUNTIMES[args.runtime], wall_time_s=wall, root=SCENARIOS_DIR,
+                          regression=regression.name if regression else None)
+            summaries.append(s)
+            mark = s.verdict + ("*" if s.qualifier else "")
+            print(f"  {mark:<15} {s.checks_passed:>2}/{s.checks_evaluated:<2} checks  {s.file}", flush=True)
+    except ScenarioLoadError as e:
+        # A malformed scenario (an unknown key, a value of the wrong shape)
+        # is found as it runs: say which and why, not a traceback.
+        raise SystemExit(f"scenario error: {e}") from None
 
     failed = [s for s in summaries if not s.passed]
     detail = failed if not args.verbose else summaries
@@ -116,7 +137,8 @@ def main(argv: list[str] | None = None) -> int:
                                      "controls validation.")
     sub = parser.add_subparsers(dest="command", required=True)
     t = sub.add_parser("test", help="run scenarios against a control runtime")
-    t.add_argument("patterns", nargs="*", help="scenario file or name fragments (default: all)")
+    t.add_argument("patterns", nargs="*", help="scenario name fragments, or paths to your own .yaml files or directories "
+                   "(default: the whole suite)")
     t.add_argument("--runtime", choices=tuple(RUNTIMES), default="python")
     t.add_argument("--regression", help="run a deliberately broken controller build (a testing fixture)")
     t.add_argument("--list-regressions", action="store_true")

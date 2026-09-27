@@ -1353,6 +1353,19 @@ issue and propose the change"):
   run with two invalid. `ModbusServer.allow_reuse_address` is off on
   Windows (there it meant "share a served port").
 
+## Module responsibilities (delivery: your own scenarios)
+
+- **`services/cli.py`**: `select()` loads a pattern that is an existing
+  `.yaml` file or a directory from there (`Scenario.load` /
+  `Scenario.discover`), and matches any other pattern against the suite
+  in `scenarios/` as before. A `ScenarioLoadError` (at load, or raised by
+  the runner for an unknown vocabulary key) becomes a one-line
+  `SystemExit`.
+- **`docs/SCENARIOS.md`**: the authoring reference, pinned to the code
+  by `tests/unit/test_scenarios_doc.py` (the vocabulary's keys, the
+  `LineState` and `StartInhibit` names, `controller_status.FAULT_REASONS`
+  and `ALARMS`, and every example run).
+
 ## The self-explaining replay (readable cold)
 
 A replay of a scenario run carries the run's summary

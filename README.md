@@ -45,7 +45,7 @@ still plugged.
 - Mass is conserved to the milligram and checked on every scan, and every
   run is deterministic, so the same scenario gives the same result every
   time.
-- 1,030 automated tests, run on every push (Python 3.12 and 3.13; the badge
+- 1,044 automated tests, run on every push (Python 3.12 and 3.13; the badge
   above is the latest run). The demo site is rebuilt from the current code
   on every push too, so it can't drift from the repository.
 
@@ -58,11 +58,12 @@ pip install -e ".[dev]"
 python scripts/dashboard.py        # the live dashboard: open http://127.0.0.1:8000
 controllab test                    # every scenario against the Python controller
 controllab test feeder_jam_recovery --regression reset-ignores-jam   # watch a regression get caught
+controllab test my_scenarios/     # your own scenario files, from anywhere
 pytest                             # the full test suite, every scenario included
 ```
 
 A ten-minute walkthrough for showing it to another engineer:
-[`docs/DEMO.md`](docs/DEMO.md).
+[`docs/DEMO.md`](docs/DEMO.md). Writing your own scenarios: [`docs/SCENARIOS.md`](docs/SCENARIOS.md).
 
 ## 1. What is ControlLab?
 
@@ -335,6 +336,7 @@ Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md).
 ## Documentation
 
 - [`docs/DEMO.md`](docs/DEMO.md): the demonstration, step by step.
+- [`docs/SCENARIOS.md`](docs/SCENARIOS.md): writing and running your own scenarios; every key and value.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): layers, runtimes, module responsibilities.
 - [`docs/CONTROL-LAB.md`](docs/CONTROL-LAB.md): the specification, the phased roadmap, and the change log with every finding.
 - [`docs/AI.md`](docs/AI.md): the optional AI layer.
@@ -342,7 +344,7 @@ Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md).
 
 ## Status
 
-All roadmap phases are complete, and 1,030 tests pass.
+All roadmap phases are complete, and 1,044 tests pass.
 
 | Phase | Focus | Status |
 |---|---|---|
