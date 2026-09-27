@@ -1366,6 +1366,27 @@ issue and propose the change"):
   `LineState` and `StartInhibit` names, `controller_status.FAULT_REASONS`
   and `ALARMS`, and every example run).
 
+## Module responsibilities (delivery: your own controller)
+
+- **`services/testing/realtime.py`**: `ExternalController(restart_cmd)`,
+  a `ControllerUnderTest` ControlLab doesn't manage. `restart()` runs the
+  command (shell, 120 s limit) and raises `ControllerRestartError` on a
+  non-zero exit or a timeout; with no command it does nothing and the
+  power-up procedure (`_bring_to_clean_idle`) is the only reset, which
+  its `name` states.
+- **`services/protocols/modbus.py`**: `exposure_warning(host)`, the
+  text every entry point prints when the plant is served on a
+  non-loopback address.
+- **Entry points**: `--bind` on `scripts/dashboard.py` (the Modbus
+  server only; the page stays on localhost), `controllab test` and
+  `scripts/scenario_report.py`; `controllab test --runtime external`
+  (with `--modbus-port`, `--map`, `--no-status`, `--restart-cmd`) and
+  `scenario_report.py --realtime external`. `RUNTIMES` in `verdict.py`
+  is unchanged (the dashboard's runtime list), so the CLI labels the
+  external runtime itself.
+- **`docs/CONNECTING-A-CONTROLLER.md`**: the engineer's guide; every
+  option it names is checked against the three `--help` outputs.
+
 ## The self-explaining replay (readable cold)
 
 A replay of a scenario run carries the run's summary

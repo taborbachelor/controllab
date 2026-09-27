@@ -11,17 +11,20 @@ the simulated line running in real time, served on localhost.
     python scripts/dashboard.py --opcua 4840             # also serve an OPC UA server (the [opcua] extra)
 
 Localhost only, no authentication -- a local engineering tool, not a
-network service. All the logic lives in services/visualization/live.py.
+network service. The one exception is deliberate: --bind serves the Modbus
+port on another address, for a hardware PLC on an isolated bench network
+(the page itself stays on localhost). All the logic lives in services/visualization/live.py.
 """
 from __future__ import annotations
 
 import argparse
+import sys
 import threading
 from http.server import ThreadingHTTPServer
 
 from services.protocols import controller_status
 from services.protocols.line_map import LINE_REGISTER_MAP
-from services.protocols.modbus import ModbusServer
+from services.protocols.modbus import ModbusServer, exposure_warning
 from services.protocols.register_map import IOImageDataStore
 from services.visualization.live import SPEEDS, LiveSession, Pacer, make_handler
 
@@ -33,6 +36,11 @@ def main() -> int:
     parser.add_argument(
         "--modbus-port", type=int, default=None,
         help="also serve the I/O image over Modbus TCP on 127.0.0.1 (read-only outputs; HMI coils 100-103)",
+    )
+    parser.add_argument(
+        "--bind", default="127.0.0.1",
+        help="address the Modbus server listens on (default 127.0.0.1, this machine only); another address "
+        "exposes unauthenticated Modbus to the network: an isolated bench network only",
     )
     parser.add_argument(
         "--external", action="store_true",
@@ -51,6 +59,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.external and args.modbus_port is None:
         args.modbus_port = 5020
+    if args.bind != "127.0.0.1" and args.modbus_port is None:
+        parser.error("--bind is the Modbus server's address: give --modbus-port or --external too")
 
     session = LiveSession(external=args.external)
     pacer = Pacer(session, speed=args.speed)
@@ -74,9 +84,12 @@ def main() -> int:
                 status_source=lambda: controller_status.encode(session.rig.line),
                 on_setpoint=session.setpoint_raw, setpoint_source=session.setpoint_values,
             )
-        modbus = ModbusServer(store, port=args.modbus_port, lock=session.lock)
+        warning = exposure_warning(args.bind)
+        if warning:
+            print(warning, file=sys.stderr, flush=True)
+        modbus = ModbusServer(store, host=args.bind, port=args.modbus_port, lock=session.lock)
         threading.Thread(target=modbus.serve_forever, daemon=True, name="controllab-modbus").start()
-        print(f"Modbus TCP: 127.0.0.1:{modbus.server_address[1]}  (map: docs/MODBUS-MAP.md)")
+        print(f"Modbus TCP: {args.bind}:{modbus.server_address[1]}  (map: docs/MODBUS-MAP.md)")
     mqtt_halt = threading.Event()
     if args.mqtt is not None:
         from services.protocols import mqtt

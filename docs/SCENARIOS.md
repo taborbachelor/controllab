@@ -437,5 +437,7 @@ interlock: "Bin not low"
 - [`CONTROL-LAB.md`](CONTROL-LAB.md) §5 (the equipment, I/O and faults) and
   §6 (modes, states and the interlock table) are the behavior the scenarios
   check.
+- [`CONNECTING-A-CONTROLLER.md`](CONNECTING-A-CONTROLLER.md) runs the same
+  scenarios against your own control logic.
 - `python scripts/scenario_report.py --markdown report.md` runs the whole
   suite into a commissioning report with the interlock coverage matrix.

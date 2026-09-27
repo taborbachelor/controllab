@@ -79,7 +79,7 @@ Written by the controller in external-controller mode (FC 16); read-only with th
 | 5 | 40006 | `first_out` | 1 + bit number of the first-out alarm (0 = none) | | |
 | 6 | 40007 | `hmi_ack` | HMI acknowledge word (controller → ControlLab) | | |
 | 7 | 40008 | `start_inhibit` | Why the most recent start, reset or mode request was refused (bits; 0 = none) | | |
-| 8 | 40009 | `mode` | Operator-selected mode (0 = AUTO, 1 = MANUAL) | | |
+| 8 | 40009 | `mode` | Operator-selected mode (0 = AUTO, 1 = MANUAL, 2 = BATCH) | | |
 | 9 | 40010 | `alarms_active_2` | Alarm bits 16-31: condition active | | |
 | 10 | 40011 | `alarms_unacked_2` | Alarm bits 16-31: not yet acknowledged | | |
 | 11 | 40012 | `source_bin` | Source bin the next start draws from (1 = A, 2 = B, 3 = C) | | |

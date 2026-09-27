@@ -6,6 +6,7 @@ and print an engineering result for each.
     controllab test my_scenarios/                   # your own scenario files (a .yaml file or a directory)
     controllab test --runtime modbus                # the same controller, out of process, over Modbus TCP
     controllab test --runtime openplc jam           # OpenPLC in real time (examples/openplc set up first)
+    controllab test --runtime external my_scenarios/    # your own controller, polling the plant on 5020
     controllab test --regression jam-trip-removed   # prove the suite catches a deliberate regression
     controllab test --list-regressions
 
@@ -22,6 +23,7 @@ import sys
 import time
 from pathlib import Path
 
+from services.testing.realtime import ControllerRestartError
 from services.testing.regressions import REGRESSIONS
 from services.testing.runner import run_scenario
 from services.testing.scenario import Scenario, ScenarioLoadError
@@ -57,23 +59,57 @@ def select(patterns: list[str]) -> list[Scenario]:
     return chosen
 
 
-def _run_all(scenarios, runtime, regression, plc_url):
-    if runtime == "openplc":
+REALTIME = ("openplc", "external")  # free-running controllers: the plant is served, paced on the wall clock
+EXTERNAL_LABEL = "Your controller over Modbus TCP (real time)"
+
+
+def _controller(args):
+    """The free-running controller under test, for a real-time runtime."""
+    if args.runtime == "openplc":
         from services.protocols.openplc import OpenPLCController
+
+        return OpenPLCController(args.plc)
+    from services.testing.realtime import ExternalController
+
+    return ExternalController(args.restart_cmd)
+
+
+def _register_map(args):
+    from services.protocols.line_map import LINE_REGISTER_MAP
+
+    if args.map is None:
+        return LINE_REGISTER_MAP
+    from services.protocols.map_file import load_map
+    from services.simulation.engine.plant_io import build_line_io_image
+
+    return load_map(args.map, build_line_io_image())[0]
+
+
+def _run_all(scenarios, args, regression, controller):
+    if args.runtime in REALTIME:
+        from services.protocols.modbus import exposure_warning
         from services.testing.realtime import RealtimePlant, run_realtime
 
-        plant, controller = RealtimePlant(), OpenPLCController(plc_url)
+        register_map = _register_map(args)
+        status = not args.no_status and bool(register_map.status_registers)
+        warning = exposure_warning(args.bind)
+        if warning:
+            print(warning, file=sys.stderr, flush=True)
+        plant = RealtimePlant(host=args.bind, port=args.modbus_port, register_map=register_map)
+        if args.runtime == "external":
+            print(f"Plant served on {plant.host}:{plant.port}: your controller should be polling it now.\n",
+                  flush=True)
         try:
             for s in scenarios:
                 t0 = time.monotonic()
-                yield s, run_realtime(s, plant, controller), time.monotonic() - t0
+                yield s, run_realtime(s, plant, controller, status=status), time.monotonic() - t0
         finally:
             controller.close()
             plant.close()
         return
     for s in scenarios:
         t0 = time.monotonic()
-        result = run_scenario(s, external=runtime == "modbus", line_cls=regression.cls if regression else None)
+        result = run_scenario(s, external=args.runtime == "modbus", line_cls=regression.cls if regression else None)
         yield s, result, time.monotonic() - t0
 
 
@@ -89,8 +125,18 @@ def cmd_test(args) -> int:
         if args.runtime != "python":
             raise SystemExit("--regression swaps the in-process Python controller; use --runtime python")
         regression = REGRESSIONS[args.regression]
+    realtime_only = [flag for flag, used in (("--restart-cmd", args.restart_cmd), ("--map", args.map),
+                                            ("--no-status", args.no_status),
+                                            ("--bind", args.bind != "127.0.0.1"),
+                                            ("--modbus-port", args.modbus_port != 5020)) if used]
+    if realtime_only and args.runtime not in REALTIME:
+        raise SystemExit(f"{', '.join(realtime_only)}: only for a real-time runtime (--runtime openplc or external)")
+    if args.restart_cmd and args.runtime != "external":
+        raise SystemExit("--restart-cmd is for --runtime external (ControlLab restarts OpenPLC itself)")
     scenarios = select(args.patterns)
-    runtime = RUNTIMES[args.runtime]
+    controller = _controller(args) if args.runtime in REALTIME else None
+    label = f"{EXTERNAL_LABEL}: {controller.name}" if args.runtime == "external" else RUNTIMES[args.runtime]
+    runtime = label
     if regression:
         runtime += f" -- build with deliberate regression '{regression.name}'"
     print(f"Runtime: {runtime}")
@@ -100,8 +146,8 @@ def cmd_test(args) -> int:
 
     summaries = []
     try:
-        for scenario, result, wall in _run_all(scenarios, args.runtime, regression, args.plc):
-            s = summarize(scenario, result, RUNTIMES[args.runtime], wall_time_s=wall, root=SCENARIOS_DIR,
+        for scenario, result, wall in _run_all(scenarios, args, regression, controller):
+            s = summarize(scenario, result, label, wall_time_s=wall, root=SCENARIOS_DIR,
                           regression=regression.name if regression else None)
             summaries.append(s)
             mark = s.verdict + ("*" if s.qualifier else "")
@@ -110,6 +156,8 @@ def cmd_test(args) -> int:
         # A malformed scenario (an unknown key, a value of the wrong shape)
         # is found as it runs: say which and why, not a traceback.
         raise SystemExit(f"scenario error: {e}") from None
+    except ControllerRestartError as e:
+        raise SystemExit(f"stopped: {e}") from None
 
     failed = [s for s in summaries if not s.passed]
     detail = failed if not args.verbose else summaries
@@ -139,11 +187,24 @@ def main(argv: list[str] | None = None) -> int:
     t = sub.add_parser("test", help="run scenarios against a control runtime")
     t.add_argument("patterns", nargs="*", help="scenario name fragments, or paths to your own .yaml files or directories "
                    "(default: the whole suite)")
-    t.add_argument("--runtime", choices=tuple(RUNTIMES), default="python")
+    t.add_argument("--runtime", choices=(*RUNTIMES, "external"), default="python",
+                   help="external: your own controller, polling the plant ControlLab serves (docs/CONNECTING-A-CONTROLLER.md)")
     t.add_argument("--regression", help="run a deliberately broken controller build (a testing fixture)")
     t.add_argument("--list-regressions", action="store_true")
     t.add_argument("--plc", default="http://127.0.0.1:8080", help="OpenPLC web UI (--runtime openplc)")
     t.add_argument("-v", "--verbose", action="store_true", help="print the full result for every scenario")
+    rt = t.add_argument_group("real-time runtimes (openplc, external)")
+    rt.add_argument("--modbus-port", type=int, default=5020, help="port the plant is served on (default 5020)")
+    rt.add_argument("--bind", default="127.0.0.1",
+                    help="address the plant is served on (default 127.0.0.1, this machine only); another address "
+                    "exposes unauthenticated Modbus to the network: an isolated bench network only")
+    rt.add_argument("--map", type=Path, default=None,
+                    help="serve the plant at the addresses in this I/O map file (configs/io/)")
+    rt.add_argument("--no-status", action="store_true",
+                    help="the controller publishes no status block: expectations on its state are not observed")
+    rt.add_argument("--restart-cmd", default=None,
+                    help="--runtime external: a shell command that restarts your controller before every scenario "
+                    "(must exit 0); without it, each scenario starts from acknowledge + reset to a clean IDLE")
     t.set_defaults(func=cmd_test)
     args = parser.parse_args(argv)
     return args.func(args)

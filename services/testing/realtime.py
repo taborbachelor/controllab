@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import itertools
 import math
+import subprocess
 import threading
 import time
 from collections.abc import Callable
@@ -143,6 +144,48 @@ class ReferenceController:
             self._stop.set()
             self._thread.join(timeout=5)
             self._thread = None
+
+
+class ControllerRestartError(RuntimeError):
+    """The restart command for the controller under test failed: the run
+    can't promise the scenario a known starting state, so it stops."""
+
+
+class ExternalController:
+    """A controller ControlLab doesn't manage: the engineer's own PLC, soft
+    PLC or program, already running and polling the plant's port.
+    ControlLab can't power-cycle it, so between scenarios it either runs
+    the engineer's `restart_cmd` (a script that restarts their runtime;
+    it must return 0), or, without one, relies on the power-up procedure
+    alone: acknowledge and reset until a clean IDLE. That is weaker than a
+    cold restart (a value the program keeps across a reset, a counter or
+    a latched mode, carries over from one scenario to the next), and the
+    controller's name says so, so every report carries it."""
+
+    def __init__(self, restart_cmd: str | None = None, restart_timeout_s: float = 120.0) -> None:
+        self.restart_cmd = restart_cmd
+        self.restart_timeout_s = restart_timeout_s
+        self.name = ("external controller, restarted before each scenario by `" + restart_cmd + "`"
+                     if restart_cmd else
+                     "external controller, NOT restarted between scenarios (each starts from the power-up "
+                     "procedure only: acknowledge, reset, clean IDLE)")
+
+    def restart(self) -> None:
+        if not self.restart_cmd:
+            return
+        try:
+            done = subprocess.run(self.restart_cmd, shell=True, capture_output=True, text=True,
+                                  timeout=self.restart_timeout_s)
+        except subprocess.TimeoutExpired:
+            raise ControllerRestartError(
+                f"restart command `{self.restart_cmd}` did not finish within {self.restart_timeout_s:g}s") from None
+        if done.returncode != 0:
+            output = (done.stdout + done.stderr).strip()
+            raise ControllerRestartError(
+                f"restart command `{self.restart_cmd}` exited {done.returncode}" + (f": {output}" if output else ""))
+
+    def close(self) -> None:
+        pass
 
 
 class RealtimePlant:
@@ -453,6 +496,7 @@ def run_suite_realtime(
 
 
 __all__ = [
-    "CONTROLLER_SILENCE_S", "ControllerUnderTest", "LATENCY_S", "MAX_LAG_S",
+    "CONTROLLER_SILENCE_S", "ControllerRestartError", "ControllerUnderTest", "ExternalController", "LATENCY_S",
+    "MAX_LAG_S",
     "RealtimePlant", "ReferenceController", "RepeatedRuns", "run_realtime", "run_suite_realtime",
 ]

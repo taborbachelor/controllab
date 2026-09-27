@@ -125,7 +125,7 @@ LINE_REGISTER_MAP = dataclasses.replace(
 LINE_REGISTER_MAP = dataclasses.replace(
     LINE_REGISTER_MAP,
     status_registers=LINE_REGISTER_MAP.status_registers
-    + (StatusRegister("mode", 8, "Operator-selected mode (0 = AUTO, 1 = MANUAL)"),),
+    + (StatusRegister("mode", 8, "Operator-selected mode (0 = AUTO, 1 = MANUAL, 2 = BATCH)"),),
 )
 # Master specification, item 6: alarm bits 16-31 (the second word of each
 # mask) and the bins, appended at 9-12; the write range grows to 0-12.

@@ -38,10 +38,13 @@ a serial gateway, and a single simulated plant has one device.
 
 Security: Modbus has no authentication by design. ModbusServer binds
 127.0.0.1 unless told otherwise; exposing it on a network is an explicit
-choice for the caller to make.
+choice for the caller to make (`--bind`, for a hardware PLC on a bench
+network), and exposure_warning() is what every entry point prints when
+it is made.
 """
 from __future__ import annotations
 
+import ipaddress
 import os
 import socketserver
 import struct
@@ -271,6 +274,20 @@ class _Handler(socketserver.BaseRequestHandler):
                 response = handle_adu(self.server.store, header + rest)
             if response is not None:
                 self.request.sendall(response)
+
+
+def exposure_warning(host: str) -> str | None:
+    """What to tell the person who serves the plant on `host`, if it is
+    reachable from another machine: None for a loopback address."""
+    try:
+        if ipaddress.ip_address(host).is_loopback:
+            return None
+    except ValueError:
+        if host == "localhost":
+            return None
+    return (f"WARNING: serving the plant's Modbus TCP on {host}, reachable from other machines. Modbus has no "
+            f"authentication: anything that can reach this port can drive the simulated line. Use an isolated "
+            f"bench network only, never a plant or office network.")
 
 
 class ModbusServer(socketserver.ThreadingTCPServer):

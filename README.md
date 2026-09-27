@@ -45,7 +45,7 @@ still plugged.
 - Mass is conserved to the milligram and checked on every scan, and every
   run is deterministic, so the same scenario gives the same result every
   time.
-- 1,044 automated tests, run on every push (Python 3.12 and 3.13; the badge
+- 1,051 automated tests, run on every push (Python 3.12 and 3.13; the badge
   above is the latest run). The demo site is rebuilt from the current code
   on every push too, so it can't drift from the repository.
 
@@ -63,7 +63,7 @@ pytest                             # the full test suite, every scenario include
 ```
 
 A ten-minute walkthrough for showing it to another engineer:
-[`docs/DEMO.md`](docs/DEMO.md). Writing your own scenarios: [`docs/SCENARIOS.md`](docs/SCENARIOS.md).
+[`docs/DEMO.md`](docs/DEMO.md). Writing your own scenarios: [`docs/SCENARIOS.md`](docs/SCENARIOS.md). Running them against your own PLC or soft PLC: [`docs/CONNECTING-A-CONTROLLER.md`](docs/CONNECTING-A-CONTROLLER.md).
 
 ## 1. What is ControlLab?
 
@@ -326,12 +326,13 @@ python scripts/dashboard.py --opcua 4840            # also serve OPC UA (pip ins
 python scripts/scenario_report.py --external        # the suite across Modbus, lockstep
 python scripts/scenario_report.py --realtime reference --speed 4    # against a free-running controller
 python scripts/scenario_report.py --realtime openplc --repeat 3     # against OpenPLC (examples/openplc)
+controllab test --runtime external my_scenarios/   # against your own controller, polling port 5020
 controllab test --runtime openplc normal_operation  # one scenario on OpenPLC, full result
 controllab test --list-regressions
 python scripts/review_candidates.py candidates/     # the review gate, on proposed scenarios
 ```
 
-Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md).
+Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md). Your own controller: [`docs/CONNECTING-A-CONTROLLER.md`](docs/CONNECTING-A-CONTROLLER.md).
 
 ## Documentation
 
@@ -340,11 +341,12 @@ Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md).
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): layers, runtimes, module responsibilities.
 - [`docs/CONTROL-LAB.md`](docs/CONTROL-LAB.md): the specification, the phased roadmap, and the change log with every finding.
 - [`docs/AI.md`](docs/AI.md): the optional AI layer.
+- [`docs/CONNECTING-A-CONTROLLER.md`](docs/CONNECTING-A-CONTROLLER.md): your own PLC or soft PLC against the plant and the scenarios.
 - [`docs/MODBUS-MAP.md`](docs/MODBUS-MAP.md): the register map.
 
 ## Status
 
-All roadmap phases are complete, and 1,044 tests pass.
+All roadmap phases are complete, and 1,051 tests pass.
 
 | Phase | Focus | Status |
 |---|---|---|

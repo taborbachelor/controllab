@@ -9,6 +9,7 @@ report: pass/fail per scenario, then the interlock coverage matrix
     python scripts/scenario_report.py --external    # same suite, controller across Modbus
     python scripts/scenario_report.py --realtime reference --speed 4
     python scripts/scenario_report.py --realtime openplc --repeat 3 --markdown report.md
+    python scripts/scenario_report.py --realtime external --restart-cmd "restart-my-plc.bat"
 
 --realtime runs the suite against a FREE-RUNNING controller (Phase 9,
 services/testing/realtime.py): the plant is served on 127.0.0.1:--modbus-port
@@ -16,7 +17,12 @@ and paced on the wall clock. `reference` is ControlLab's own controller in a
 thread; `openplc` is an OpenPLC Runtime already set up to poll that port
 (examples/openplc/README.md, with scripts/dashboard.py NOT running, since
 this takes its port), cold-restarted through its web UI before every
-scenario. --repeat runs the whole suite that many times and reports the
+scenario. `external` is any other controller already polling that port
+(your own PLC or soft PLC; docs/CONNECTING-A-CONTROLLER.md): restarted by
+--restart-cmd before every scenario, or, without it, brought to a clean
+IDLE by the power-up procedure alone, which the report states. --bind
+serves the plant on another address, for a PLC on another machine.
+--repeat runs the whole suite that many times and reports the
 response-time spread.
 
 --out saves the console text below. --markdown writes the full
@@ -39,6 +45,7 @@ from pathlib import Path
 from services.testing.commissioning_report import RealtimeConditions, render_markdown
 from services.testing.report import CoverageReport, build_report
 from services.testing.report_export import build_info, render_html, report_dict
+from services.testing.realtime import ControllerRestartError
 from services.testing.runner import run_scenario
 from services.testing.scenario import Scenario, ScenarioLoadError
 
@@ -147,8 +154,18 @@ def main() -> int:
         help="also write a print-ready HTML report to this file (print it to PDF for the PDF report)",
     )
     rt = parser.add_argument_group("real-time run against a free-running controller (Phase 9)")
-    rt.add_argument("--realtime", choices=("reference", "openplc"), default=None)
+    rt.add_argument("--realtime", choices=("reference", "openplc", "external"), default=None)
     rt.add_argument("--modbus-port", type=int, default=5020, help="port the plant is served on (the one the PLC polls)")
+    rt.add_argument(
+        "--bind", default="127.0.0.1",
+        help="address the plant is served on (default 127.0.0.1, this machine only); another address exposes "
+        "unauthenticated Modbus to the network: an isolated bench network only",
+    )
+    rt.add_argument(
+        "--restart-cmd", default=None,
+        help="--realtime external: a shell command that restarts your controller, run before every scenario "
+        "(must exit 0)",
+    )
     rt.add_argument(
         "--map", type=Path, default=None,
         help="serve the plant at the addresses in this I/O map file (configs/io/) instead of the built-in map; "
@@ -170,6 +187,10 @@ def main() -> int:
         parser.error("--realtime and --external are different modes; pick one")
     if (args.no_status or args.map) and not args.realtime:
         parser.error("--no-status and --map apply to --realtime runs")
+    if args.restart_cmd and args.realtime != "external":
+        parser.error("--restart-cmd applies to --realtime external (ControlLab restarts the others itself)")
+    if args.realtime == "external" and args.speed != 1.0:
+        parser.error("an external controller's timers run on wall time: --realtime external runs at --speed 1")
     if args.realtime == "openplc" and args.speed != 1.0:
         parser.error("a real PLC's timers run on wall time: --realtime openplc runs at --speed 1")
 
@@ -179,7 +200,7 @@ def main() -> int:
     if args.realtime:
         try:
             results, conditions, controller_name = _run_realtime(args, scenarios)
-        except ScenarioLoadError as e:
+        except (ScenarioLoadError, ControllerRestartError) as e:
             print(f"FATAL: {e}", file=sys.stderr)
             return 2
     else:
@@ -221,7 +242,10 @@ def main() -> int:
 
 
 def _run_realtime(args, scenarios):
-    from services.testing.realtime import LATENCY_S, RealtimePlant, ReferenceController, run_suite_realtime
+    from services.protocols.modbus import exposure_warning
+    from services.testing.realtime import (
+        LATENCY_S, ExternalController, RealtimePlant, ReferenceController, run_suite_realtime,
+    )
 
     latency = LATENCY_S if args.latency is None else args.latency
     if args.map is not None:
@@ -231,8 +255,13 @@ def _run_realtime(args, scenarios):
         register_map, _ = load_map(args.map, build_line_io_image())
     else:
         from services.protocols.line_map import LINE_REGISTER_MAP as register_map
-    plant = RealtimePlant(port=args.modbus_port, register_map=register_map)
-    if args.realtime == "openplc":
+    warning = exposure_warning(args.bind)
+    if warning:
+        print(warning, file=sys.stderr, flush=True)
+    plant = RealtimePlant(host=args.bind, port=args.modbus_port, register_map=register_map)
+    if args.realtime == "external":
+        controller = ExternalController(args.restart_cmd)
+    elif args.realtime == "openplc":
         from services.protocols.openplc import OpenPLCController
 
         controller = OpenPLCController(args.plc, args.plc_user, args.plc_password)
@@ -246,7 +275,7 @@ def _run_realtime(args, scenarios):
         print(f"  pass {n}/{args.repeat}  {console_mark(result):5} {result.elapsed_s:5.2f}s  {scenario.name}", flush=True)
 
     where = f", map {args.map.as_posix()}" if args.map else ""
-    print(f"Real-time run: {controller.name}; plant on 127.0.0.1:{plant.port}{where}, {args.speed:g}x, "
+    print(f"Real-time run: {controller.name}; plant on {plant.host}:{plant.port}{where}, {args.speed:g}x, "
           f"latency tolerance {latency:g}s, {args.repeat} pass(es), "
           f"{'status block' if status else 'no status block'}", flush=True)
     try:
