@@ -66,7 +66,10 @@ class AnthropicProvider:
     JSON output. Server-side refusal fallback is on (`fallbacks="default"`),
     per Anthropic's guidance for Claude Opus 5: a declined request is
     re-run on the recommended fallback model instead of failing; a decline
-    that survives the fallback is reported as a ProviderError."""
+    that survives the fallback is reported as a ProviderError. Kept on
+    purpose (decided 2026-09-27): `Completion.model` is `response.model`,
+    the model that actually answered, so every artifact's provenance
+    names the fallback model when one ran."""
 
     name = "anthropic"
 

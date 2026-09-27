@@ -91,6 +91,15 @@ refusal fallback on. A refusal, a truncated answer (`max_tokens` is
 always passed and hitting it is an error), or invalid JSON raises
 `ProviderError`; nothing partial is ever used.
 
+The fallback is a deliberate choice (decided 2026-09-27): if the model
+declines a request, the API re-runs it on a fallback model in the same
+call rather than failing it. It changes nothing about trust: the
+provenance written into every generated scenario and every analysis is
+the model that actually answered (`response.model`, the fallback model
+when one ran), and a generated scenario still has to pass the same
+deterministic review gate as a hand-written one. A decline that survives
+the fallback is still a `ProviderError`.
+
 ## Scenario generation
 
 `python scripts/ai_generate.py "cover gate faults during shutdown" --count 3`

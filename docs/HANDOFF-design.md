@@ -34,7 +34,7 @@ and passes (checked before step 1). Now **1,051 tests** (1,045 run anywhere + 6 
    status (still says 51 scenarios / 13 rows / 38/38), the §10 wrap-up tick, a change-log row.
 3. Then a release: `pyproject.toml` version (0.1.0 now), tag, release notes. Install stays clone +
    `pip install -e .` (the CLI finds `scenarios/` by path); say so in the notes.
-4. `fallbacks="default"` in `services/ai/provider.py`: Tabor's call, still open.
+4. DONE (2026-09-27): `fallbacks="default"` kept, Tabor's call; recorded in docs/AI.md.
 5. Delete this file when 1-2 are done.
 
 ## Update — 2026-09-26, second controls session (read this first)
