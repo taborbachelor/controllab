@@ -16,6 +16,64 @@ the same repo) is the other; leave it alone. The two sessions collided on
 this filename once (2026-09-26); the design session moved its file, so
 this name stays with the controls work.
 
+## Frontend/controls boundary — confirmed by Tabor, 2026-09-27 (binding; read this)
+
+Tabor confirmed this boundary for both sessions on 2026-09-27. It is the
+controls side's record of the agreement; the full text is §16.3 of the
+frontend spec (Claude Doc "ControlLab Frontend Design Specification",
+https://claude.ai/code/artifact/6045a954-c544-44da-b5bd-6b04cd863a67).
+
+**C1 — Structured standing cause (to build; not built yet).** Add the
+standing cause to `LiveSession.snapshot()` as a structured field, from the
+authoritative `standing_cause()`. The field name and schema are the controls
+session's choice, consistent with the existing snapshot contract. The
+frontend will consume it for the live cause halo and "Can't reset yet"
+and will not parse refusal text. Recordings are unaffected (replays carry no
+preview; the replay halo follows the recorded controller alarm). It does not
+block the frontend's first design steps.
+
+**C2 — The `live.py` seam.** Controls owns `LiveSession`, `Pacer`, every
+snapshot field, the verification/test restrictions
+(`_refuse_while_verifying`) and the stimuli. Frontend owns the fields the
+HTTP handler attaches for the page (where `state["story"] = narrate(state)`
+is today), narration, copy and presentation state, and handler-level
+serialisation. The frontend may add handler-attached fields without
+modifying `snapshot()`. New routes require agreement.
+
+**C3 — File ownership.**
+- Frontend: `services/visualization/` `hmi.css`, `hmi.js`,
+  `live_template.html`, `replay_template.html`, `page.py`, `narrate.py`,
+  `walkthroughs.py`, `replay.py`, `mimic.svg.html` and new UI modules;
+  `scripts/replay.py`, `scripts/build_site.py`; the style guide;
+  `docs/images/` except `dashboard-parity.jpg`; UI tests (`test_hmi_js`,
+  `test_replay`, `test_narrate`, `test_walkthroughs`, `test_build_site`).
+- Controls: `services/control/`, `simulation/`, `telemetry/`, `testing/`
+  (except `verdict.py`), `protocols/`, `ai/`, `services/cli.py`;
+  `examples/openplc/`; `scenarios/`; the other scripts; `docs/SCENARIOS.md`,
+  `docs/MODBUS-MAP.md`, `docs/AI.md`, `docs/CONNECTING-A-CONTROLLER.md`; the
+  contract tests (`test_snapshot_contract`, `test_preview`,
+  `test_refusal_reporting`), which the frontend keeps green; every controller
+  and simulation test.
+- Shared, changed only by agreement: `live.py` (seam above); `verify.py`;
+  `services/testing/verdict.py`; `scripts/dashboard.py`;
+  `test_live_session`, `test_live_server`, `test_verify`; `README.md`;
+  `docs/ARCHITECTURE.md`, `docs/CONTROL-LAB.md` (append-only change log);
+  `docs/DEMO.md`; `docs/images/dashboard-parity.jpg` (controls provides and
+  maintains the OpenPLC environment and line state for the capture; frontend
+  captures and validates the image).
+- `replay.py` keeps `plant` in every frame; new recorded data arrives through
+  `Plant.readings()` / `TagHistory`, not `build_frames` edits.
+
+**C4 — Working rules.**
+1. Either session says so, through Tabor, before editing a file the other owns.
+2. Shared files change only after both sessions agree.
+3. Each session checks `git log` on a file immediately before editing it.
+4. Frontend work reaches `main` only as merges from `frontend/redesign`
+   after browser validation.
+
+(This section was written by the frontend session on Tabor's instruction,
+the one agreed exception to rule 1.)
+
 ## Update — 2026-09-27, delivery session (read this first)
 
 **Goal (Tabor):** get ControlLab usable by an outside controls engineer who will read it, run it on their own
