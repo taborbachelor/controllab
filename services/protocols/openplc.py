@@ -15,6 +15,16 @@ start_plc both were gone, and the PLC booted ESTOPPED, as it does on
 first power-up, because its first scans run before its first Modbus
 poll. While stopped it writes nothing. A restart takes about 4 s.
 
+**A restart is confirmed, never assumed** (found 2026-09-27, when the
+three-pass report came back 0/65): an hour into the run the web session
+was lost, OpenPLC answered every stop_plc and start_plc with a redirect
+to its login page, and nothing was restarted, so every later scenario
+ran against the PLC's state from the one before (a batch warning left
+latched). Now a request that lands on the login page logs in again and
+is retried once, and each step must land on the dashboard showing the
+runtime's own status: Stopped after stop_plc, Running after start_plc.
+Anything else is an OpenPLCError, which stops the run and says why.
+
 Stdlib only.
 """
 from __future__ import annotations
@@ -40,8 +50,12 @@ class OpenPLCWeb:
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
     def get(self, path: str) -> str:
+        return self.get_landing(path)[1]
+
+    def get_landing(self, path: str) -> tuple[str, str]:
+        """GET, following redirects: the path it landed on, and the page."""
         with self.opener.open(self.base + path, timeout=self.timeout_s) as r:
-            return r.read().decode("utf-8", "replace")
+            return urllib.parse.urlsplit(r.geturl()).path, r.read().decode("utf-8", "replace")
 
     def post(self, path: str, fields: dict[str, str]) -> str:
         data = urllib.parse.urlencode(fields).encode()
@@ -90,12 +104,29 @@ class OpenPLCController:
         self._web: OpenPLCWeb | None = None
 
     def restart(self) -> None:
-        if self._web is None:
-            web = OpenPLCWeb(self.url)
-            web.login(self._user, self._password)
-            self._web = web
-        self._web.get("/stop_plc")
-        self._web.get("/start_plc")
+        self._press("/stop_plc", "Stopped")
+        self._press("/start_plc", "Running")
+
+    def _press(self, path: str, status: str) -> None:
+        """One of the web UI's buttons, confirmed: it must land on the
+        dashboard reporting `status`. Landing on the login page means the
+        session was lost: log in again and press once more."""
+        for attempt in (1, 2):
+            if self._web is None:
+                web = OpenPLCWeb(self.url)
+                web.login(self._user, self._password)
+                self._web = web
+            landed, page = self._web.get_landing(path)
+            if landed.rstrip("/") != "/login":
+                break
+            self._web = None  # the session is gone
+        else:
+            raise OpenPLCError(f"OpenPLC sent {path} to its login page even after logging in again; "
+                               f"the PLC was not restarted")
+        if f">{status}</font>" not in page:
+            shown = "Running" if ">Running</font>" in page else "Stopped" if ">Stopped</font>" in page else "no status"
+            raise OpenPLCError(f"OpenPLC did not confirm {path}: expected its dashboard to say {status}, "
+                               f"it says {shown} (landed on {landed}); the PLC was not restarted")
 
     def close(self) -> None:
         self._web = None

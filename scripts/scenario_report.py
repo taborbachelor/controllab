@@ -45,6 +45,7 @@ from pathlib import Path
 from services.testing.commissioning_report import RealtimeConditions, render_markdown
 from services.testing.report import CoverageReport, build_report
 from services.testing.report_export import build_info, render_html, report_dict
+from services.protocols.openplc import OpenPLCError
 from services.testing.realtime import ControllerRestartError
 from services.testing.runner import run_scenario
 from services.testing.scenario import Scenario, ScenarioLoadError
@@ -200,7 +201,7 @@ def main() -> int:
     if args.realtime:
         try:
             results, conditions, controller_name = _run_realtime(args, scenarios)
-        except (ScenarioLoadError, ControllerRestartError) as e:
+        except (ScenarioLoadError, ControllerRestartError, OpenPLCError) as e:
             print(f"FATAL: {e}", file=sys.stderr)
             return 2
     else:
