@@ -1,6 +1,6 @@
 [project]
 name = "controllab"
-version = "0.1.0"
+version = "1.0.0"
 description = "Virtual commissioning and control-system test environment for industrial automation."
 readme = "README.md"
 requires-python = ">=3.12"
