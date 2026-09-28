@@ -16,7 +16,8 @@ from services.visualization.page import HERE, assemble
 
 # The frontend sources the lint covers. tokens.css is the one place a value
 # may be written, so it is left out on purpose.
-SOURCES = ("hmi.css", "hmi.js", "mimic.svg.html", "live_template.html", "replay_template.html", "styleguide.py")
+SOURCES = ("hmi.css", "hmi.js", "mimic.svg.html", "live_template.html", "replay_template.html", "styleguide.py",
+           "components.css", "components.js", "icons.svg.html")
 RAW_COLOUR = re.compile(
     r"(?<![&\w])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b"  # hex, not an entity or an id selector
     r"|\b(?:rgba?|hsla?)\(")
@@ -78,7 +79,7 @@ def test_every_page_inlines_the_tokens_ahead_of_the_styles(template):
 
 
 def test_every_animation_is_switched_off_under_reduced_motion():
-    css = source("hmi.css") + source("replay_template.html")
+    css = source("hmi.css") + source("replay_template.html") + source("components.css")
     animated = {sel.strip() for sel in re.findall(r"([^{}]+)\{[^{}]*\banimation:(?!\s*none\b)[^;}]+", css)}
     reduced = " ".join(re.findall(r"@media \(prefers-reduced-motion: reduce\) \{(.*?)\}\s*\}", css, re.S))
     assert animated, "expected the belt-flow animation"

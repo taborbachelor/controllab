@@ -1,0 +1,54 @@
+/* Components (frontend redesign, build step 7; the design specification's
+   section 7). One class family per component, .c-<name>, variants as
+   .c-<name>--<variant>; state rides on ARIA or data-* attributes, never on
+   extra classes. Every value comes from tokens.css. The render functions are
+   in components.js; the words come from copytext.py. */
+
+.c-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+.c-icon { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5;
+          stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; }
+.c-icon[hidden] { display: none; }
+:where([class^="c-"], [class*=" c-"]):focus-visible,
+:where([class^="c-"], [class*=" c-"]) :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* StateBadge: the line state in fixed words (spec 5.1). Meaning is carried by
+   the words; fill, outline style and icon only reinforce them. */
+.c-badge { display: inline-flex; align-items: center; gap: var(--sp-1); padding: var(--sp-1) var(--sp-2);
+           border: 2px solid var(--equip-stroke); border-radius: var(--radius-sm);
+           background: var(--surface-raised); color: var(--ink);
+           font: 700 var(--fs-sm)/1.2 var(--font-ui); letter-spacing: .04em; white-space: nowrap; }
+.c-badge[data-variant="dashed"] { border-style: dashed; }
+.c-badge[data-variant="on"] { background: var(--equip-on); border-color: var(--equip-on); color: var(--ink-inverse); }
+.c-badge[data-variant="manual"],
+.c-badge[data-variant="external"],
+.c-badge[data-variant="testing"] { border-color: var(--info); color: var(--info); }
+.c-badge[data-variant="trip"] { background: var(--trip); border-color: var(--trip); color: var(--ink-inverse); }
+.c-badge[data-variant="estop"] { background: var(--trip); border-color: var(--ink); color: var(--ink-inverse); }
+.c-badge[data-fresh] { animation: c-fade var(--dur) var(--ease); }
+@keyframes c-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* TagChip: a technical identifier, shown only while "Show technical
+   identifiers" is on (spec 2.3, D5): [data-ids="on"] on <html> or any ancestor. */
+.c-tag { display: none; margin-left: var(--sp-1); padding: 0 var(--sp-1); border: 1px solid var(--border);
+         border-radius: var(--radius-sm); background: var(--surface-sunken); color: var(--ink-muted);
+         font: var(--fs-xs)/1.4 var(--font-mono); white-space: nowrap; }
+[data-ids="on"] .c-tag { display: inline-block; }
+.c-tag[hidden] { display: none; }
+
+/* Panel: a titled region, section + h2 (spec 7.2). */
+.c-panel { min-width: 0; padding: var(--sp-4); border: 1px solid var(--border); border-radius: var(--radius-md);
+           background: var(--surface); }
+.c-panel__title { margin: 0 0 var(--sp-3); color: var(--ink); font: 600 var(--fs-md)/1.2 var(--font-ui); }
+
+/* Drawer: collapsible diagnostic or engineering content, native
+   details/summary, collapsed by default (spec 3.5). Opens without animation. */
+.c-drawer { border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-sunken); }
+.c-drawer > summary { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--control-h);
+                      padding: 0 var(--sp-3); cursor: pointer; list-style: none; font-weight: 600; }
+.c-drawer > summary::-webkit-details-marker { display: none; }
+.c-drawer[open] > summary .c-icon { transform: rotate(90deg); }
+.c-drawer__count { margin-left: auto; color: var(--ink-muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+.c-drawer__count[hidden] { display: none; }
+.c-drawer__body { padding: 0 var(--sp-3) var(--sp-3); }
+
+@media (prefers-reduced-motion: reduce) { .c-badge[data-fresh] { animation: none; } }

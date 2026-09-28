@@ -1451,6 +1451,46 @@ tokens; no layout changed.
   Modbus or recorded into replays. The frontend draws it and never parses
   refusal text (boundary C1, spec §16.3).
 
+## Module responsibilities (frontend redesign, step 7a: the component foundations)
+
+Step 7 builds the reusable components the redesigned pages are made of, in
+three parts (7a foundations, 7b the console controls, 7c alarms, history and
+test results; Tabor, 2026-09-28). They appear only in the style guide until
+the application shell (step 8) puts them into the pages, so the dashboard and
+the demo don't change yet.
+
+- **`services/visualization/components.js`**: each component is built once
+  and kept current by a pure, idempotent render function
+  (`renderStateBadge(el, data, copy)`). Every DOM change goes through
+  `patch(el, props)`, which writes only what differs: rendering the same data
+  twice writes nothing, so a focused control is never rebuilt and a screen
+  reader hears only real changes (today's pages rebuild whole regions every
+  100 ms poll and lose focus). 7a: `patch`, `h` (build a node), `icon`, and
+  StateBadge (every line state, plus EXTERNAL CONTROLLER and TESTING, with a
+  200 ms fade on change that reduced motion turns off), TagChip, Panel and
+  Drawer.
+- **`services/visualization/components.css`**: one `.c-<name>` class family
+  per component; state rides on `data-*` and ARIA attributes. Values come
+  only from `tokens.css` (the colour lint covers it). TagChips show only
+  under `[data-ids="on"]`, the "Show technical identifiers" switch.
+- **`services/visualization/icons.svg.html`**: the in-house icon set, 18
+  icons on a 16 px grid in `currentColor`, used through `<use href="#i-...">`.
+- **`services/visualization/copytext.py`**: the interface's fixed words
+  (7a: the line-state badges), so the page holds no identifier-to-words
+  table of its own (spec §5.4). It asserts that every `LineState` has a
+  badge; pages receive it as JSON (`ui_copy_json()`).
+- **The style guide** gains the icon set (plain markup) and a components
+  section drawn in the browser by the real render functions (Tabor,
+  2026-09-28: rendering at build time would have made Node a requirement for
+  building the site); the token sections still read without script.
+- **Tests:** `tests/unit/test_components.py` runs `components.js` in Node
+  against a small in-house DOM (`tests/unit/mini_dom.js`, no dependency)
+  that counts every write: every badge state renders its copy-table words,
+  variant and icon; a repeat render writes nothing; a state change patches
+  the same nodes; an unknown state is an error, not a blank badge; a drawer
+  keeps focus through an update. The icon set is pinned to the
+  specification's list.
+
 ## The self-explaining replay (readable cold)
 
 A replay of a scenario run carries the run's summary
