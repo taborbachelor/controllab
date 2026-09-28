@@ -68,3 +68,56 @@ def test_a_recording_shows_material_stranded_on_a_stopped_belt():
                 and f["plant"]["belt_load_kg"] > 0]
     assert stranded, "the tripped belt should hold material"
     assert all("belt_load_kg" in f["plant"] for f in frames)
+
+
+def test_a_standing_cause_is_data_the_picture_can_point_at():
+    """C1 of the frontend/controls boundary: the jam a reset waits out, with
+    the equipment it is on and the input showing it, never text to parse;
+    gone once the cause is."""
+    s = LiveSession()
+    s.command("start")
+    steps(s, 60)
+    assert s.snapshot()["standing_causes"] == []
+    s.stimulus("feeder_jam", True)
+    steps(s, 20)
+    snap = s.snapshot()
+    assert snap["state"] == "faulted"
+    assert snap["standing_causes"] == [{"reason": "feeder jam", "devices": ["FDR-103"], "tags": ["LSH-103"]}]
+    assert snap["values"]["LSH-103"] is True  # the tag named is the one showing it
+    s.stimulus("feeder_jam", False)
+    steps(s, 5)
+    assert s.snapshot()["standing_causes"] == []
+
+
+def test_standing_causes_come_in_the_order_a_reset_reports_them():
+    """Two causes at once (a feeder trip and a jam can't both stand: a
+    tripped feeder stops before its plug switch makes): the first is the one
+    the refused reset names, so the picture and the refusal can't disagree."""
+    s = LiveSession()
+    s.command("start")
+    steps(s, 60)
+    s.stimulus("conveyor_trip", True)
+    s.stimulus("sensor_failed", "WT-105")
+    steps(s, 20)
+    causes = s.snapshot()["standing_causes"]
+    assert [c["reason"] for c in causes] == ["conveyor trip", "hopper weight signal failed"]
+    assert [c["tags"] for c in causes] == [["M-104.OL"], ["WT-105.FLT"]]
+    assert causes[0]["reason"] == s.rig.line.standing_cause()
+    s.command("acknowledge")
+    s.command("reset")
+    steps(s, 2)
+    assert s.snapshot()["preview"]["reset"]["reasons"] == [f"trip cause still present: {causes[0]['reason']}"]
+
+
+def test_a_high_high_cause_names_the_measurements_that_vote():
+    """1oo2: the hopper full to 98 % trips on both the switch and the
+    transmitter, and both are named."""
+    s = LiveSession()
+    s.stimulus("hopper_level_pct", 98)
+    steps(s, 10)
+    causes = s.snapshot()["standing_causes"]
+    assert causes == [{"reason": "hopper high-high", "devices": ["HOP-105"], "tags": ["LSHH-105", "WT-105"]}]
+
+
+def test_an_external_controller_has_no_standing_causes_to_report():
+    assert LiveSession(external=True).snapshot()["standing_causes"] is None

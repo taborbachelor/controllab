@@ -21,7 +21,7 @@ from dataclasses import dataclass
 
 from services.control.interlocks import Interlocks
 from services.control.line_controller import LineController
-from services.control.line_state import StartInhibit
+from services.control.line_state import StandingCause, StartInhibit
 
 
 class JamTripRemoved(LineController):
@@ -53,19 +53,23 @@ class JamTripRemoved(LineController):
 
 class ResetIgnoresJam(LineController):
     """Reset allowed while the chute is still plugged: "operators need to
-    reset faster". Production's standing_cause, minus one branch."""
+    reset faster". Production's standing_causes, minus one branch
+    (standing_cause(), which a reset checks, is its first entry)."""
 
-    def standing_cause(self) -> str | None:
-        if self.interlocks.hopper_high_high:
-            return "hopper high-high"
+    def standing_causes(self) -> tuple[StandingCause, ...]:
+        il, causes = self.interlocks, []
+        if il.hopper_high_high:
+            votes = (("LSHH-105",) if il.hopper_high_high_switch else ()) + (
+                ("WT-105",) if il.hopper_high_high_weight_vote else ())
+            causes.append(StandingCause("hopper high-high", ("HOP-105",), votes))
         if self.conveyor_ctrl.faulted:
-            return "conveyor trip"
+            causes.append(StandingCause("conveyor trip", ("CV-104",), (self.conveyor_ctrl.fault_fb_tag,)))
         if self.feeder_ctrl.faulted:
-            return "feeder trip"
+            causes.append(StandingCause("feeder trip", ("FDR-103",), (self.feeder_ctrl.fault_fb_tag,)))
         # REGRESSION: the plug-switch (feeder jam) check was removed here.
-        if self.interlocks.hopper_weight_failed:
-            return "hopper weight signal failed"
-        return None
+        if il.hopper_weight_failed:
+            causes.append(StandingCause("hopper weight signal failed", ("HOP-105",), ("WT-105.FLT",)))
+        return tuple(causes)
 
 
 class _SwitchOnlyInterlocks(Interlocks):
