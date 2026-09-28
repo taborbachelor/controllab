@@ -56,7 +56,9 @@ from services.control.gate_control import GateControl
 from services.control.hopper_hysteresis import HopperHysteresis
 from services.control.interlocks import Interlocks
 from services.control.level_check import HopperLevelChecks
-from services.control.line_state import BINS, BatchStep, LineMode, LineState, Preview, StartInhibit, StartStep
+from services.control.line_state import (
+    BINS, BatchStep, LineMode, LineState, Preview, StandingCause, StartInhibit, StartStep,
+)
 from services.control.motor_control import MotorControl
 from services.simulation.engine.io_image import IOImage
 
@@ -865,17 +867,29 @@ class LineController:
         happens unconditionally in _clear_all_device_faults() once a reset
         is accepted; if the underlying problem is still there, the next
         start attempt fails again on its own."""
-        if self.interlocks.hopper_high_high:
-            return "hopper high-high"
+        causes = self.standing_causes()
+        return causes[0].reason if causes else None
+
+    def standing_causes(self) -> tuple[StandingCause, ...]:
+        """Every standing cause, in the order standing_cause() ranks them
+        (its answer is the first), each with the equipment it is on and the
+        inputs showing it (2026-09-27, for the HMI: the frontend draws these
+        and never parses a refusal's text). One list, so the reason a reset
+        is refused and what the picture points at can't drift apart."""
+        il, causes = self.interlocks, []
+        if il.hopper_high_high:  # 1oo2: name whichever measurement votes
+            votes = (("LSHH-105",) if il.hopper_high_high_switch else ()) + (
+                ("WT-105",) if il.hopper_high_high_weight_vote else ())
+            causes.append(StandingCause("hopper high-high", ("HOP-105",), votes))
         if self.conveyor_ctrl.faulted:
-            return "conveyor trip"
+            causes.append(StandingCause("conveyor trip", ("CV-104",), (self.conveyor_ctrl.fault_fb_tag,)))
         if self.feeder_ctrl.faulted:
-            return "feeder trip"
-        if self.interlocks.feeder_plugged:  # the jam is still in the chute
-            return "feeder jam"
-        if self.interlocks.hopper_weight_failed:  # the signal hasn't been restored
-            return "hopper weight signal failed"
-        return None
+            causes.append(StandingCause("feeder trip", ("FDR-103",), (self.feeder_ctrl.fault_fb_tag,)))
+        if il.feeder_plugged:  # the jam is still in the chute
+            causes.append(StandingCause("feeder jam", ("FDR-103",), ("LSH-103",)))
+        if il.hopper_weight_failed:  # the signal hasn't been restored
+            causes.append(StandingCause("hopper weight signal failed", ("HOP-105",), ("WT-105.FLT",)))
+        return tuple(causes)
 
     def _clear_all_device_faults(self) -> None:
         self.feeder_ctrl.clear_fault()

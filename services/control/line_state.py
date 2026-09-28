@@ -125,3 +125,16 @@ class Preview:
     accepted: bool
     inhibit: StartInhibit = StartInhibit.NONE
     reasons: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class StandingCause:
+    """A trip cause still observably present (LineController.standing_causes):
+    what a reset has to wait out, as data an HMI can draw rather than text it
+    would have to parse. `reason` is the trip reason's own words (the
+    `fault_reason` vocabulary), `devices` the equipment it is on, and `tags`
+    the inputs that show it is still there, read the moment it was asked."""
+
+    reason: str
+    devices: tuple[str, ...]
+    tags: tuple[str, ...]

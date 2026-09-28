@@ -483,6 +483,7 @@ class LiveSession:
                     "batch": None,
                     # An external controller can't be asked in advance: it decides when pressed.
                     "preview": None,
+                    "standing_causes": None,
                 }
             else:
                 controller = {
@@ -505,6 +506,13 @@ class LiveSession:
                     # What each refusable request would get if pressed now
                     # (LineController.preview): informs, never blocks.
                     "preview": _previews(line),
+                    # The trip causes still present, that a reset waits out
+                    # (LineController.standing_causes): reason, equipment and
+                    # the inputs showing it, first = the one a reset reports.
+                    "standing_causes": [
+                        {"reason": c.reason, "devices": list(c.devices), "tags": list(c.tags)}
+                        for c in line.standing_causes()
+                    ],
                     "start_step": line.start_step.name.lower() if line.start_step else None,
                     "alarms": [
                         {

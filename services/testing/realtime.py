@@ -147,8 +147,10 @@ class ReferenceController:
 
 
 class ControllerRestartError(RuntimeError):
-    """The restart command for the controller under test failed: the run
-    can't promise the scenario a known starting state, so it stops."""
+    """The controller under test could not be restarted (an external
+    controller's restart command failed, or OpenPLC didn't confirm its
+    stop and start): the run can't promise the scenario a known starting
+    state, so it stops."""
 
 
 class ExternalController:

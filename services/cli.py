@@ -23,6 +23,7 @@ import sys
 import time
 from pathlib import Path
 
+from services.protocols.openplc import OpenPLCError
 from services.testing.realtime import ControllerRestartError
 from services.testing.regressions import REGRESSIONS
 from services.testing.runner import run_scenario
@@ -156,7 +157,7 @@ def cmd_test(args) -> int:
         # A malformed scenario (an unknown key, a value of the wrong shape)
         # is found as it runs: say which and why, not a traceback.
         raise SystemExit(f"scenario error: {e}") from None
-    except ControllerRestartError as e:
+    except (ControllerRestartError, OpenPLCError) as e:
         raise SystemExit(f"stopped: {e}") from None
 
     failed = [s for s in summaries if not s.passed]

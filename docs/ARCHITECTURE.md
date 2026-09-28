@@ -1436,6 +1436,21 @@ tokens; no layout changed.
   join it, in every state, from step 7. Not linked from the demo pages yet:
   the demo's footer comes with the replay redesign (step 12).
 
+## Module responsibilities (frontend/controls boundary C1: structured standing cause)
+
+- **`LineController.standing_causes()`** (`StandingCause` in
+  `line_state.py`): every trip cause still observably present, in the
+  order a reset reports them, each as `reason` (the `fault_reason`
+  vocabulary), `devices` (the equipment: `HOP-105`, `CV-104`, `FDR-103`)
+  and `tags` (the inputs showing it; for high-high, whichever of
+  `LSHH-105` and `WT-105` votes). `standing_cause()` is now its first
+  entry's reason, so the refused Reset and the picture read one list.
+- **`LiveSession.snapshot()`**: `standing_causes`, a list of
+  `{reason, devices, tags}` (`[]` when none; `null` for an external
+  controller, like `preview`). In-process only: not published over
+  Modbus or recorded into replays. The frontend draws it and never parses
+  refusal text (boundary C1, spec §16.3).
+
 ## The self-explaining replay (readable cold)
 
 A replay of a scenario run carries the run's summary
