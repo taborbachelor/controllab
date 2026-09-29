@@ -54,6 +54,11 @@ PAIRS: tuple[Pair, ...] = (
     Pair("info", "surface", TEXT, 6.49, "Links, focus, MANUAL and TESTING"),
     Pair("ink-inverse", "info", TEXT, 7.08, "Text on a primary action"),
     Pair("info", "info-tint", TEXT, 6.04, "Info text on a running-stage row"),
+    # Added with the console controls (build step 7b, 2026-09-28; the specification's table updated to match).
+    Pair("ink", "surface-raised", TEXT, 15.67, "Text on buttons and cards"),
+    Pair("ink-muted", "surface-raised", TEXT, 6.75, "Secondary text on buttons and cards"),
+    Pair("trip", "surface-raised", TEXT, 6.36, "The E-stop button's label"),
+    Pair("ink", "warn-tint", TEXT, 14.68, "A refusal note's text"),
 )
 
 # The colour tokens in the specification's order, with what each is for.

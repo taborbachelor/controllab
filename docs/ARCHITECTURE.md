@@ -1491,6 +1491,43 @@ the demo don't change yet.
   keeps focus through an update. The icon set is pinned to the
   specification's list.
 
+## Module responsibilities (frontend redesign, step 7b: the console controls)
+
+The controls the operator uses, and the Test view's physical-condition and
+repair buttons. They show what the controller and the server say and never
+decide anything: a button is unavailable only because the controller's
+preview says so, and pressing it still sends the request (spec §4.1).
+Sentences built from controller data (a refusal, a "can't yet" reason)
+arrive composed, as text; the tables that compose them come with the
+permissive preview (step 10).
+
+- **`components.js`** gains CommandButton (available, primary, unavailable,
+  sent, locked; an unavailable button stays focusable and pressable, and
+  only a test's lock disables it natively), EStopButton (a plant input:
+  press and release, never unavailable, locked only while a test runs),
+  SegmentedControl (the mode and the source bin; radio-group semantics with
+  a roving tab stop; arrow keys move focus only and Enter or Space selects,
+  because selecting sends a request to the controller), PermissiveNote (a
+  reason before the press, a refusal after it, never drawn as a trip),
+  PermissiveTable ("Why can't I...?": only what the controller reports as
+  blocking), DeviceRow (a Manual device: name, state in words with the
+  picture's marker, its two requests), RecipeForm (checks only that each
+  entry is a number, 0 or more; whether the recipe fits is the controller's
+  call; never overwrites what the operator typed), BatchProgress (Load, Hold,
+  Discharge, Clean out, the current step marked), ConditionToggle and
+  MaintenanceAction (physical words only).
+- **`copytext.py`** gains a label for every operator command (asserted
+  against the controller's `COMMANDS`) and the controls' own fixed words.
+- **`tokens.py`** gains the four colour pairs these controls use; each is
+  checked like the specification's own.
+- **Tests:** each control in every state, a repeat render writing nothing,
+  and the behaviour that matters most: an unavailable command still sends,
+  an arrow key never selects, a typed recipe value survives a re-render and
+  an invalid one blocks Apply, and the blocking list never shows a
+  permissive as met. The test DOM's `children` now has no array methods, as
+  in a browser: a real bug of that kind was caught in review before it
+  shipped. Each key check was proven to fail on a deliberate break.
+
 ## The self-explaining replay (readable cold)
 
 A replay of a scenario run carries the run's summary

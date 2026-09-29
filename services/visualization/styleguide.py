@@ -41,9 +41,9 @@ PAGE_CSS = """
   a { color: var(--info); }
   code, .mono { font-family: var(--font-mono); }
   td code { white-space: nowrap; }
-  table { border-collapse: collapse; width: 100%; background: var(--surface); border: 1px solid var(--border); }
-  th, td { text-align: left; padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--border); vertical-align: middle; }
-  th { font-size: var(--fs-xs); color: var(--ink-muted); font-weight: 600; }
+  .wrap table { border-collapse: collapse; width: 100%; background: var(--surface); border: 1px solid var(--border); }
+  .wrap th, .wrap td { text-align: left; padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .wrap th { font-size: var(--fs-xs); color: var(--ink-muted); font-weight: 600; }
   td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
   .wrap { overflow-x: auto; }
   .sw { display: inline-block; width: 40px; height: 24px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); vertical-align: middle; }
@@ -56,7 +56,7 @@ PAGE_CSS = """
             background: var(--surface); border: 1px solid var(--border); }
   .sg-item { display: flex; flex-direction: column; gap: var(--sp-1); align-items: flex-start; }
   .sg-caption { color: var(--ink-muted); font: var(--fs-xs)/1.4 var(--font-mono); }
-  .sg-stack { display: grid; gap: var(--sp-3); max-width: 480px; }
+  .sg-stack { display: grid; gap: var(--sp-3); width: 100%; max-width: 560px; }
   .sg-icon { display: inline-flex; align-items: center; gap: var(--sp-2); min-width: 150px; }
   footer { max-width: 1100px; margin: 0 auto; padding: var(--sp-5) var(--gutter) var(--sp-6); color: var(--ink-muted); font-size: var(--fs-sm); }
 """
@@ -113,6 +113,81 @@ def _other(values: dict[str, str]) -> str:
                    for group, names in OTHER for n in names)
     return f'<div class="wrap"><table><thead><tr><th>Group</th><th>Token</th><th>Value</th></tr></thead><tbody>{rows}</tbody></table></div>'
 
+
+GALLERY_7B = """
+(function consoleControls() {
+  const $ = (id) => document.getElementById(id);
+  const item = (el, caption) => h("div", {class: "sg-item"}, el, h("code", {class: "sg-caption"}, caption));
+  const noop = () => {};
+  // CommandButton, in every state.
+  for (const [caption, data] of [["available", {preview: {accepted: true}}], ["primary", {preview: {accepted: true}, primary: true}],
+                                 ["unavailable", {preview: {accepted: false}}], ["sent", {preview: {accepted: true}, sent: true}],
+                                 ["no preview", {preview: null}], ["locked", {preview: {accepted: true}, locked: true}]]) {
+    const b = commandButton("start", COPY, noop);
+    renderCommandButton(b, data, COPY);
+    $("sg-commands").appendChild(item(b, caption));
+  }
+  // EStopButton: released, pressed (click it), locked.
+  const live = estopButton(COPY, (pressed) => renderEStopButton(live, {pressed}, COPY));
+  renderEStopButton(live, {pressed: false}, COPY);
+  const pressed = estopButton(COPY, noop); renderEStopButton(pressed, {pressed: true}, COPY);
+  const locked = estopButton(COPY, noop); renderEStopButton(locked, {pressed: false, locked: true}, COPY);
+  $("sg-estop").append(item(live, "released (try it)"), item(pressed, "pressed"), item(locked, "locked"));
+  // SegmentedControl: the mode (Batch unavailable) and the source bin; then locked.
+  const modes = [{value: "select_auto", label: COPY.commands.select_auto}, {value: "select_manual", label: COPY.commands.select_manual},
+                 {value: "select_batch", label: COPY.commands.select_batch}];
+  const mode = segmentedControl("Mode", modes, (v) => renderSegmentedControl(mode, {selected: v, unavailable: {select_batch: true}}));
+  renderSegmentedControl(mode, {selected: "select_auto", unavailable: {select_batch: true}});
+  const bins = segmentedControl("Source bin", [{value: "A", label: "A"}, {value: "B", label: "B"}, {value: "C", label: "C"}], noop);
+  renderSegmentedControl(bins, {selected: "A", locked: true});
+  $("sg-seg").append(item(mode, "mode; Batch unavailable"), item(bins, "source bin, locked"));
+  // PermissiveNote: a reason before the press, a refusal after it, no preview.
+  for (const [kind, text] of [["preview", "Can't start yet: bin A is nearly empty."], ["refused", "Start refused: bin A is nearly empty."],
+                              ["unknown", COPY.controls.preview_unknown]]) {
+    const n = permissiveNote(`sg-note-${kind}`);
+    renderPermissiveNote(n, {kind, text});
+    $("sg-notes").appendChild(item(n, kind));
+  }
+  // PermissiveTable: reported blocking reasons only; then the no-preview case.
+  const table = permissiveTable();
+  renderPermissiveTable(table, {requests: [
+    {label: "Start", rows: [{text: "Bin A is nearly empty", tag: "BIN_LOW"}, {text: "An alarm is not acknowledged", tag: "UNACKNOWLEDGED_ALARM"}],
+     empty: "Nothing is blocking Start."},
+    {label: "Reset", rows: [], empty: "Nothing is blocking Reset."}]});
+  const none = permissiveTable();
+  renderPermissiveTable(none, {requests: [], note: COPY.controls.preview_unknown});
+  $("sg-ptable").append(item(table, "blocking reasons"), item(none, "no preview"));
+  // DeviceRow: on, off, commanded.
+  for (const [name, commands, data] of [
+      ["Conveyor", ["start_conveyor", "stop_conveyor"], {state: "on", stateText: "Running", buttons: {start_conveyor: {preview: {accepted: true}}, stop_conveyor: {preview: {accepted: true}}}}],
+      ["Feeder", ["start_feeder", "stop_feeder"], {state: "off", stateText: "Stopped", buttons: {start_feeder: {preview: {accepted: false}}, stop_feeder: {preview: {accepted: true}}}}],
+      ["Bin A gate", ["open_gate", "close_gate"], {state: "commanded", stateText: "Opening…", buttons: {open_gate: {preview: {accepted: true}}, close_gate: {preview: {accepted: true}}}}]]) {
+    const row = deviceRow(name, commands, COPY, noop);
+    renderDeviceRow(row, data, COPY);
+    $("sg-devices").appendChild(row);
+  }
+  // RecipeForm: applied values; type to see the changed state, clear a field to see the error.
+  const recipe = recipeForm("sg-recipe", COPY, noop);
+  renderRecipeForm(recipe, {applied: {recipe_a_kg: 300, recipe_b_kg: 200, recipe_c_kg: 0, hold_s: 10}}, COPY);
+  recipe.addEventListener("input", () => renderRecipeForm(recipe, {applied: {recipe_a_kg: 300, recipe_b_kg: 200, recipe_c_kg: 0, hold_s: 10}}, COPY));
+  $("sg-recipe-box").appendChild(recipe);
+  // BatchProgress: at rest, loading, discharging.
+  for (const [caption, data] of [["at rest", {state: "idle", loaded_kg: 0, target_kg: 500}],
+                                 ["loading", {state: "loading", loaded_kg: 240, target_kg: 500}],
+                                 ["discharging", {state: "discharging", loaded_kg: 500, target_kg: 500}]]) {
+    const b = batchProgress(COPY);
+    renderBatchProgress(b, data, COPY);
+    $("sg-batch").appendChild(item(b, caption));
+  }
+  // ConditionToggle (click it) and MaintenanceAction.
+  const jam = conditionToggle("Jam the feeder", COPY, (active) => renderConditionToggle(jam, {active}));
+  renderConditionToggle(jam, {active: false});
+  const slip = conditionToggle("Belt slips", COPY, noop); renderConditionToggle(slip, {active: true});
+  const fix = maintenanceAction("Clear feeder obstruction", COPY, noop); renderMaintenanceAction(fix, {done: false});
+  const fixed = maintenanceAction("Re-tension the belt", COPY, noop); renderMaintenanceAction(fixed, {done: true});
+  $("sg-physical").append(item(jam, "inactive (try it)"), item(slip, "active"), item(fix, "available"), item(fixed, "done"));
+})();
+"""
 
 # The components, each in every state it has, drawn by its real render
 # function. Runs in the page after components.js and the UI copy.
@@ -218,6 +293,38 @@ always comes first.</p>
 <p class="muted">A panel is a titled region. A drawer holds diagnostic or engineering detail, collapsed by default,
 and opens without animation.</p>
 <div class="sg-row"><div class="sg-stack" id="sg-containers"></div></div>
+<h3>Command button</h3>
+<p class="muted">A request to the controller. The expected next action is primary. An unavailable button stays focusable and
+still sends when pressed: the controller decides, the preview only informs. Locked means a test is operating the line.</p>
+<div class="sg-row" id="sg-commands"></div>
+<h3>E-stop button</h3>
+<p class="muted">The operator's safety pushbutton, apart from the controller requests: never unavailable, only locked while a
+test runs. The same button releases it.</p>
+<div class="sg-row" id="sg-estop"></div>
+<h3>Segmented control</h3>
+<p class="muted">The mode and the source bin. Arrow keys move between options; Enter or Space selects, because selecting sends a
+request to the controller.</p>
+<div class="sg-row" id="sg-seg"></div>
+<h3>Permissive note</h3>
+<p class="muted">Why an action is unavailable, before the press, or why it was refused, after it. A refusal is the controller's
+answer, never shown as a trip.</p>
+<div class="sg-row" id="sg-notes"></div>
+<h3>Why can't I...? table</h3>
+<p class="muted">Only what the controller reports as blocking each request; a permissive is never shown as met.</p>
+<div class="sg-row" id="sg-ptable" data-ids="on"></div>
+<h3>Device row</h3>
+<p class="muted">One device in Manual: its name, its state in words with the picture's marker (solid on, outline off, dashed
+while commanded but not confirmed), and its two requests.</p>
+<div class="sg-row"><div class="sg-stack" id="sg-devices"></div></div>
+<h3>Recipe form</h3>
+<p class="muted">The batch recipe. It checks only that each entry is a number; whether the recipe fits is the controller's call.
+Nothing typed is lost when the line updates.</p>
+<div class="sg-row" id="sg-recipe-box"></div>
+<h3>Batch progress</h3>
+<div class="sg-row" id="sg-batch"></div>
+<h3>Physical condition and maintenance action</h3>
+<p class="muted">Test view only: things that happen to the equipment, and the repairs, in physical words. Never a controller verb.</p>
+<div class="sg-row" id="sg-physical"></div>
 </main>
 <footer>More components join this page as each is built.</footer>
 <script>
@@ -225,6 +332,7 @@ const COPY = {copytext.ui_copy_json()};
 const BADGE_ORDER = {order};
 {components_js}
 {GALLERY_JS}
+{GALLERY_7B}
 </script>
 </body>
 </html>
