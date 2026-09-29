@@ -40,12 +40,12 @@ still plugged.
   switch/transmitter disagreement alarm).
 - The same scenario files run unchanged against **OpenPLC** executing an
   IEC 61131-3 Structured Text port of the controller over Modbus TCP, in
-  real time, Auto and Manual mode alike: **38/38 scenarios, 114/114 runs**
-  at its last full run ([commissioning report](examples/openplc/COMMISSIONING-REPORT.md)).
+  real time, in Auto, Manual and Batch mode: **65/65 scenarios, 195/195
+  runs** over three passes ([commissioning report](examples/openplc/COMMISSIONING-REPORT.md)).
 - Mass is conserved to the milligram and checked on every scan, and every
   run is deterministic, so the same scenario gives the same result every
   time.
-- 1,051 automated tests, run on every push (Python 3.12 and 3.13; the badge
+- 1,096 automated tests, run on every push (Python 3.12 and 3.13; the badge
   above is the latest run). The demo site is rebuilt from the current code
   on every push too, so it can't drift from the repository.
 
@@ -213,9 +213,11 @@ Structured Text port of the controller. Against a PLC, scenarios run in real
 time, with limits in plant time and a stated I/O latency allowance. Every
 scenario starts from a cold PLC restart.
 
-**Result on OpenPLC: 38/38 scenarios over 3 passes (114/114 runs), Auto and Manual mode, none needing the latency
-allowance, 11/11 interlock rows covered**
-([`examples/openplc/COMMISSIONING-REPORT.md`](examples/openplc/COMMISSIONING-REPORT.md)).
+**Result on OpenPLC: 65/65 scenarios over 3 passes (195/195 runs), Auto, Manual and Batch mode, 19/19 interlock
+rows covered**
+([`examples/openplc/COMMISSIONING-REPORT.md`](examples/openplc/COMMISSIONING-REPORT.md)). Two scenarios,
+`batch_start_permissives` and `source_bin_low_blocks_start`, needed the latency allowance on their slowest pass;
+every other result was on time.
 
 In the dashboard, **Compare runtimes** runs one scenario on every available
 runtime and says how each was compared. Two lockstep runs are compared event
@@ -346,7 +348,7 @@ Setting up OpenPLC: [`examples/openplc/README.md`](examples/openplc/README.md). 
 
 ## Status
 
-All roadmap phases are complete, and 1,051 tests pass.
+All roadmap phases are complete, and 1,096 tests pass.
 
 | Phase | Focus | Status |
 |---|---|---|
