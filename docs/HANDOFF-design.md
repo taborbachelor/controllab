@@ -16,6 +16,58 @@ the same repo) is the other; leave it alone. The two sessions collided on
 this filename once (2026-09-26); the design session moved its file, so
 this name stays with the controls work.
 
+## Update — 2026-09-28, controls session (read this first; supersedes the 2026-09-27 list below)
+
+**Goal (Tabor):** ControlLab usable by an outside controls engineer who will
+read it, run it, and try it against their own logic. Tabor's four-item list:
+OpenPLC report, stale OpenPLC numbers, v1.0.0 release, the AI fallback call.
+
+**Done and pushed (CI green):**
+- `182a9fd` item 4: `fallbacks="default"` KEPT (Tabor), recorded in `docs/AI.md`.
+- `198b467` finding fixed: the first three-pass report came back 0/65 because
+  OpenPLC's web session was lost mid-run and `stop_plc`/`start_plc` were
+  redirected to the login page, so no PLC was restarted. `OpenPLCController`
+  now confirms each press on the dashboard (Stopped, then Running), re-logs in
+  once on a lost session, else raises `OpenPLCError`. That invalid report was
+  not committed (copy kept at `C:\Users\jacks\controllab-handoff\`).
+- `3b9ec7b` boundary C1 BUILT: `LineController.standing_causes()` ->
+  `StandingCause(reason, devices, tags)`; snapshot key `standing_causes`
+  (`[]` none, `null` external). The C1 paragraph below still says "not built
+  yet": it is built.
+- `1ce4cce` version 1.0.0 in `pyproject.toml` (editable install refreshed).
+- `4f09ff8` item 1: **the OpenPLC report, 65/65 scenarios over 3 passes
+  (195/195 runs), 19/19 interlock rows, Auto 49 / Manual 8 / Batch 8
+  validated**, build `controllab 1.0.0, git 1ce4cce`, clean tree. Two
+  scenarios needed the 0.5 s latency allowance on their slowest pass
+  (`batch_start_permissives`, `source_bin_low_blocks_start`).
+- Tests: 1,052 run anywhere + 6 broker = **1,058**.
+
+**Remaining, in order (Tabor approved exactly these shared-file edits):**
+1. **Item 2, README.md** (shared; approved lines only): the "What's
+   verified" OpenPLC bullet (says 38/38, 114/114, Auto and Manual) and §6
+   "Result on OpenPLC" line (38/38, 11/11 rows) -> the numbers above, naming
+   the two within-tolerance passes; the test count (1,051 -> 1,058) in the
+   verified bullet and the Status line. `docs/images/dashboard-parity.jpg`
+   and its alt text ("PASS 12/12 on each") are NOT in the approval: leave
+   them (boundary C3: controls provides the OpenPLC setup, frontend captures).
+2. **Item 2, docs/CONTROL-LAB.md** (shared; approved lines only): line 3
+   status (says 2026-09-23, 51 scenarios, 13 rows, 38/38, 114/114), the §10
+   item "Wrap-up: the three-pass OpenPLC commissioning report" (☐ -> ✅ with
+   the result), and an appended change-log row.
+3. **Item 3, the release:** fill `{{OPENPLC_RESULT}}` and `{{TEST_COUNT}}` in
+   `C:\Users\jacks\controllab-handoff\release-notes-v1.0.0.md`, show Tabor,
+   then `git tag -a v1.0.0` on the commit that carries item 2, push the tag,
+   `gh release create v1.0.0 --notes-file ...`. Check CI and the demo site.
+4. Then delete this handoff (or trim to what's open) and the
+   `controllab-handoff` folder.
+
+**Rules in force:** boundary C1-C4 below (check `git log` on a file right
+before editing; shared files only by agreement). The frontend session merges
+`frontend/redesign` into `main` (it did at `db01448`): pull before editing.
+Before a real-time OpenPLC run keep the tree clean (the report's build stamp
+records uncommitted changes) and run nothing CPU-heavy alongside. Claude Code
+reaps background shells when memory is low: long runs go in Tabor's terminal.
+
 ## Frontend/controls boundary — confirmed by Tabor, 2026-09-27 (binding; read this)
 
 Tabor confirmed this boundary for both sessions on 2026-09-27. It is the
