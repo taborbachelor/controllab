@@ -192,7 +192,7 @@
 .c-asum[data-state="none"] { color: var(--ink-muted); }
 .c-asum__counts { font-weight: 600; font-variant-numeric: tabular-nums; }
 .c-asum[data-state="none"] .c-asum__counts { font-weight: 400; }
-.c-asum__show { display: inline-flex; align-items: center; min-height: var(--target-min); color: var(--info); }
+.c-asum__show { display: inline-flex; align-items: center; justify-content: center; min-width: var(--target-min); min-height: var(--target-min); color: var(--info); }
 .c-asum__show[hidden] { display: none; }
 
 /* AlarmList: a table, new trips and warnings on their tints, the lifecycle in words. */
@@ -211,11 +211,18 @@
                  font-size: var(--fs-xs); font-weight: 700; letter-spacing: .04em; }
 tr[data-class="trip"] .c-alarms__new { color: var(--trip); }
 tr[data-class="warn"] .c-alarms__new { color: var(--warn); }
-.c-alarms__new[hidden], .c-alarms__first[hidden] { display: none; }
-.c-alarms__first { padding: 0 var(--sp-1); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
-                   font-size: var(--fs-xs); font-weight: 600; cursor: help; }
-.c-alarms__help { display: none; flex-basis: 100%; color: var(--ink-muted); font-size: var(--fs-xs); }
-.c-alarms__first:hover + .c-alarms__help, .c-alarms__first:focus + .c-alarms__help { display: block; }
+.c-alarms__new[hidden], .c-alarms__firstwrap[hidden] { display: none; }
+/* "Started it": a toggletip. Its meaning floats over the table (no row grows on hover), shows on hover,
+   focus or press, and Escape dismisses it (data-dismissed). */
+.c-alarms__firstwrap { position: relative; display: inline-flex; }
+.c-alarms__first { min-height: var(--target-min); padding: 0 var(--sp-1); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+                   background: var(--surface-raised); color: var(--ink); font: 600 var(--fs-xs)/1.2 var(--font-ui); cursor: help; }
+.c-alarms__help { display: none; position: absolute; z-index: 1; top: 100%; left: 0; width: max-content; max-width: 240px;
+                  padding: var(--sp-1) var(--sp-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+                  background: var(--surface-raised); color: var(--ink); font-size: var(--fs-xs); font-weight: 400; }
+.c-alarms__firstwrap:hover .c-alarms__help, .c-alarms__first:focus-visible + .c-alarms__help,
+.c-alarms__first[aria-expanded="true"] + .c-alarms__help { display: block; }
+.c-alarms__firstwrap[data-dismissed] .c-alarms__help { display: none; }
 .c-alarms__status { color: var(--ink-muted); }
 
 /* HistoryList: plain words, newest first live; in a replay the current moment
@@ -234,7 +241,7 @@ tr[data-class="warn"] .c-alarms__new { color: var(--warn); }
 .c-history__now { padding: 0 var(--sp-1); border: 1px solid var(--info); border-radius: var(--radius-sm); color: var(--info);
                   font-size: var(--fs-xs); font-weight: 700; }
 .c-history__now[hidden] { display: none; }
-.c-history__list > li[aria-current="true"] { margin-left: calc(-1 * var(--sp-1)); border-left: var(--sp-1) solid var(--info); }
+.c-history__list > li[data-current] { margin-left: calc(-1 * var(--sp-1)); border-left: var(--sp-1) solid var(--info); }
 .c-history__list > li[data-future] { color: var(--ink-muted); }
 
 /* Checklist: numbered recovery steps; done and blocked in words. */
@@ -308,12 +315,17 @@ tr[data-class="warn"] .c-alarms__new { color: var(--warn); }
 .c-stage[data-status="running"] { border-color: var(--info); background: var(--info-tint); }
 .c-stage[data-status="failed"] { border-color: var(--trip); background: var(--trip-tint); }
 .c-stage[data-status="not_run"], .c-stage[data-status="pending"] { background: var(--surface); }
-.c-stage__head { display: grid; grid-template-columns: 16px 1fr fit-content(40%); align-items: baseline; gap: var(--sp-1) var(--sp-2); margin: 0; }
+.c-stage:has(> .c-stage__box:not([open])) { padding-top: var(--sp-1); padding-bottom: var(--sp-1); }
+/* The heading is the fold's summary: the mark, the title, and the status beneath the title, so a long
+   title keeps the full width of the 400 px rail (Tabor, 2026-09-29). */
+.c-stage__head { display: grid; grid-template-columns: 16px 1fr; align-items: baseline; gap: 0 var(--sp-2); margin: 0;
+                 cursor: pointer; list-style: none; }
+.c-stage__head::-webkit-details-marker { display: none; }
 .c-stage__head > .c-icon { align-self: start; margin-top: calc((1.45em - 16px) / 2); }
 .c-stage__head > .c-icon[hidden] { display: block; visibility: hidden; }  /* keeps its column when a stage has no mark */
 .c-stage__title { font-weight: 600; }
-.c-stage__status { color: var(--ink-muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; text-align: right; }
-@media (max-width: 700px) { .c-stage__status { grid-column: 2 / -1; text-align: left; } }
+.c-stage__status { grid-column: 2; color: var(--ink-muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.c-stage[data-status="pending"] .c-checks { display: none; }  /* a waiting stage shows what it will do; its checks appear when it runs */
 .c-stage[data-status="running"] .c-stage__status, .c-stage[data-status="running"] .c-icon { color: var(--info); }
 .c-stage[data-status="failed"] .c-stage__status, .c-stage[data-status="failed"] .c-icon { color: var(--trip); font-weight: 600; }
 .c-stage__setup { margin: var(--sp-1) 0 0; padding-left: var(--sp-5); font-size: var(--fs-sm); }

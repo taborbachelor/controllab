@@ -117,9 +117,10 @@ function renderDrawer(el, data) {
 // request: the controller decides (spec 4.1). Sentences built from controller
 // data (a refusal, a "can't yet" reason) arrive composed, as text.
 
-// A number with a thin space and its unit (spec 5.4).
+// A number and its unit joined by a narrow no-break space (U+202F: thin, and it never
+// lets a line break split "1 s"; spec 5.4).
 function withUnit(value, unit) {
-  return `${Math.round(value)} ${unit}`;
+  return `${Math.round(value)}\u202f${unit}`;
 }
 
 // ---- CommandButton: one controller request (spec 4.1). onPress(command) is
@@ -144,7 +145,8 @@ function renderCommandButton(el, data, copy) {
       "data-state": state, "data-primary": !!data.primary && state === "available",
       disabled: state === "locked", "aria-disabled": unavailable ? "true" : null,
       "aria-busy": state === "sent" ? "true" : null, "aria-describedby": data.describedby || null } })
-    + patchIcon(el.firstChild, state === "locked" ? "lock" : unavailable ? "circle-info" : null)
+    // Locked shows no icon of its own: the console's one lock notice says why (Tabor, 2026-09-29).
+    + patchIcon(el.firstChild, unavailable ? "circle-info" : null)
     + patch(el.lastChild, { text: state === "sent" ? copy.controls.sent : copy.commands[command] });
 }
 
@@ -402,13 +404,13 @@ function plural(forms, n) {
   return fill(forms[n === 1 ? 0 : 1], { n });
 }
 
-// Seconds with a thin space: one decimal in status and history, two in test
+// Seconds, joined like withUnit(): one decimal in status and history, two in test
 // timing (spec 5.4). A stage's time limit is shown as the scenario wrote it.
 function seconds(value, decimals) {
-  return `${value.toFixed(decimals)} s`;
+  return `${value.toFixed(decimals)}\u202fs`;
 }
 function limitText(value) {
-  return `${Number(value)} s`;
+  return `${Number(value)}\u202fs`;
 }
 
 // A value a test expected or saw, in words (yes/no, lists, "—" for none).
@@ -505,14 +507,32 @@ function alarmRank(a) {
   return a.active && !a.acknowledged ? (a.is_warning ? 1 : 0) : a.active ? 2 : 3;
 }
 
+// "Started it" is a toggletip: a button whose meaning shows beside it on
+// hover, on keyboard focus, or when pressed (a touch screen has no hover),
+// over the table rather than pushing the row down, and Escape dismisses it
+// (WCAG 1.4.13). The text is also the button's description for screen readers.
+function firstOutTip(help, copy) {
+  const button = h("button", { type: "button", class: "c-alarms__first", "aria-expanded": "false", "aria-describedby": help },
+    copy.alarms.first_out);
+  const wrap = h("span", { class: "c-alarms__firstwrap", hidden: true }, button,
+    h("span", { class: "c-alarms__help", id: help, role: "tooltip" }, copy.alarms.first_out_help));
+  button.addEventListener("click", () => button.setAttribute("aria-expanded", String(button.getAttribute("aria-expanded") !== "true")));
+  button.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    button.setAttribute("aria-expanded", "false");
+    wrap.setAttribute("data-dismissed", "");
+  });
+  const undismiss = () => wrap.removeAttribute("data-dismissed");
+  button.addEventListener("blur", undismiss);
+  wrap.addEventListener("mouseleave", undismiss);
+  return wrap;
+}
+
 function alarmRow(listId, alarm, copy) {
-  const help = `${listId}-${alarm.id}-first`;
   return h("tr", {},
     h("td", {}, h("div", { class: "c-alarms__alarm" }, alarmMarker(),
       h("span", { class: "c-alarms__new", hidden: true }, copy.alarms.new_label),
-      h("span", { class: "c-alarms__text" }), tagChip(),
-      h("span", { class: "c-alarms__first", tabindex: "0", hidden: true, "aria-describedby": help }, copy.alarms.first_out),
-      h("span", { class: "c-alarms__help", id: help, role: "tooltip" }, copy.alarms.first_out_help))),
+      h("span", { class: "c-alarms__text" }), tagChip(), firstOutTip(`${listId}-${alarm.id}-first`, copy))),
     h("td", { class: "c-alarms__status" }));
 }
 
@@ -561,8 +581,10 @@ function historyRow(replay, copy) {
 
 function renderHistoryRow(li, row, replay, current, future) {
   const [time, marker, text, chip, now] = (replay ? li.firstChild : li).children;
-  let writes = patch(li, { attrs: { "data-tone": row.tone || null, "data-future": future, "aria-current": current ? "true" : null,
+  // The current moment is marked on the jump button itself, where a screen reader lands (aria-current).
+  let writes = patch(li, { attrs: { "data-tone": row.tone || null, "data-future": future, "data-current": current,
                                      "data-t": replay ? String(row.t) : null } })
+    + (replay ? patch(li.firstChild, { attrs: { "aria-current": current ? "true" : null } }) : 0)
     + patch(time, { text: seconds(row.t, 1) }) + patch(marker, { attrs: { hidden: !row.tone } })
     + patch(text, { text: row.text }) + renderTagChip(chip, { tag: row.tag || null })
     + patch(now, { attrs: { hidden: !current } });
@@ -630,7 +652,7 @@ function renderReadout(el, data, copy) {
   const [, chip, value, health] = el.children, state = data.health || "normal";
   const d = data.decimals || 0;
   const number = state === "lost" || data.value === null || data.value === undefined ? copy.tests.values.missing
-    : data.value.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }) + (data.unit ? ` ${data.unit}` : "");
+    : data.value.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }) + (data.unit ? `\u202f${data.unit}` : "");
   return patch(el, { attrs: { "data-health": state } }) + renderTagChip(chip, { tag: data.tag || null })
     + patch(value, { text: number })
     + patch(health, { attrs: { hidden: state === "normal" }, text: state === "normal" ? "" : copy.readings[state] });
@@ -665,7 +687,7 @@ function ioTable(tags, copy) {
 }
 
 function ioValue(v, units) {
-  return (typeof v === "boolean" ? (v ? "1" : "0") : v.toFixed(2)) + (units ? ` ${units}` : "");
+  return (typeof v === "boolean" ? (v ? "1" : "0") : v.toFixed(2)) + (units ? `\u202f${units}` : "");
 }
 
 function renderIOTable(el, data) {
@@ -702,23 +724,37 @@ function renderActionChip(el, data, copy) {
 // stages: [{status, elapsed_s, response_s, deadline, checks: [{status,
 // actual}] or null}]}: `deadline` says a failure came at the stage's time
 // limit (not an invariant stop). A stage outcome is announced once, politely.
+// Finished steps fold to their heading and open on demand; a waiting stage
+// shows its actions, and its checks once it runs (the shell mock, 2026-09-29).
 const STAGE_ICONS = { running: "play", passed: "check", failed: "cross", not_observable: "question" };
+const SETUP_ICONS = { done: "check", failed: "cross", running: "play" };
+// A finished step folds to its one-line heading (Tabor, 2026-09-29): a passed
+// stage, a completed setup. Everything else stays open.
+const FOLDED = new Set(["passed", "done"]);
+
+// One stage (or the setup, n 0): a native details/summary, so the heading is
+// a disclosure control for keyboard and screen reader alike. The heading
+// holds the mark, the title and, beneath the title, the status.
+function stageItem(n, title, body, limit) {
+  return h("li", { class: "c-stage", "data-stage": String(n), "data-limit": limit === null ? null : String(limit) },
+    h("details", { class: "c-stage__box", open: true },
+      h("summary", { class: "c-stage__head" }, icon("check"), h("span", { class: "c-stage__title" }, title),
+        h("span", { class: "c-stage__status" })),
+      h("div", { class: "c-stage__body" }, ...body)));
+}
 
 function testPanel(plan, copy) {
   const t = copy.tests;
-  const setup = h("li", { class: "c-stage", "data-stage": "0" },
-    h("p", { class: "c-stage__head" }, icon("check"), h("span", { class: "c-stage__title" }, t.setup), h("span", { class: "c-stage__status" })),
-    h("ul", { class: "c-stage__setup" }, ...plan.setup_text.map((s) => h("li", {}, s))));
-  const stages = plan.stages.map((st) => h("li", { class: "c-stage", "data-stage": String(st.n), "data-limit": String(st.within_s) },
-    h("p", { class: "c-stage__head" }, icon("check"),
-      h("span", { class: "c-stage__title" }, st.title ? fill(t.stage, { n: st.n, title: st.title }) : fill(t.stage_untitled, { n: st.n })),
-      h("span", { class: "c-stage__status" })),
-    h("p", { class: "c-stage__actions" }, ...(st.actions.length
+  const setup = stageItem(0, t.setup, [h("ul", { class: "c-stage__setup" }, ...plan.setup_text.map((s) => h("li", {}, s)))], null);
+  const stages = plan.stages.map((st) => stageItem(st.n,
+    st.title ? fill(t.stage, { n: st.n, title: st.title }) : fill(t.stage_untitled, { n: st.n }),
+    [h("p", { class: "c-stage__actions" }, ...(st.actions.length
       ? st.actions.map((a) => { const chip = actionChip(); renderActionChip(chip, a, copy); return chip; })
       : [h("span", { class: "c-stage__none" }, t.no_action)])),
-    st.checks.length ? h("table", { class: "c-checks" }, headRow(t.check_columns),
-      h("tbody", {}, ...st.checks.map((c) => h("tr", {}, h("th", { scope: "row" }, c.label),
-        h("td", {}, valueText(c.expected, copy)), h("td", { class: "c-checks__result" }))))) : null));
+     st.checks.length ? h("table", { class: "c-checks" }, headRow(t.check_columns),
+       h("tbody", {}, ...st.checks.map((c) => h("tr", {}, h("th", { scope: "row" }, c.label),
+         h("td", {}, valueText(c.expected, copy)), h("td", { class: "c-checks__result" }))))) : null],
+    st.within_s));
   return h("div", { class: "c-test" }, h("ol", { class: "c-test__stages" }, setup, ...stages),
     h("p", { class: "c-sr", "aria-live": "polite" }));
 }
@@ -740,24 +776,30 @@ function renderCheckRow(tr, status, check, copy) {
   return patch(tr, { attrs: { "data-status": shown } }) + patch(tr.lastChild, { text });
 }
 
+// The heading's mark and status words, and the fold. A step is folded or
+// opened only when its status changes, so a stage someone opened stays open
+// through later polls. Returns [writes, whether the status changed].
+function renderStageHead(li, status, iconName, words) {
+  const box = li.firstChild, head = box.firstChild, before = li.getAttribute("data-status");
+  let writes = patch(li, { attrs: { "data-status": status } }) + patchIcon(head.firstChild, iconName)
+    + patch(head.lastChild, { text: words });
+  if (before !== status) writes += patch(box, { attrs: { open: !FOLDED.has(status) } });
+  return [writes, before !== null && before !== status];
+}
+
 function renderTestPanel(el, data, copy) {
   const [list, live] = el.children, items = Array.from(list.children);
-  const setup = items[0];
-  let writes = patch(setup, { attrs: { "data-status": data.setup } })
-    + patchIcon(setup.firstChild.firstChild, { done: "check", failed: "cross", running: "play" }[data.setup] || null)
-    + patch(setup.firstChild.lastChild, { text: copy.tests.setup_status[data.setup] });
+  let [writes] = renderStageHead(items[0], data.setup, SETUP_ICONS[data.setup] || null, copy.tests.setup_status[data.setup]);
   let announce = null;
   items.slice(1).forEach((li, i) => {
     const stage = data.stages[i] || { status: "pending" }, status = stage.status;
-    const before = li.getAttribute("data-status");
     const words = stageStatusText(status, stage, +li.getAttribute("data-limit"), copy);
-    writes += patch(li, { attrs: { "data-status": status } })
-      + patchIcon(li.firstChild.firstChild, STAGE_ICONS[status] || null)
-      + patch(li.firstChild.lastChild, { text: words });
-    if (before !== null && before !== status && status !== "running" && status !== "pending") {
-      announce = `${li.firstChild.children[1].textContent}. ${words}`;
+    const [w, changed] = renderStageHead(li, status, STAGE_ICONS[status] || null, words);
+    writes += w;
+    if (changed && status !== "running" && status !== "pending") {
+      announce = `${li.firstChild.firstChild.children[1].textContent}. ${words}`;
     }
-    const table = li.children[2];  // head, actions, then the checks table when the stage has checks
+    const table = li.firstChild.lastChild.children[1];  // the body: actions, then the checks table when the stage has checks
     if (table) Array.from(table.lastChild.children).forEach((tr, j) => {
       writes += renderCheckRow(tr, status, stage.checks ? stage.checks[j] : null, copy);
     });
@@ -844,7 +886,8 @@ function scenarioCard(test, copy, on) {
     h("p", { class: "c-scenario__meta" }, plural(t.stages_count, test.stages)),
     h("p", { class: "c-scenario__result", hidden: true }, icon("play"), h("span", { class: "c-vbadge" }), h("span", {})),
     h("div", { class: "c-scenario__buttons" }, run, compare,
-      h("a", { class: "c-scenario__watch", target: "_blank", rel: "noopener", hidden: true }, t.watch)));
+      h("a", { class: "c-scenario__watch", target: "_blank", rel: "noopener", hidden: true }, t.watch,
+        h("span", { class: "c-sr" }, t.new_tab))));
 }
 
 function renderScenarioCard(el, data, copy) {

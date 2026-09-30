@@ -71,5 +71,5 @@
 }
 @media (max-width: 700px) { :root { --gutter: 16px; } }
 @media (max-width: 1279px) { :root { --rail-w: 360px; } }
-@media (pointer: coarse) { :root { --control-h: 44px; } }
+@media (pointer: coarse) { :root { --control-h: 44px; --target-min: 44px; } }  /* spec 13.4: every hit area 44 x 44 on touch */
 @media (prefers-reduced-motion: reduce) { :root { --dur: 0ms; --flow-period: 0s; } }

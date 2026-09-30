@@ -168,6 +168,7 @@ TESTS: dict[str, object] = {
     "compare": "Compare runtimes",
     "watch": "Watch this run",
     "running": "Running now…",
+    "new_tab": " (opens in a new tab)",
     "stages_count": ["{n} stage", "{n} stages"],
 }
 

@@ -257,7 +257,7 @@ GALLERY_7C = """
   // AllNormalCard: ready, running.
   for (const [caption, data] of [
       ["idle", {state: "idle", sentence: "Ready. Start runs the line from bin A.", action: {command: "start", preview: {accepted: true}, primary: true}}],
-      ["running", {state: "running", sentence: "Running normally: feeding from bin A, hopper at 42\\u2009%.",
+      ["running", {state: "running", sentence: "Running normally: feeding from bin A, hopper at 42\\u202f%.",
                    action: {command: "stop", preview: {accepted: true}, primary: true}}]]) {
     const card = allNormalCard(`sg-normal-${caption}`, COPY, noop); renderAllNormalCard(card, data, COPY);
     $("sg-allnormal").appendChild(item(card, caption));
@@ -286,7 +286,7 @@ GALLERY_7C = """
   $("sg-io").appendChild(io);
   // ActionChip: every kind.
   for (const [kind, text] of [["operator", "Operator presses Start"], ["fault", "Someone presses the E-stop"],
-                              ["repair", "The jam is cleared at the feeder"], ["process", "The hopper level is set to 85\\u2009%"]]) {
+                              ["repair", "The jam is cleared at the feeder"], ["process", "The hopper level is set to 85\\u202f%"]]) {
     const c = actionChip(); renderActionChip(c, {kind, text}, COPY);
     $("sg-chips").appendChild(item(c, kind));
   }

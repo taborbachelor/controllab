@@ -197,7 +197,7 @@ def test_the_command_button_shows_the_controllers_answer_and_always_sends(tmp_pa
     assert got["pressedWhileUnavailable"] == ["reset"], "the preview informs, it never blocks a press (spec 4.1)"
     assert got["sent"]["label"] == "Sent…" and got["sent"]["busy"] == "true"
     assert got["noPreview"]["state"] == "available" and got["noPreview"]["icon"] is None
-    assert got["locked"]["disabled"] and got["locked"]["icon"] == "#i-lock" and got["pressedWhileLocked"] == 1
+    assert got["locked"]["disabled"] and got["locked"]["icon"] is None and got["pressedWhileLocked"] == 1
     assert got["writesOnRepeat"] == 0
 
 
@@ -356,7 +356,7 @@ def test_batch_progress_marks_the_current_step_and_the_load(tmp_path):
            labels: Array.from(el.firstChild.children).map((li) => li.textContent)});
     """, tmp_path)
     assert got["idle"] == {"current": [None] * 4, "done": [False] * 4, "loaded": None}
-    assert got["loading"] == {"current": ["step", None, None, None], "done": [False] * 4, "loaded": "Loaded 240 kg of 500 kg"}
+    assert got["loading"] == {"current": ["step", None, None, None], "done": [False] * 4, "loaded": "Loaded 240\u202fkg of 500\u202fkg"}
     assert got["discharging"] == {"current": [None, None, "step", None], "done": [True, True, False, False], "loaded": None}
     assert got["labels"] == ["Load", "Hold", "Discharge", "Clean out"] and got["writesOnRepeat"] == 0
 
@@ -508,9 +508,9 @@ def test_the_alarm_list_orders_by_lifecycle_and_says_each_in_words(tmp_path):
       const rows = Array.from(el.lastChild.lastChild.children);
       const look = rows.map((tr) => ({{id: tr.getAttribute("data-key"), status: tr.lastChild.textContent,
         isNew: !tr.firstChild.firstChild.children[1].hasAttribute("hidden"), first: !tr.firstChild.firstChild.children[4].hasAttribute("hidden")}}));
-      const cell = rows[0].firstChild.firstChild, first = cell.children[4];
+      const cell = rows[0].firstChild.firstChild, tip = cell.children[4], first = tip.firstChild;
       const help = first.getAttribute("aria-describedby");
-      const helpText = cell.children[5].getAttribute("id") === help ? cell.children[5].textContent : null;
+      const helpText = tip.lastChild.getAttribute("id") === help ? tip.lastChild.textContent : null;
       first.focus();
       alarms.push({{id: "M-104.OL", text: "Conveyor overload", is_warning: false, active: true, acknowledged: false, first_out: false}});
       renderAlarmList(el, {{alarms}}, COPY);
@@ -560,8 +560,8 @@ def test_live_history_is_newest_first_and_only_adds_what_is_new(tmp_path):
             buttons: el.toHTML().includes("<button")}});
     """, tmp_path)
     assert got["emptyShown"]
-    assert got["text"] == ["15.0 sYou acknowledged the alarmsNow", "12.3 sThe feeder jammedLSH-103Now",
-                           "0.0 sYou pressed StartNow"]
+    assert got["text"] == ["15.0\u202fsYou acknowledged the alarmsNow", "12.3\u202fsThe feeder jammedLSH-103Now",
+                           "0.0\u202fsYou pressed StartNow"]
     assert got["keptSame"] and got["tone"] == "trip" and not got["buttons"]
     assert got["writesForOne"] <= got["writesDrawingItAlone"], "one new event must not re-render the others"
 
@@ -573,14 +573,15 @@ def test_replay_history_is_chronological_marks_now_and_jumps(tmp_path):
       const el = historyList("replay", COPY, (t) => jumps.push(t));
       renderHistoryList(el, {{rows: {json.dumps(HISTORY_FIXTURE)}, now: 13}}, COPY);
       const items = Array.from(el.lastChild.children);
-      const look = items.map((li) => [li.getAttribute("aria-current"), li.hasAttribute("data-future"),
-                                      !li.firstChild.children[4].hasAttribute("hidden")]);
+      const look = items.map((li) => [li.firstChild.getAttribute("aria-current"), li.hasAttribute("data-future"),
+                                      !li.firstChild.children[4].hasAttribute("hidden"), li.getAttribute("aria-current")]);
       items[2].firstChild.click();
       items[1].firstChild.children[2].click();
       out({{look, jumps, order: items.map((li) => li.getAttribute("data-key"))}});
     """, tmp_path)
     assert got["order"] == ["1", "2", "3"]
-    assert got["look"] == [[None, False, False], ["true", False, True], [None, True, False]]
+    assert got["look"] == [[None, False, False, None], ["true", False, True, None], [None, True, False, None]], \
+        "the current moment is announced on the button a screen reader lands on"
     assert got["jumps"] == [15, 12.34]
 
 
@@ -614,7 +615,7 @@ def test_the_all_normal_card_repoints_its_one_button_without_losing_focus(tmp_pa
                                action: {command: "start", preview: {accepted: true}, primary: true}}, COPY);
       const idle = [el.children[1].textContent, button.textContent, button.hasAttribute("data-primary")];
       button.click(); button.focus();
-      renderAllNormalCard(el, {state: "running", sentence: "Running normally: feeding from bin A, hopper at 42 %.",
+      renderAllNormalCard(el, {state: "running", sentence: "Running normally: feeding from bin A, hopper at 42\u202f%.",
                                action: {command: "stop", preview: {accepted: true}, primary: true}}, COPY);
       const running = [el.getAttribute("data-state"), button.textContent, document.activeElement === button, el.lastChild === button];
       button.click();
@@ -638,8 +639,8 @@ def test_a_readout_shows_its_value_and_never_a_lost_signals_number(tmp_path):
       DOM.writes = 0; renderReadout(el, {value: 0, unit: "kg", health: "lost"}, COPY);
       out({normal, suspect, lost, writesOnRepeat: DOM.writes});
     """, tmp_path)
-    assert got["normal"] == ["normal", "1,912 kg", None]
-    assert got["suspect"] == ["suspect", "45.3 %", "Reading suspect"]
+    assert got["normal"] == ["normal", "1,912\u202fkg", None]
+    assert got["suspect"] == ["suspect", "45.3\u202f%", "Reading suspect"]
     assert got["lost"] == ["lost", "—", "Signal lost"], "a failed transmitter's 0 kg must not look like an empty hopper"
     assert got["writesOnRepeat"] == 0
 
@@ -675,7 +676,7 @@ def test_the_io_table_marks_what_changed_and_hides_tags_a_recording_lacks(tmp_pa
       DOM.writes = 0; renderIOTable(el, {values: {"WT-105": 12.5, "M-103.RUN": false}, prev: {"WT-105": 12.5, "M-103.RUN": false}});
       out({look, settle, writesOnRepeat: DOM.writes, head: Array.from(el.firstChild.firstChild.children).map((th) => th.textContent)});
     """, tmp_path)
-    assert got["look"] == [[False, True, "12.50 kg"], [False, False, "0"], [True, False, ""]]
+    assert got["look"] == [[False, True, "12.50\u202fkg"], [False, False, "0"], [True, False, ""]]
     assert got["settle"] == 1 and got["writesOnRepeat"] == 0
     assert got["head"] == ["Tag", "Signal", "Type", "Value"]
 
@@ -709,26 +710,27 @@ def test_the_test_panel_follows_a_real_run_stage_by_stage(tmp_path):
     got = run(f"""
       const plan = {json.dumps(test_plan)}, summary = {json.dumps(summary)};
       const el = testPanel(plan, COPY);
+      const head = (li) => li.firstChild.firstChild, body = (li) => li.firstChild.lastChild;
       const [list, live] = Array.from(el.children);
       const stages = () => Array.from(list.children).slice(1);
-      const status = () => stages().map((li) => li.firstChild.lastChild.textContent);
+      const status = () => stages().map((li) => head(li).lastChild.textContent);
       const n = plan.stages.length;
       renderTestPanel(el, {{setup: "running", stages: []}}, COPY);
-      const setupRunning = [list.children[0].firstChild.lastChild.textContent, status()[0]];
+      const setupRunning = [head(list.children[0]).lastChild.textContent, status()[0]];
       renderTestPanel(el, {{setup: "done", stages: [{{status: "running", elapsed_s: 1.26}}]}}, COPY);
       const running = [stages()[0].getAttribute("data-status"), status()[0], live.textContent];
       renderTestPanel(el, {{setup: "done", stages: summary.stages}}, COPY);
       const done = {{statuses: stages().map((li) => li.getAttribute("data-status")), first: status()[0], announced: live.textContent,
-                     results: stages().flatMap((li) => li.children[2] ? Array.from(li.children[2].lastChild.children).map((tr) => tr.lastChild.textContent) : [])}};
+                     results: stages().flatMap((li) => body(li).children[1] ? Array.from(body(li).children[1].lastChild.children).map((tr) => tr.lastChild.textContent) : [])}};
       DOM.writes = 0; renderTestPanel(el, {{setup: "done", stages: summary.stages}}, COPY);
       out({{setupRunning, running, done, writesOnRepeat: DOM.writes, n,
-            chips: list.children[1].children[1].textContent, heads: stages().map((li) => li.firstChild.children[1].textContent)}});
+            chips: body(list.children[1]).children[0].textContent, heads: stages().map((li) => head(li).children[1].textContent)}});
     """, tmp_path)
     first = summary["stages"][0]
     assert got["setupRunning"] == ["Setting up…", "Waiting"]
-    assert got["running"] == ["running", f"1.3 s of {first['within_s']:g} s", ""]
+    assert got["running"] == ["running", f"1.3\u202fs of {first['within_s']:g}\u202fs", ""]
     assert got["done"]["statuses"] == ["passed"] * got["n"]
-    assert got["done"]["first"] == f"Passed in {first['response_s']:.2f} s (limit {first['within_s']:g} s)"
+    assert got["done"]["first"] == f"Passed in {first['response_s']:.2f}\u202fs (limit {first['within_s']:g}\u202fs)"
     assert got["done"]["announced"].startswith(f"Stage {got['n']}") and "Passed in" in got["done"]["announced"]
     assert set(got["done"]["results"]) == {"MATCH"}
     assert got["writesOnRepeat"] == 0
@@ -745,20 +747,21 @@ def test_a_failed_run_shows_the_mismatch_the_deadline_and_what_never_ran(tmp_pat
     got = run(f"""
       const summary = {json.dumps(summary)};
       const tp = testPanel({json.dumps(test_plan)}, COPY);
+      const head = (li) => li.firstChild.firstChild, body = (li) => li.firstChild.lastChild;
       renderTestPanel(tp, {{setup: "done", stages: summary.stages.map((st) => ({{...st, deadline: true}}))}}, COPY);
       const stages = Array.from(tp.firstChild.children).slice(1);
       const failed = stages[{failed['n'] - 1}];
       const verdict = verdictBlock();
       renderVerdictBlock(verdict, summary, COPY);
       DOM.writes = 0; renderVerdictBlock(verdict, summary, COPY);
-      out({{failedStatus: failed.firstChild.lastChild.textContent,
-            results: Array.from(failed.children[2].lastChild.children).map((tr) => [tr.getAttribute("data-status"), tr.lastChild.textContent]),
-            after: stages.slice({failed['n']}).map((li) => li.firstChild.lastChild.textContent),
+      out({{failedStatus: head(failed).lastChild.textContent,
+            results: Array.from(body(failed).children[1].lastChild.children).map((tr) => [tr.getAttribute("data-status"), tr.lastChild.textContent]),
+            after: stages.slice({failed['n']}).map((li) => head(li).lastChild.textContent),
             verdict: verdict.getAttribute("data-verdict"), heading: verdict.firstChild.tagName, head: verdict.firstChild.textContent,
             where: verdict.children[1].textContent, unmet: Array.from(verdict.lastChild.children).map((li) => li.textContent),
             writesOnRepeat: DOM.writes}});
     """, tmp_path)
-    assert got["failedStatus"] == f"Failed at its {failed['within_s']:g} s deadline"
+    assert got["failedStatus"] == f"Failed at its {failed['within_s']:g}\u202fs deadline"
     mismatches = [c for c in failed["checks"] if c["status"] == "mismatch"]
     assert mismatches and sum(1 for s, _ in got["results"] if s == "mismatch") == len(mismatches)
     assert all(text.startswith("MISMATCH, got ") for s, text in got["results"] if s == "mismatch")
@@ -825,3 +828,94 @@ def test_a_scenario_card_runs_shows_its_result_and_locks_while_any_test_runs(tmp
     assert got["asked"] == [["run", "feeder-jam"], ["compare", "feeder-jam"]], "a locked card sends nothing"
     assert got["done"] == ["result", "PASS12/12 checks matched", "pass", "replay/latest", "_blank", False]
     assert got["heading"] == "H3" and got["labelledby"] == "test-feeder-jam-title"
+
+
+# ======== Step 7c review fixes (Tabor, 2026-09-29): the shell mock's decisions.
+
+def test_a_number_and_its_unit_never_split_across_lines():
+    """U+202F (narrow no-break space) joins every number to its unit: the thin
+    space U+2009 allows a line break, which split "(limit 1 s)" in the rail."""
+    source = (HERE / "components.js").read_text(encoding="utf-8")
+    assert "\u2009" not in source and "\\u2009" not in source
+    assert source.count("\\u202f") >= 5
+
+
+def test_the_octagon_keeps_sharp_corners_so_it_never_reads_as_a_circle():
+    sprite = (HERE / "icons.svg.html").read_text(encoding="utf-8")
+    octagon = re.search(r'<symbol id="i-octagon"[^>]*>(.*?)</symbol>', sprite).group(1)
+    assert 'stroke-linejoin="miter"' in octagon
+
+
+def test_every_hit_area_grows_to_44_px_on_a_touch_screen():
+    tokens = (HERE / "tokens.css").read_text(encoding="utf-8")
+    coarse = re.search(r"@media \(pointer: coarse\) \{ :root \{([^}]*)\}", tokens).group(1)
+    assert "--control-h: 44px" in coarse and "--target-min: 44px" in coarse
+
+
+@needs_node
+def test_finished_stages_fold_and_a_stage_someone_opened_stays_open(tmp_path):
+    test_plan, summary = real_run("faults/feeder_jam_recovery.yaml")
+    got = run(f"""
+      const tp = testPanel({json.dumps(test_plan)}, COPY);
+      const items = Array.from(tp.firstChild.children), st = {json.dumps(summary["stages"])};
+      const open = () => items.map((li) => li.firstChild.hasAttribute("open"));
+      renderTestPanel(tp, {{setup: "done", stages: [st[0], {{status: "running", elapsed_s: 0.5}}]}}, COPY);
+      const running = open();
+      items[1].firstChild.setAttribute("open", "");  // someone opens the passed stage 1
+      DOM.writes = 0;
+      renderTestPanel(tp, {{setup: "done", stages: [st[0], {{status: "running", elapsed_s: 0.6}}]}}, COPY);
+      const keptOpen = items[1].firstChild.hasAttribute("open");
+      renderTestPanel(tp, {{setup: "done", stages: [st[0], st[1], {{status: "running", elapsed_s: 0.1}}]}}, COPY);
+      out({{running, keptOpen, afterStage2: open().slice(0, 4),
+            summary: items[1].firstChild.firstChild.tagName, statusInHead: items[1].firstChild.firstChild.lastChild.getAttribute("class")}});
+    """, tmp_path)
+    # Setup done and stage 1 passed fold; stage 2 runs open; the waiting stages stay open (their checks show once they run).
+    assert got["running"][:3] == [False, False, True] and all(got["running"][3:])
+    assert got["keptOpen"], "a later poll must not fold a stage someone opened"
+    assert got["afterStage2"] == [False, True, False, True], "stage 2 folds when it passes; stage 3 runs open"
+    assert got["summary"] == "SUMMARY" and got["statusInHead"] == "c-stage__status"
+
+
+@needs_node
+def test_a_locked_console_shows_no_lock_icon_per_button(tmp_path):
+    got = run("""
+      const buttons = ["start", "stop", "acknowledge", "reset"].map((c) => {
+        const b = commandButton(c, COPY, () => {}); renderCommandButton(b, {preview: {accepted: false}, locked: true}, COPY); return b; });
+      out(buttons.map((b) => [b.hasAttribute("disabled"), b.firstChild.hasAttribute("hidden")]));
+    """, tmp_path)
+    assert got == [[True, True]] * 4, "locked, disabled, and no icon of its own: the console's one notice says why"
+
+
+@needs_node
+def test_started_it_is_a_toggletip_that_escape_dismisses(tmp_path):
+    got = run(f"""
+      const el = alarmList("al", COPY);
+      renderAlarmList(el, {{alarms: {json.dumps(ALARMS_FIXTURE[2:3])}}}, COPY);
+      const tip = el.lastChild.lastChild.firstChild.firstChild.firstChild.children[4], button = tip.firstChild;
+      const r = {{tag: button.tagName, type: button.getAttribute("type"), expanded: [button.getAttribute("aria-expanded")],
+                 describes: tip.lastChild.getAttribute("id") === button.getAttribute("aria-describedby"),
+                 role: tip.lastChild.getAttribute("role")}};
+      button.click(); r.expanded.push(button.getAttribute("aria-expanded"));
+      button.dispatch("keydown", {{key: "Escape"}});
+      r.expanded.push(button.getAttribute("aria-expanded")); r.dismissed = tip.hasAttribute("data-dismissed");
+      button.dispatch("blur"); r.afterBlur = tip.hasAttribute("data-dismissed");
+      button.click(); DOM.writes = 0;
+      renderAlarmList(el, {{alarms: {json.dumps(ALARMS_FIXTURE[2:3])}}}, COPY);
+      r.keptByRender = button.getAttribute("aria-expanded"); r.writesOnRepeat = DOM.writes;
+      out(r);
+    """, tmp_path)
+    assert got["tag"] == "BUTTON" and got["type"] == "button" and got["describes"] and got["role"] == "tooltip"
+    assert got["expanded"] == ["false", "true", "false"]
+    assert got["dismissed"] and not got["afterBlur"]
+    assert got["keptByRender"] == "true" and got["writesOnRepeat"] == 0, "a poll must not close a tip someone opened"
+
+
+@needs_node
+def test_watch_this_run_says_it_opens_a_new_tab(tmp_path):
+    got = run("""
+      const el = scenarioCard({id: "x", title: "T", description: "D", stages: 1}, COPY, {run: () => {}, compare: () => {}});
+      renderScenarioCard(el, {running: false, locked: false, result: {verdict: "PASS", checks: "1/1 checks matched"}, watch: "r.html"}, COPY);
+      const watch = el.lastChild.lastChild;
+      out({text: watch.textContent, target: watch.getAttribute("target"), note: watch.lastChild.getAttribute("class")});
+    """, tmp_path)
+    assert got == {"text": "Watch this run (opens in a new tab)", "target": "_blank", "note": "c-sr"}

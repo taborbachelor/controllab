@@ -1,10 +1,11 @@
 <!-- The in-house icon set (frontend redesign, build step 7; design spec section 7.1):
      16 x 16 grid, 1.5 px stroke in currentColor, always beside visible text and
      hidden from screen readers. Used as <svg class="c-icon"><use href="#i-NAME"/></svg>.
-     No icon fonts, no emoji. -->
+     No icon fonts, no emoji. The octagon keeps sharp (mitred) corners: with the
+     set's round joins it reads as a circle at badge size. -->
 <svg xmlns="http://www.w3.org/2000/svg" class="c-sprite" aria-hidden="true" focusable="false">
   <defs>
-    <symbol id="i-octagon" viewBox="0 0 16 16"><path d="M5.2 1.75h5.6l3.45 3.45v5.6l-3.45 3.45H5.2L1.75 10.8V5.2z"/></symbol>
+    <symbol id="i-octagon" viewBox="0 0 16 16"><path stroke-linejoin="miter" d="M5.2 1.75h5.6l3.45 3.45v5.6l-3.45 3.45H5.2L1.75 10.8V5.2z"/></symbol>
     <symbol id="i-triangle" viewBox="0 0 16 16"><path d="M8 1.9 14.6 13.9H1.4z"/></symbol>
     <symbol id="i-circle-info" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25"/><path d="M8 7.25v4.25"/><circle fill="currentColor" stroke="none" cx="8" cy="4.9" r=".9"/></symbol>
     <symbol id="i-check" viewBox="0 0 16 16"><path d="m2.75 8.5 3.5 3.5 7-7.75"/></symbol>

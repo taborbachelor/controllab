@@ -1573,6 +1573,21 @@ recovery steps) arrive composed; their tables come with the cause chain
   comparing `tagName` with lower-case names passed the old DOM and would
   have failed in the page (caught while writing this step). Each key check
   was proven to fail on a deliberate break.
+- **Before review (Tabor, 2026-09-29, from the step-8 shell mock):** a
+  test's finished steps fold to their one-line heading (each stage is a
+  native `details`/`summary`, so the heading is a keyboard and
+  screen-reader disclosure; a step folds or opens only when its status
+  changes, so one someone opened stays open), and a stage's status sits
+  beneath its title so a long title keeps the rail's full width. Every
+  number joins its unit with U+202F, a narrow no-break space: the thin
+  space allowed "(limit 1 s)" to split across lines. The octagon icon has
+  mitred corners. A locked console shows its one notice and no lock icon
+  per button. Accessibility: every hit area grows to 44 px on a touch
+  screen (`--target-min`, spec 13.4); "Started it" is a toggletip button
+  whose meaning floats over the table (no row grows on hover), shows on
+  hover, focus or press, and Escape dismisses it; "Watch this run" tells a
+  screen reader it opens a new tab; the replay history marks "Now" with
+  `aria-current` on the jump button itself.
 
 ## The self-explaining replay (readable cold)
 
