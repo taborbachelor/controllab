@@ -120,7 +120,7 @@ def test_the_tag_chip_shows_an_identifier_or_nothing(tmp_path):
       renderTagChip(el, {tag: "LSH-103"});
       out({none, shown: !el.hasAttribute("hidden"), text: el.textContent, writesOnRepeat: DOM.writes, tag: el.tagName});
     """, tmp_path)
-    assert got == {"none": True, "shown": True, "text": "LSH-103", "writesOnRepeat": 0, "tag": "code"}
+    assert got == {"none": True, "shown": True, "text": "LSH-103", "writesOnRepeat": 0, "tag": "CODE"}
 
 
 @needs_node
@@ -130,7 +130,7 @@ def test_the_panel_is_a_labelled_section(tmp_path):
       out({tag: el.tagName, labelledby: el.getAttribute("aria-labelledby"),
            heading: el.firstChild.tagName, headingId: el.firstChild.getAttribute("id"), title: el.firstChild.textContent});
     """, tmp_path)
-    assert got == {"tag": "section", "labelledby": "alarms-title", "heading": "h2", "headingId": "alarms-title", "title": "Alarms"}
+    assert got == {"tag": "SECTION", "labelledby": "alarms-title", "heading": "H2", "headingId": "alarms-title", "title": "Alarms"}
 
 
 @needs_node
@@ -147,7 +147,7 @@ def test_the_drawer_is_collapsed_details_and_keeps_focus_on_update(tmp_path):
       out({tag: el.tagName, open: el.hasAttribute("open"), countHidden, count: summary.children[2].textContent,
            focusKept: document.activeElement === summary && el.contains(summary), writesOnRepeat: DOM.writes});
     """, tmp_path)
-    assert got == {"tag": "details", "open": False, "countHidden": True, "count": "12", "focusKept": True, "writesOnRepeat": 0}
+    assert got == {"tag": "DETAILS", "open": False, "countHidden": True, "count": "12", "focusKept": True, "writesOnRepeat": 0}
 
 
 # ======== Step 7b: the console controls.
@@ -166,7 +166,7 @@ def test_the_test_dom_is_as_strict_as_a_browser_about_children(tmp_path):
       out({length: el.children.length, second: el.children[1].tagName, hasSome: typeof el.children.some,
            asArray: Array.from(el.children).length});
     """, tmp_path)
-    assert got == {"length": 2, "second": "span", "hasSome": "undefined", "asArray": 2}
+    assert got == {"length": 2, "second": "SPAN", "hasSome": "undefined", "asArray": 2}
 
 
 @needs_node
@@ -379,3 +379,449 @@ def test_a_condition_toggle_and_a_maintenance_action_speak_physically(tmp_path):
     assert got["repairs"] == 1, "a done repair is not repeated"
     assert got["maint"] == "Maintenance action:Clear feeder obstructionDone"
     assert got["maintDone"] == "true" and got["maintIcon"] == "#i-check"
+
+
+# ======== Step 7c: alarms, history, readings and test results.
+
+def real_run(file: str, regression: str | None = None) -> tuple[dict, dict]:
+    """A real test's plan and the summary of a real run of it (with a
+    deliberate regression when asked): the shapes the components will get."""
+    from services.testing.regressions import REGRESSIONS
+    from services.testing.runner import run_scenario
+    from services.testing.scenario import Scenario
+    from services.testing.verdict import plan, summarize
+    from services.visualization.verify import SCENARIOS_DIR
+    scenario = Scenario.load(SCENARIOS_DIR / file)
+    result = run_scenario(scenario, line_cls=REGRESSIONS[regression].cls if regression else None)
+    summary = summarize(scenario, result, "python", root=SCENARIOS_DIR, regression=regression).to_dict()
+    return plan(scenario, root=SCENARIOS_DIR), summary
+
+
+def test_the_copy_has_words_for_every_kind_status_and_verdict_the_runner_reports():
+    from services.testing import verdict
+    assert set(copytext.ACTION_KINDS) == set(verdict.KINDS)
+    for kind in copytext.ACTION_KINDS.values():
+        assert kind["icon"] in sprite_icons()
+    assert set(copytext.TESTS["check_status"]) == set(verdict._MARK)
+    # Every status a StageSummary can carry, plus the two a live run adds before its outcome.
+    assert set(copytext.TESTS["stage_status"]) >= {"pending", "running", "passed", "failed", "not_run", "not_observable"}
+    assert set(copytext.ALARMS["lifecycle"]) == {"new", "acknowledged", "cleared"}
+
+
+def test_the_7c_copy_follows_the_copy_rules():
+    """Physical and maintenance words never borrow a controller verb, and no
+    fixed word is an identifier (spec 5.4)."""
+    controller_verbs = re.compile(r"\b(Start|Stop|Reset|Acknowledge)\b")
+    for kind in ("fault", "repair", "process"):
+        assert not controller_verbs.search(copytext.ACTION_KINDS[kind]["text"])
+    words = json.dumps({k: getattr(copytext, k) for k in ("ALARMS", "HISTORY", "READINGS", "CARDS", "TESTS")})
+    assert not re.search(r"\b[A-Z]{1,4}-\d{3}\b", words), "a tag in the interface's fixed words"
+
+
+@needs_node
+def test_a_keyed_list_moves_only_what_must_move_so_focus_survives(tmp_path):
+    got = run("""
+      const list = h("ul");
+      const make = (item) => h("li", {}, h("button", {}, item.name));
+      const update = (li, item) => patch(li.firstChild, {text: item.name});
+      reconcile(list, [{id: "a", name: "A"}, {id: "b", name: "B"}], (x) => x.id, make, update);
+      const b = list.children[1], button = b.firstChild;
+      button.focus();
+      reconcile(list, [{id: "new", name: "New"}, {id: "a", name: "A"}, {id: "b", name: "B"}], (x) => x.id, make, update);
+      const afterInsert = {order: Array.from(list.children).map((li) => li.getAttribute("data-key")),
+                           sameNode: list.children[2] === b, focusKept: document.activeElement === button};
+      DOM.writes = 0;
+      reconcile(list, [{id: "new", name: "New"}, {id: "a", name: "A"}, {id: "b", name: "B"}], (x) => x.id, make, update);
+      const writesOnRepeat = DOM.writes;
+      reconcile(list, [{id: "b", name: "B2"}], (x) => x.id, make, update);
+      out({afterInsert, writesOnRepeat, left: list.textContent, stillB: list.children[0] === b});
+    """, tmp_path)
+    assert got["afterInsert"] == {"order": ["new", "a", "b"], "sameNode": True, "focusKept": True}
+    assert got["writesOnRepeat"] == 0
+    assert got["left"] == "B2" and got["stillB"]
+
+
+@needs_node
+def test_the_test_dom_blurs_a_focused_node_that_is_moved_as_a_browser_does(tmp_path):
+    got = run("""
+      const list = h("ul", {}, h("li"), h("li", {}, h("button")));
+      const button = list.children[1].firstChild;
+      button.focus();
+      list.insertBefore(list.children[1], list.children[0]);
+      out({focused: document.activeElement === button, tag: button.tagName, svg: h("svg").tagName});
+    """, tmp_path)
+    assert got == {"focused": False, "tag": "BUTTON", "svg": "svg"}
+
+
+@needs_node
+def test_the_alarm_marker_is_an_octagon_for_a_trip_and_a_triangle_for_a_warning(tmp_path):
+    got = run("""
+      const m = alarmMarker();
+      const look = () => [m.firstChild.getAttribute("href"), m.getAttribute("data-lifecycle"), m.getAttribute("aria-hidden")];
+      renderAlarmMarker(m, {cls: "trip", lifecycle: "new"}); const trip = look();
+      renderAlarmMarker(m, {cls: "warn", lifecycle: "acknowledged"}); const warn = look();
+      out({trip, warn, lifecycles: [{active: true, acknowledged: false}, {active: true, acknowledged: true},
+                                    {active: false, acknowledged: false}].map(alarmLifecycle)});
+    """, tmp_path)
+    assert got["trip"] == ["#i-octagon", "new", "true"] and got["warn"] == ["#i-triangle", "acknowledged", "true"]
+    assert got["lifecycles"] == ["new", "acknowledged", "cleared"]
+
+
+@needs_node
+def test_the_alarm_summary_names_its_count_in_the_link(tmp_path):
+    got = run("""
+      const shown = [];
+      const el = alarmSummary("#alarms", COPY, () => shown.push(1));
+      const [marker, counts, link] = Array.from(el.children);
+      const look = () => ({state: el.getAttribute("data-state"), text: counts.textContent, link: link.getAttribute("aria-label"),
+                           linkHidden: link.hasAttribute("hidden"), marker: marker.hasAttribute("hidden") ? null : marker.firstChild.getAttribute("href")});
+      renderAlarmSummary(el, {trips: 0, warnings: 0}, COPY); const none = look();
+      renderAlarmSummary(el, {trips: 0, warnings: 1, unacknowledged: true}, COPY); const warn = look();
+      renderAlarmSummary(el, {trips: 1, warnings: 2, unacknowledged: true}, COPY); const trip = look();
+      const ev = link.click();
+      DOM.writes = 0; renderAlarmSummary(el, {trips: 1, warnings: 2, unacknowledged: true}, COPY);
+      out({none, warn, trip, shown: shown.length, prevented: ev.defaultPrevented, writesOnRepeat: DOM.writes});
+    """, tmp_path)
+    assert got["none"] == {"state": "none", "text": "No alarms", "link": None, "linkHidden": True, "marker": None}
+    assert got["warn"]["text"] == "1 warning" and got["warn"]["marker"] == "#i-triangle"
+    assert got["trip"] == {"state": "trip", "text": "1 trip alarm · 2 warnings", "link": "1 trip alarm, 2 warnings, show",
+                           "linkHidden": False, "marker": "#i-octagon"}
+    assert got["shown"] == 1 and got["prevented"] and got["writesOnRepeat"] == 0
+
+
+ALARMS_FIXTURE = [
+    {"id": "LSL-101.LOW", "text": "Bin A is nearly empty", "is_warning": True, "active": True, "acknowledged": True, "first_out": False},
+    {"id": "M-103.FAULT", "text": "Feeder drive tripped", "is_warning": False, "active": False, "acknowledged": False, "first_out": False},
+    {"id": "LSH-103.JAM", "text": "Feeder jammed", "is_warning": False, "active": True, "acknowledged": False, "first_out": True},
+    {"id": "LSL-111.LOW", "text": "Bin B is nearly empty", "is_warning": True, "active": True, "acknowledged": False, "first_out": False},
+]
+
+
+@needs_node
+def test_the_alarm_list_orders_by_lifecycle_and_says_each_in_words(tmp_path):
+    got = run(f"""
+      const el = alarmList("al", COPY);
+      renderAlarmList(el, {{alarms: []}}, COPY);
+      const empty = [el.firstChild.hasAttribute("hidden"), el.lastChild.hasAttribute("hidden"), el.firstChild.textContent];
+      const alarms = {json.dumps(ALARMS_FIXTURE)};
+      renderAlarmList(el, {{alarms}}, COPY);
+      const rows = Array.from(el.lastChild.lastChild.children);
+      const look = rows.map((tr) => ({{id: tr.getAttribute("data-key"), status: tr.lastChild.textContent,
+        isNew: !tr.firstChild.firstChild.children[1].hasAttribute("hidden"), first: !tr.firstChild.firstChild.children[4].hasAttribute("hidden")}}));
+      const cell = rows[0].firstChild.firstChild, first = cell.children[4];
+      const help = first.getAttribute("aria-describedby");
+      const helpText = cell.children[5].getAttribute("id") === help ? cell.children[5].textContent : null;
+      first.focus();
+      alarms.push({{id: "M-104.OL", text: "Conveyor overload", is_warning: false, active: true, acknowledged: false, first_out: false}});
+      renderAlarmList(el, {{alarms}}, COPY);
+      const focusKept = document.activeElement === first;
+      DOM.writes = 0; renderAlarmList(el, {{alarms}}, COPY);
+      out({{empty, look, helpText, focusKept, writesOnRepeat: DOM.writes,
+            order: Array.from(el.lastChild.lastChild.children).map((tr) => tr.getAttribute("data-key"))}});
+    """, tmp_path)
+    assert got["empty"] == [False, True, "No alarms."]
+    assert got["look"] == [
+        {"id": "LSH-103.JAM", "status": "Trip · New: active, not acknowledged", "isNew": True, "first": True},
+        {"id": "LSL-111.LOW", "status": "Warning · New: active, not acknowledged", "isNew": True, "first": False},
+        {"id": "LSL-101.LOW", "status": "Warning · Acknowledged, still active", "isNew": False, "first": False},
+        {"id": "M-103.FAULT", "status": "Trip · Cleared, not acknowledged", "isNew": False, "first": False},
+    ]
+    assert got["helpText"] == "The first alarm; the others followed from it."
+    # A second new trip keeps the server's order within the group, so the first-out row doesn't move.
+    assert got["order"] == ["LSH-103.JAM", "M-104.OL", "LSL-111.LOW", "LSL-101.LOW", "M-103.FAULT"]
+    assert got["focusKept"] and got["writesOnRepeat"] == 0
+
+
+HISTORY_FIXTURE = [
+    {"key": 1, "t": 0.0, "text": "You pressed Start", "tone": None, "tag": None},
+    {"key": 2, "t": 12.34, "text": "The feeder jammed", "tone": "trip", "tag": "LSH-103"},
+    {"key": 3, "t": 15.0, "text": "You acknowledged the alarms", "tone": None, "tag": None},
+]
+
+
+@needs_node
+def test_live_history_is_newest_first_and_only_adds_what_is_new(tmp_path):
+    got = run(f"""
+      const el = historyList("live", COPY);
+      const rows = {json.dumps(HISTORY_FIXTURE)};
+      renderHistoryList(el, {{rows: []}}, COPY);
+      const emptyShown = !el.firstChild.hasAttribute("hidden");
+      renderHistoryList(el, {{rows: rows.slice(0, 2)}}, COPY);
+      const kept = el.lastChild.children[0];
+      DOM.writes = 0;
+      renderHistoryList(el, {{rows}}, COPY);
+      const writesForOne = DOM.writes;
+      DOM.writes = 0;
+      renderHistoryList(historyList("live", COPY), {{rows: rows.slice(2)}}, COPY);
+      const writesDrawingItAlone = DOM.writes;
+      const items = Array.from(el.lastChild.children);
+      out({{emptyShown, writesForOne, writesDrawingItAlone, keptSame: items[1] === kept,
+            text: items.map((li) => li.textContent), tone: items[1].getAttribute("data-tone"),
+            buttons: el.toHTML().includes("<button")}});
+    """, tmp_path)
+    assert got["emptyShown"]
+    assert got["text"] == ["15.0 sYou acknowledged the alarmsNow", "12.3 sThe feeder jammedLSH-103Now",
+                           "0.0 sYou pressed StartNow"]
+    assert got["keptSame"] and got["tone"] == "trip" and not got["buttons"]
+    assert got["writesForOne"] <= got["writesDrawingItAlone"], "one new event must not re-render the others"
+
+
+@needs_node
+def test_replay_history_is_chronological_marks_now_and_jumps(tmp_path):
+    got = run(f"""
+      const jumps = [];
+      const el = historyList("replay", COPY, (t) => jumps.push(t));
+      renderHistoryList(el, {{rows: {json.dumps(HISTORY_FIXTURE)}, now: 13}}, COPY);
+      const items = Array.from(el.lastChild.children);
+      const look = items.map((li) => [li.getAttribute("aria-current"), li.hasAttribute("data-future"),
+                                      !li.firstChild.children[4].hasAttribute("hidden")]);
+      items[2].firstChild.click();
+      items[1].firstChild.children[2].click();
+      out({{look, jumps, order: items.map((li) => li.getAttribute("data-key"))}});
+    """, tmp_path)
+    assert got["order"] == ["1", "2", "3"]
+    assert got["look"] == [[None, False, False], ["true", False, True], [None, True, False]]
+    assert got["jumps"] == [15, 12.34]
+
+
+@needs_node
+def test_the_checklist_ticks_from_data_and_says_why_a_step_waits(tmp_path):
+    got = run("""
+      const el = checklist();
+      const steps = [{text: "Clear feeder obstruction", state: "done"},
+                     {text: "Acknowledge", state: "pending"},
+                     {text: "Reset", state: "blocked", why: "Can't reset yet: the chute is still plugged."}];
+      renderChecklist(el, {steps}, COPY);
+      const items = Array.from(el.children);
+      items[1].click();
+      DOM.writes = 0; renderChecklist(el, {steps}, COPY);
+      out({tag: el.tagName, states: items.map((li) => li.getAttribute("data-state")), words: items.map((li) => li.lastChild.textContent),
+           icons: items.map((li) => li.firstChild.hasAttribute("hidden") ? null : li.firstChild.firstChild.getAttribute("href")),
+           writesOnRepeat: DOM.writes});
+    """, tmp_path)
+    assert got["tag"] == "OL" and got["states"] == ["done", "pending", "blocked"]
+    assert got["words"] == ["done", "", "Can't reset yet: the chute is still plugged."]
+    assert got["icons"] == ["#i-check", None, "#i-lock"] and got["writesOnRepeat"] == 0
+
+
+@needs_node
+def test_the_all_normal_card_repoints_its_one_button_without_losing_focus(tmp_path):
+    got = run("""
+      const pressed = [];
+      const el = allNormalCard("rail", COPY, (c) => pressed.push(c));
+      const button = el.lastChild;
+      renderAllNormalCard(el, {state: "idle", sentence: "Ready. Start runs the line from bin A.",
+                               action: {command: "start", preview: {accepted: true}, primary: true}}, COPY);
+      const idle = [el.children[1].textContent, button.textContent, button.hasAttribute("data-primary")];
+      button.click(); button.focus();
+      renderAllNormalCard(el, {state: "running", sentence: "Running normally: feeding from bin A, hopper at 42 %.",
+                               action: {command: "stop", preview: {accepted: true}, primary: true}}, COPY);
+      const running = [el.getAttribute("data-state"), button.textContent, document.activeElement === button, el.lastChild === button];
+      button.click();
+      renderAllNormalCard(el, {state: "idle", sentence: "Ready.", action: null}, COPY);
+      out({idle, running, pressed, hiddenWithoutAction: button.hasAttribute("hidden"), heading: el.firstChild.tagName});
+    """, tmp_path)
+    assert got["idle"] == ["Ready. Start runs the line from bin A.", "Start", True]
+    assert got["running"] == ["running", "Stop", True, True]
+    assert got["pressed"] == ["start", "stop"] and got["hiddenWithoutAction"] and got["heading"] == "H3"
+
+
+@needs_node
+def test_a_readout_shows_its_value_and_never_a_lost_signals_number(tmp_path):
+    got = run("""
+      const el = readout("Hopper weight");
+      const look = () => [el.getAttribute("data-health"), el.children[2].textContent,
+                          el.lastChild.hasAttribute("hidden") ? null : el.lastChild.textContent];
+      renderReadout(el, {value: 1912.4, unit: "kg", health: "normal", tag: "WT-105"}, COPY); const normal = look();
+      renderReadout(el, {value: 45.25, unit: "%", decimals: 1, health: "suspect"}, COPY); const suspect = look();
+      renderReadout(el, {value: 0, unit: "kg", health: "lost"}, COPY); const lost = look();
+      DOM.writes = 0; renderReadout(el, {value: 0, unit: "kg", health: "lost"}, COPY);
+      out({normal, suspect, lost, writesOnRepeat: DOM.writes});
+    """, tmp_path)
+    assert got["normal"] == ["normal", "1,912 kg", None]
+    assert got["suspect"] == ["suspect", "45.3 %", "Reading suspect"]
+    assert got["lost"] == ["lost", "—", "Signal lost"], "a failed transmitter's 0 kg must not look like an empty hopper"
+    assert got["writesOnRepeat"] == 0
+
+
+@needs_node
+def test_an_indicator_shows_its_state_and_words_only_where_asked(tmp_path):
+    got = run("""
+      const el = indicator();
+      renderIndicator(el, {state: "reached", cls: "trip"}, COPY);
+      const quiet = [el.getAttribute("data-state"), el.getAttribute("data-class"), el.lastChild.hasAttribute("hidden")];
+      renderIndicator(el, {state: "normal", cls: "trip", words: true}, COPY);
+      const worded = el.lastChild.textContent;
+      renderIndicator(el, {state: "faulted", cls: "warn", words: true}, COPY);
+      out({quiet, worded, faulted: el.lastChild.textContent, svgNs: el.firstChild.namespaceURI,
+           shapes: Array.from(el.firstChild.children).map((n) => n.tagName)});
+    """, tmp_path)
+    assert got["quiet"] == ["reached", "trip", True] and got["worded"] == "normal" and got["faulted"] == "Reading suspect"
+    assert got["svgNs"] == "http://www.w3.org/2000/svg" and got["shapes"] == ["circle", "path"]
+
+
+@needs_node
+def test_the_io_table_marks_what_changed_and_hides_tags_a_recording_lacks(tmp_path):
+    got = run("""
+      const el = ioTable([{name: "WT-105", type: "AI", units: "kg", description: "Hopper weight"},
+                          {name: "M-103.RUN", type: "DO", units: "", description: "Feeder run command"},
+                          {name: "DS-107.READY", type: "DI", units: "", description: "Next process ready"}], COPY);
+      renderIOTable(el, {values: {"WT-105": 10, "M-103.RUN": false}, prev: null});
+      renderIOTable(el, {values: {"WT-105": 12.5, "M-103.RUN": false}, prev: {"WT-105": 10, "M-103.RUN": false}});
+      const rows = Array.from(el.lastChild.children);
+      const look = rows.map((tr) => [tr.hasAttribute("hidden"), tr.hasAttribute("data-changed"), tr.lastChild.textContent]);
+      DOM.writes = 0; renderIOTable(el, {values: {"WT-105": 12.5, "M-103.RUN": false}, prev: {"WT-105": 12.5, "M-103.RUN": false}});
+      const settle = DOM.writes;
+      DOM.writes = 0; renderIOTable(el, {values: {"WT-105": 12.5, "M-103.RUN": false}, prev: {"WT-105": 12.5, "M-103.RUN": false}});
+      out({look, settle, writesOnRepeat: DOM.writes, head: Array.from(el.firstChild.firstChild.children).map((th) => th.textContent)});
+    """, tmp_path)
+    assert got["look"] == [[False, True, "12.50 kg"], [False, False, "0"], [True, False, ""]]
+    assert got["settle"] == 1 and got["writesOnRepeat"] == 0
+    assert got["head"] == ["Tag", "Signal", "Type", "Value"]
+
+
+@needs_node
+@pytest.mark.parametrize("kind", sorted(copytext.ACTION_KINDS))
+def test_an_action_chip_says_its_kind_in_words(kind, tmp_path):
+    got = run(f"""
+      const el = actionChip();
+      renderActionChip(el, {{kind: {json.dumps(kind)}, text: "Someone presses the E-stop"}}, COPY);
+      out({{text: el.textContent, icon: el.firstChild.firstChild.getAttribute("href"), sr: el.children[1].getAttribute("class")}});
+    """, tmp_path)
+    words = copytext.ACTION_KINDS[kind]
+    assert got == {"text": f"{words['text']}: Someone presses the E-stop", "icon": f"#i-{words['icon']}", "sr": "c-sr"}
+
+
+@needs_node
+def test_an_unknown_action_kind_is_an_error_not_a_blank_chip(tmp_path):
+    got = run("""
+      let message = null;
+      try { renderActionChip(actionChip(), {kind: "magic", text: "x"}, COPY); } catch (e) { message = e.message; }
+      out(message);
+    """, tmp_path)
+    assert got == 'no words for action kind "magic"'
+
+
+@needs_node
+def test_the_test_panel_follows_a_real_run_stage_by_stage(tmp_path):
+    test_plan, summary = real_run("faults/feeder_jam_recovery.yaml")
+    assert summary["verdict"] == "PASS"
+    got = run(f"""
+      const plan = {json.dumps(test_plan)}, summary = {json.dumps(summary)};
+      const el = testPanel(plan, COPY);
+      const [list, live] = Array.from(el.children);
+      const stages = () => Array.from(list.children).slice(1);
+      const status = () => stages().map((li) => li.firstChild.lastChild.textContent);
+      const n = plan.stages.length;
+      renderTestPanel(el, {{setup: "running", stages: []}}, COPY);
+      const setupRunning = [list.children[0].firstChild.lastChild.textContent, status()[0]];
+      renderTestPanel(el, {{setup: "done", stages: [{{status: "running", elapsed_s: 1.26}}]}}, COPY);
+      const running = [stages()[0].getAttribute("data-status"), status()[0], live.textContent];
+      renderTestPanel(el, {{setup: "done", stages: summary.stages}}, COPY);
+      const done = {{statuses: stages().map((li) => li.getAttribute("data-status")), first: status()[0], announced: live.textContent,
+                     results: stages().flatMap((li) => li.children[2] ? Array.from(li.children[2].lastChild.children).map((tr) => tr.lastChild.textContent) : [])}};
+      DOM.writes = 0; renderTestPanel(el, {{setup: "done", stages: summary.stages}}, COPY);
+      out({{setupRunning, running, done, writesOnRepeat: DOM.writes, n,
+            chips: list.children[1].children[1].textContent, heads: stages().map((li) => li.firstChild.children[1].textContent)}});
+    """, tmp_path)
+    first = summary["stages"][0]
+    assert got["setupRunning"] == ["Setting up…", "Waiting"]
+    assert got["running"] == ["running", f"1.3 s of {first['within_s']:g} s", ""]
+    assert got["done"]["statuses"] == ["passed"] * got["n"]
+    assert got["done"]["first"] == f"Passed in {first['response_s']:.2f} s (limit {first['within_s']:g} s)"
+    assert got["done"]["announced"].startswith(f"Stage {got['n']}") and "Passed in" in got["done"]["announced"]
+    assert set(got["done"]["results"]) == {"MATCH"}
+    assert got["writesOnRepeat"] == 0
+    assert got["heads"][0] == f"Stage 1: {test_plan['stages'][0]['title']}"
+    kind = copytext.ACTION_KINDS[test_plan["stages"][0]["actions"][0]["kind"]]["text"]
+    assert got["chips"].startswith(f"{kind}: {test_plan['stages'][0]['actions'][0]['text']}")
+
+
+@needs_node
+def test_a_failed_run_shows_the_mismatch_the_deadline_and_what_never_ran(tmp_path):
+    test_plan, summary = real_run("faults/feeder_jam_recovery.yaml", regression="jam-trip-removed")
+    assert summary["verdict"] == "FAIL"
+    failed = next(st for st in summary["stages"] if st["status"] == "failed")
+    got = run(f"""
+      const summary = {json.dumps(summary)};
+      const tp = testPanel({json.dumps(test_plan)}, COPY);
+      renderTestPanel(tp, {{setup: "done", stages: summary.stages.map((st) => ({{...st, deadline: true}}))}}, COPY);
+      const stages = Array.from(tp.firstChild.children).slice(1);
+      const failed = stages[{failed['n'] - 1}];
+      const verdict = verdictBlock();
+      renderVerdictBlock(verdict, summary, COPY);
+      DOM.writes = 0; renderVerdictBlock(verdict, summary, COPY);
+      out({{failedStatus: failed.firstChild.lastChild.textContent,
+            results: Array.from(failed.children[2].lastChild.children).map((tr) => [tr.getAttribute("data-status"), tr.lastChild.textContent]),
+            after: stages.slice({failed['n']}).map((li) => li.firstChild.lastChild.textContent),
+            verdict: verdict.getAttribute("data-verdict"), heading: verdict.firstChild.tagName, head: verdict.firstChild.textContent,
+            where: verdict.children[1].textContent, unmet: Array.from(verdict.lastChild.children).map((li) => li.textContent),
+            writesOnRepeat: DOM.writes}});
+    """, tmp_path)
+    assert got["failedStatus"] == f"Failed at its {failed['within_s']:g} s deadline"
+    mismatches = [c for c in failed["checks"] if c["status"] == "mismatch"]
+    assert mismatches and sum(1 for s, _ in got["results"] if s == "mismatch") == len(mismatches)
+    assert all(text.startswith("MISMATCH, got ") for s, text in got["results"] if s == "mismatch")
+    assert set(got["after"]) <= {"Not run: the test stops at the first failure"}
+    assert got["verdict"] == "fail" and got["heading"] == "H3"
+    assert got["head"] == f"FAIL{summary['checks_passed']}/{summary['checks_evaluated']} checks matched"
+    assert got["where"].startswith(f"Failed at stage {failed['n']} ({failed['title']}), at ")
+    assert len(got["unmet"]) == len(mismatches) and all(": expected " in u and ", got " in u for u in got["unmet"])
+    assert got["writesOnRepeat"] == 0
+
+
+@needs_node
+def test_the_verdict_block_passes_quietly(tmp_path):
+    _, summary = real_run("startup/normal_operation.yaml")
+    got = run(f"""
+      const el = verdictBlock();
+      renderVerdictBlock(el, {json.dumps(summary)}, COPY);
+      out({{verdict: el.getAttribute("data-verdict"), badge: el.firstChild.firstChild.textContent,
+            whereHidden: el.children[1].hasAttribute("hidden"), unmetHidden: el.lastChild.hasAttribute("hidden")}});
+    """, tmp_path)
+    assert got == {"verdict": "pass", "badge": "PASS", "whereHidden": True, "unmetHidden": True}
+
+
+@needs_node
+def test_a_runtime_comparison_says_how_each_was_compared_and_whether_it_agrees(tmp_path):
+    got = run("""
+      const el = runtimeTable(COPY);
+      const rows = [
+        {runtime_id: "python", runtime: "Python controller", verdict: "PASS", checks: "12/12", how: "reference run", agrees: null},
+        {runtime_id: "modbus", runtime: "Over Modbus", verdict: "PASS", checks: "12/12", how: "lockstep: event log compared event by event -- identical", agrees: true},
+        {runtime_id: "openplc", runtime: "OpenPLC", verdict: "FAIL", checks: "10/12", how: "real time: compared by verdict and checks", agrees: false}];
+      renderRuntimeTable(el, {rows}, COPY);
+      DOM.writes = 0; renderRuntimeTable(el, {rows}, COPY);
+      out({rows: Array.from(el.lastChild.children).map((tr) => [tr.getAttribute("data-agrees"), tr.children[1].firstChild.getAttribute("data-verdict"),
+                                                               tr.lastChild.textContent, tr.firstChild.tagName]),
+           writesOnRepeat: DOM.writes});
+    """, tmp_path)
+    assert got["rows"] == [["reference", "pass", "Reference run", "TH"], ["yes", "pass", "Agrees", "TH"],
+                           ["no", "fail", "Disagrees", "TH"]]
+    assert got["writesOnRepeat"] == 0
+
+
+@needs_node
+def test_a_scenario_card_runs_shows_its_result_and_locks_while_any_test_runs(tmp_path):
+    got = run("""
+      const asked = [];
+      const el = scenarioCard({id: "feeder-jam", title: "Feeder jam recovery", description: "The feeder jams mid-run.", stages: 6},
+                              COPY, {run: (id) => asked.push(["run", id]), compare: (id) => asked.push(["compare", id])});
+      const [run, compare, watch] = Array.from(el.lastChild.children);
+      const result = el.children[3];
+      renderScenarioCard(el, {running: false, locked: false, result: null, watch: null}, COPY);
+      const idle = [el.getAttribute("data-state"), result.hasAttribute("hidden"), watch.hasAttribute("hidden"), el.children[2].textContent];
+      run.click(); compare.click();
+      renderScenarioCard(el, {running: true, locked: true, result: null, watch: null}, COPY);
+      const running = [el.getAttribute("data-state"), result.textContent, run.hasAttribute("disabled"), compare.hasAttribute("disabled")];
+      run.click();
+      renderScenarioCard(el, {running: false, locked: false, result: {verdict: "PASS", checks: "12/12 checks matched"}, watch: "replay/latest"}, COPY);
+      const done = [el.getAttribute("data-state"), result.textContent, result.children[1].getAttribute("data-verdict"),
+                    watch.getAttribute("href"), watch.getAttribute("target"), run.hasAttribute("disabled")];
+      out({idle, running, done, asked, heading: el.firstChild.tagName, labelledby: el.getAttribute("aria-labelledby")});
+    """, tmp_path)
+    assert got["idle"] == ["idle", True, True, "6 stages"]
+    assert got["running"] == ["running", "Running now…", True, True]
+    assert got["asked"] == [["run", "feeder-jam"], ["compare", "feeder-jam"]], "a locked card sends nothing"
+    assert got["done"] == ["result", "PASS12/12 checks matched", "pass", "replay/latest", "_blank", False]
+    assert got["heading"] == "H3" and got["labelledby"] == "test-feeder-jam-title"

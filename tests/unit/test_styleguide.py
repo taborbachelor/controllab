@@ -42,3 +42,13 @@ def test_the_style_guide_shows_every_icon_and_draws_every_badge():
     order = json.loads(re.search(r"const BADGE_ORDER = (\[.*?\]);", page).group(1))
     assert order == list(copytext.STATE_BADGES)
     assert "function renderStateBadge(" in page and "<noscript>" in page
+
+
+def test_the_test_results_gallery_is_drawn_from_real_runs():
+    """A pass and a fail from the runner itself (the fail against a deliberate
+    regression), so the gallery shows the shapes the dashboard will get."""
+    page = styleguide.render()
+    runs = {name: json.loads(re.search(rf"const {name} = (\{{.*?\}});\n", page).group(1)) for name in ("SG_PASS", "SG_FAIL")}
+    assert runs["SG_PASS"]["verdict"] == "PASS" and runs["SG_FAIL"]["verdict"] == "FAIL"
+    assert runs["SG_FAIL"]["regression"] == styleguide.GALLERY_REGRESSION and runs["SG_FAIL"]["first_divergence"]
+    assert "function renderTestPanel(" in page and "renderVerdictBlock(v, summary, COPY)" in page

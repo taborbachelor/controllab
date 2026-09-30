@@ -1528,6 +1528,52 @@ permissive preview (step 10).
   in a browser: a real bug of that kind was caught in review before it
   shipped. Each key check was proven to fail on a deliberate break.
 
+## Module responsibilities (frontend redesign, step 7c: alarms, history and test results)
+
+The components that report: alarms, the history, readings, the recovery
+checklist and a test's results. They show what the controller, the test
+runner and the server report and never judge anything: an alarm's
+lifecycle is the controller's own `active` and `acknowledged` flags in
+words, every stage status and time comes from the runner's plan and
+summary (`services/testing/verdict.py`), and a reading's health arrives
+with it. The sentences built from that data (alarm text, history entries,
+recovery steps) arrive composed; their tables come with the cause chain
+(step 9).
+
+- **`components.js`** gains `reconcile()`, the keyed-list helper every list
+  uses: it creates what is missing, removes what is gone and moves only a
+  node that is out of place, so a row holding focus stays put when a new
+  one arrives above it. Then AlarmMarker (octagon or triangle, filled while
+  new, never flashing), AlarmSummary (the count by class; the Show link's
+  name carries the count), AlarmList (new trips, new warnings,
+  acknowledged, cleared-unacknowledged, the server's order kept within
+  each; the first-out is "Started it", explained on hover or focus),
+  HistoryList (newest first live; in a replay chronological with "Now"
+  marked and each entry a jump), Checklist (done or blocked only from data,
+  a blocked step says why), AllNormalCard (the server's sentence and one
+  CommandButton, repointed from Start to Stop without being rebuilt),
+  Readout (a lost signal shows no number, since a failed transmitter's 0 kg
+  would look like an empty hopper), Indicator, IOTable, ActionChip (the
+  runner's kinds in the Test view's words: a fault is a physical condition,
+  a field repair a maintenance action), TestPanel with its stage and check
+  rows, VerdictBlock, the runtime comparison table and ScenarioCard.
+- **`copytext.py`** gains the words around them, tested against the
+  runner's action kinds and check statuses.
+- **`tokens.py`** gains the eight colour pairs these use.
+- **The style guide** draws the test panel and verdict from real runs of
+  the feeder-jam test: one that passes and one against the
+  `jam-trip-removed` regression, built afresh on every build.
+- **Tests:** each component in every state, a repeat render writing
+  nothing, and the behaviour that matters: focus survives a new row
+  arriving above it; alarms order by lifecycle; one new history entry costs
+  no more than drawing it alone; a lost reading shows no number; a locked
+  test card sends nothing; the test panel and verdict follow a real passing
+  and a real failing run. The test DOM now reports HTML tag names in upper
+  case and blurs a focused node that is moved, as a browser does: code
+  comparing `tagName` with lower-case names passed the old DOM and would
+  have failed in the page (caught while writing this step). Each key check
+  was proven to fail on a deliberate break.
+
 ## The self-explaining replay (readable cold)
 
 A replay of a scenario run carries the run's summary

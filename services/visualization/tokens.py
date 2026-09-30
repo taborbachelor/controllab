@@ -59,6 +59,15 @@ PAIRS: tuple[Pair, ...] = (
     Pair("ink-muted", "surface-raised", TEXT, 6.75, "Secondary text on buttons and cards"),
     Pair("trip", "surface-raised", TEXT, 6.36, "The E-stop button's label"),
     Pair("ink", "warn-tint", TEXT, 14.68, "A refusal note's text"),
+    # Added with alarms, history and test results (build step 7c, 2026-09-29).
+    Pair("ink", "trip-tint", TEXT, 14.17, "A new trip alarm's row; a failed stage"),
+    Pair("ink", "info-tint", TEXT, 13.84, "The running stage; an I/O row that just changed"),
+    Pair("ink-muted", "info-tint", TEXT, 5.97, "Secondary text on the running stage"),
+    Pair("ink-muted", "warn-tint", TEXT, 6.33, "A new warning's status words"),
+    Pair("warn", "surface-raised", TEXT, 5.73, "A faulted reading's words; a physical-condition chip"),
+    Pair("trip", "surface-sunken", TEXT, 5.55, "A trip marker in the history drawer"),
+    Pair("warn", "surface-sunken", TEXT, 5.01, "A warning marker in the history drawer"),
+    Pair("info", "surface-sunken", TEXT, 5.98, "The replay history's Now marker; links in drawers"),
 )
 
 # The colour tokens in the specification's order, with what each is for.

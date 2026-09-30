@@ -6,7 +6,7 @@ from them. scripts/build_site.py writes it beside the demo runs.
 Step 6 renders the tokens: every colour with what it is for, the contrast
 pairs recomputed from tokens.css, the type scale, spacing, sizes, shape and
 motion. Step 7 adds the icon set (plain markup) and the components in every
-state, drawn in the browser by their real render functions from
+state (7c's test results from real runs), drawn in the browser by their real render functions from
 components.js with the words from copytext.py (Tabor, 2026-09-28: the
 component section needs script; the token sections don't).
 Deterministic: no dates, no randomness, the same bytes on every build.
@@ -57,6 +57,8 @@ PAGE_CSS = """
   .sg-item { display: flex; flex-direction: column; gap: var(--sp-1); align-items: flex-start; }
   .sg-caption { color: var(--ink-muted); font: var(--fs-xs)/1.4 var(--font-mono); }
   .sg-stack { display: grid; gap: var(--sp-3); width: 100%; max-width: 560px; }
+  .sg-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+  .sg-cols > .sg-item { align-items: stretch; min-width: 0; }
   .sg-icon { display: inline-flex; align-items: center; gap: var(--sp-2); min-width: 150px; }
   footer { max-width: 1100px; margin: 0 auto; padding: var(--sp-5) var(--gutter) var(--sp-6); color: var(--ink-muted); font-size: var(--fs-sm); }
 """
@@ -217,6 +219,151 @@ GALLERY_JS = """
 })();
 """
 
+# Step 7c's gallery. The test panel and verdict are drawn from real runs of a
+# real test (a pass, and a fail from a deliberately broken controller), the
+# same shapes the dashboard will hand them; built afresh, deterministically,
+# each time the page is.
+GALLERY_7C = """
+(function results() {
+  const $ = (id) => document.getElementById(id);
+  const item = (el, caption) => h("div", {class: "sg-item"}, el, h("code", {class: "sg-caption"}, caption));
+  const noop = () => {};
+  // AlarmMarker: each class through its lifecycle.
+  for (const cls of ["trip", "warn"]) for (const lifecycle of ["new", "acknowledged", "cleared"]) {
+    const m = alarmMarker(); renderAlarmMarker(m, {cls, lifecycle});
+    $("sg-markers").appendChild(item(h("span", {}, m), `${cls}, ${lifecycle}`));
+  }
+  // AlarmSummary: none, a warning, trips and warnings.
+  for (const [caption, data] of [["none", {trips: 0, warnings: 0}], ["warning", {trips: 0, warnings: 1, unacknowledged: true}],
+                                 ["trip", {trips: 1, warnings: 2, unacknowledged: true}]]) {
+    const s = alarmSummary("#sg-alarms", COPY, null); renderAlarmSummary(s, data, COPY);
+    $("sg-asum").appendChild(item(s, caption));
+  }
+  // AlarmList: every lifecycle, the first-out; then empty.
+  const alarms = alarmList("sg-al", COPY);
+  renderAlarmList(alarms, {alarms: SG_ALARMS}, COPY);
+  const none = alarmList("sg-al-none", COPY); renderAlarmList(none, {alarms: []}, COPY);
+  $("sg-alarms").append(alarms, item(none, "empty"));
+  // HistoryList: live, newest first; a replay, "Now" marked (click an entry to move it).
+  const live = historyList("live", COPY); renderHistoryList(live, {rows: SG_HISTORY}, COPY);
+  const replay = historyList("replay", COPY, (t) => renderHistoryList(replay, {rows: SG_HISTORY, now: t}, COPY));
+  renderHistoryList(replay, {rows: SG_HISTORY, now: 13}, COPY);
+  $("sg-history").append(item(live, "live: newest first"), item(replay, "replay: in order, Now marked (try it)"));
+  // Checklist.
+  const steps = checklist();
+  renderChecklist(steps, {steps: [{text: "Clear feeder obstruction", state: "done"}, {text: "Acknowledge", state: "done"},
+    {text: "Reset", state: "blocked", why: "Can't reset yet: the chute is still plugged."}, {text: "Start", state: "pending"}]}, COPY);
+  $("sg-checklist").appendChild(steps);
+  // AllNormalCard: ready, running.
+  for (const [caption, data] of [
+      ["idle", {state: "idle", sentence: "Ready. Start runs the line from bin A.", action: {command: "start", preview: {accepted: true}, primary: true}}],
+      ["running", {state: "running", sentence: "Running normally: feeding from bin A, hopper at 42\\u2009%.",
+                   action: {command: "stop", preview: {accepted: true}, primary: true}}]]) {
+    const card = allNormalCard(`sg-normal-${caption}`, COPY, noop); renderAllNormalCard(card, data, COPY);
+    $("sg-allnormal").appendChild(item(card, caption));
+  }
+  // Readout: normal, suspect, lost.
+  for (const [label, data] of [["Hopper weight", {value: 1912.4, unit: "kg", health: "normal", tag: "WT-105"}],
+                               ["Belt scale", {value: 4.96, unit: "kg/s", decimals: 1, health: "suspect", tag: "FT-104"}],
+                               ["Hopper weight", {value: 0, unit: "kg", health: "lost", tag: "WT-105"}]]) {
+    const r = readout(label); renderReadout(r, data, COPY);
+    $("sg-readouts").appendChild(item(r, data.health));
+  }
+  // Indicator: reached in each class, normal, faulted; with the words device detail shows.
+  for (const [caption, data] of [["reached, trip", {state: "reached", cls: "trip", words: true}],
+                                 ["reached, warning", {state: "reached", cls: "warn", words: true}],
+                                 ["reached, running", {state: "reached", cls: "on", words: true}],
+                                 ["normal", {state: "normal", cls: "trip", words: true}],
+                                 ["faulted", {state: "faulted", cls: "warn", words: true}]]) {
+    const i = indicator(); renderIndicator(i, data, COPY);
+    $("sg-indicators").appendChild(item(i, caption));
+  }
+  // IOTable: the hopper weight changed this tick.
+  const io = ioTable([{name: "WT-105", type: "AI", units: "kg", description: "Hopper weight"},
+                      {name: "LSH-103", type: "DI", units: "", description: "Chute plug switch"},
+                      {name: "M-103.RUN", type: "DO", units: "", description: "Feeder run command"}], COPY);
+  renderIOTable(io, {values: {"WT-105": 812.5, "LSH-103": true, "M-103.RUN": false}, prev: {"WT-105": 810.25, "LSH-103": true, "M-103.RUN": false}});
+  $("sg-io").appendChild(io);
+  // ActionChip: every kind.
+  for (const [kind, text] of [["operator", "Operator presses Start"], ["fault", "Someone presses the E-stop"],
+                              ["repair", "The jam is cleared at the feeder"], ["process", "The hopper level is set to 85\\u2009%"]]) {
+    const c = actionChip(); renderActionChip(c, {kind, text}, COPY);
+    $("sg-chips").appendChild(item(c, kind));
+  }
+  // TestPanel: running, then passed, then failed -- the last two from real runs.
+  const running = testPanel(SG_PLAN, COPY);
+  renderTestPanel(running, {setup: "done", stages: [SG_PASS.stages[0], {status: "running", elapsed_s: 0.4}]}, COPY);
+  const passed = testPanel(SG_PLAN, COPY); renderTestPanel(passed, {setup: "done", stages: SG_PASS.stages}, COPY);
+  const failed = testPanel(SG_PLAN, COPY);
+  renderTestPanel(failed, {setup: "done", stages: SG_FAIL.stages.map((st) => Object.assign({}, st, {deadline: true}))}, COPY);
+  $("sg-tests").append(item(running, "running"), item(passed, "passed (a real run)"), item(failed, "failed (a real run, broken controller)"));
+  // VerdictBlock: pass and fail, from the same runs.
+  for (const [caption, summary] of [["pass", SG_PASS], ["fail", SG_FAIL]]) {
+    const v = verdictBlock(); renderVerdictBlock(v, summary, COPY);
+    $("sg-verdicts").appendChild(item(v, caption));
+  }
+  // RuntimeRow: the reference, one that agrees, one that doesn't.
+  const runtimes = runtimeTable(COPY);
+  renderRuntimeTable(runtimes, {rows: [
+    {runtime_id: "python", runtime: "Python controller (in-process, lockstep)", verdict: "PASS", checks: "22/22", how: "reference run", agrees: null},
+    {runtime_id: "modbus", runtime: "Python controller over Modbus TCP (lockstep)", verdict: "PASS", checks: "22/22",
+     how: "lockstep: event log compared event by event -- identical", agrees: true},
+    {runtime_id: "openplc", runtime: "OpenPLC Runtime over Modbus TCP (real time)", verdict: "FAIL", checks: "20/22",
+     how: "real time: compared by verdict and checks (response times vary with the PLC's scan phase)", agrees: false}]}, COPY);
+  $("sg-runtimes").appendChild(runtimes);
+  // ScenarioCard: idle, running (every card locked), with a result.
+  const test = {id: "sg-feeder-jam", title: "Feeder jam recovery", description: SG_PLAN.description, stages: SG_PLAN.stages.length};
+  for (const [caption, data] of [["idle", {running: false, locked: false, result: null, watch: null}],
+                                 ["running", {running: true, locked: true, result: null, watch: null}],
+                                 ["last result", {running: false, locked: false, watch: "#sg-tests",
+                                   result: {verdict: SG_PASS.verdict, checks: `${SG_PASS.checks_passed}/${SG_PASS.checks_evaluated} checks matched`}}]]) {
+    const card = scenarioCard(Object.assign({}, test, {id: `${test.id}-${caption.replace(" ", "-")}`}), COPY, {run: noop, compare: noop});
+    renderScenarioCard(card, data, COPY);
+    $("sg-scenarios").appendChild(item(card, caption));
+  }
+})();
+"""
+
+SG_ALARMS = [
+    {"id": "LSH-103.JAM", "text": "Feeder jammed: the discharge chute is plugged", "is_warning": False, "active": True,
+     "acknowledged": False, "first_out": True},
+    {"id": "LSL-111.LOW", "text": "Bin B is nearly empty", "is_warning": True, "active": True, "acknowledged": False,
+     "first_out": False},
+    {"id": "LSL-101.LOW", "text": "Bin A is nearly empty", "is_warning": True, "active": True, "acknowledged": True,
+     "first_out": False},
+    {"id": "M-103.FAULT", "text": "Feeder drive tripped", "is_warning": False, "active": False, "acknowledged": False,
+     "first_out": False},
+]
+
+SG_HISTORY = [
+    {"key": 1, "t": 0.0, "text": "You pressed Start", "tone": None, "tag": None},
+    {"key": 2, "t": 6.2, "text": "The line is running", "tone": None, "tag": None},
+    {"key": 3, "t": 12.34, "text": "The feeder jammed; the controller stopped the feed", "tone": "trip", "tag": "LSH-103"},
+    {"key": 4, "t": 15.0, "text": "You acknowledged the alarms", "tone": None, "tag": None},
+]
+
+GALLERY_TEST = "faults/feeder_jam_recovery.yaml"
+GALLERY_REGRESSION = "jam-trip-removed"
+
+
+def _gallery_data() -> str:
+    """The 7c gallery's fixtures as script constants: real runs of a real test."""
+    from services.testing.regressions import REGRESSIONS
+    from services.testing.runner import run_scenario
+    from services.testing.scenario import Scenario
+    from services.testing.verdict import plan, summarize
+    from services.visualization.verify import SCENARIOS_DIR
+
+    scenario = Scenario.load(SCENARIOS_DIR / GALLERY_TEST)
+    runs = {}
+    for name, regression in (("PASS", None), ("FAIL", GALLERY_REGRESSION)):
+        result = run_scenario(scenario, line_cls=REGRESSIONS[regression].cls if regression else None)
+        runs[name] = summarize(scenario, result, "python", root=SCENARIOS_DIR, regression=regression).to_dict()
+    data = {"SG_PLAN": plan(scenario, root=SCENARIOS_DIR), "SG_PASS": runs["PASS"], "SG_FAIL": runs["FAIL"],
+            "SG_ALARMS": SG_ALARMS, "SG_HISTORY": SG_HISTORY}
+    return "\n".join(f"const {name} = {json.dumps(value, ensure_ascii=False, sort_keys=True).replace('</', '<' + chr(92) + '/')};"
+                     for name, value in data.items())
+
 
 def _icons(sprite: str) -> str:
     names = re.findall(r'<symbol id="i-([a-z-]+)"', sprite)
@@ -325,6 +472,54 @@ Nothing typed is lost when the line updates.</p>
 <h3>Physical condition and maintenance action</h3>
 <p class="muted">Test view only: things that happen to the equipment, and the repairs, in physical words. Never a controller verb.</p>
 <div class="sg-row" id="sg-physical"></div>
+<h3>Alarm marker</h3>
+<p class="muted">An octagon for a trip, a triangle for a warning: filled while new, an outline once acknowledged, muted once
+cleared but not yet acknowledged. It never flashes, and the words beside it carry the meaning.</p>
+<div class="sg-row" id="sg-markers"></div>
+<h3>Alarm summary</h3>
+<p class="muted">The status bar's alarm count by class. The Show link's name includes the count.</p>
+<div class="sg-row" id="sg-asum"></div>
+<h3>Alarm list</h3>
+<p class="muted">The latched alarms: new trips, new warnings, acknowledged, then cleared but not acknowledged. Each lifecycle is in
+words; the alarm that started it is marked (hover or focus it for what that means).</p>
+<div class="sg-row" data-ids="on"><div class="sg-stack" id="sg-alarms"></div></div>
+<h3>History</h3>
+<p class="muted">What happened, in plain words. Live, newest first; in a replay, in order, with the current moment marked Now and
+each entry a jump.</p>
+<div class="sg-row" id="sg-history" data-ids="on"></div>
+<h3>Checklist</h3>
+<p class="muted">The recovery steps. A step is done only when the line's data says so, never on a click; a blocked step says why.</p>
+<div class="sg-row" id="sg-checklist"></div>
+<h3>All-normal card</h3>
+<p class="muted">The Operate rail when nothing is wrong: one sentence and the expected next action.</p>
+<div class="sg-row" id="sg-allnormal"></div>
+<h3>Readout</h3>
+<p class="muted">A reading with its unit. A faulted instrument is striped and says so; a lost signal shows no number, because a
+failed transmitter's value means nothing.</p>
+<div class="sg-row" id="sg-readouts" data-ids="on"></div>
+<h3>Indicator</h3>
+<p class="muted">A switch. Reached: filled in its class colour, with a notch. Normal: hollow. Faulted: a dashed outline. The words
+appear in device detail; elsewhere the indicator is part of its device's name.</p>
+<div class="sg-row" id="sg-indicators"></div>
+<h3>Raw I/O table</h3>
+<p class="muted">Every tag, its signal, its type and value; the row that changed this tick is tinted.</p>
+<div class="sg-row"><div class="sg-stack" id="sg-io"></div></div>
+<h3>Action chip</h3>
+<p class="muted">What a test stage does, marked by kind; the kind is also said to screen readers.</p>
+<div class="sg-row" id="sg-chips"></div>
+<h3>Test panel</h3>
+<p class="muted">A test's setup and stages, each with its actions, checks and time limit. The passed and failed panels are real
+runs of the feeder-jam test, the failed one against a deliberately broken controller.</p>
+<div class="sg-row sg-cols" id="sg-tests"></div>
+<h3>Verdict</h3>
+<p class="muted">PASS or FAIL, how many checks matched, and where the run first departed from the test.</p>
+<div class="sg-row sg-cols" id="sg-verdicts"></div>
+<h3>Runtime comparison</h3>
+<p class="muted">One row per runtime, each saying how it was compared; the first is the reference.</p>
+<div class="sg-row"><div class="wrap" id="sg-runtimes"></div></div>
+<h3>Test card</h3>
+<p class="muted">A test to run. While any test operates the line, every card's buttons are locked.</p>
+<div class="sg-row sg-cols" id="sg-scenarios"></div>
 </main>
 <footer>More components join this page as each is built.</footer>
 <script>
@@ -333,6 +528,8 @@ const BADGE_ORDER = {order};
 {components_js}
 {GALLERY_JS}
 {GALLERY_7B}
+{_gallery_data()}
+{GALLERY_7C}
 </script>
 </body>
 </html>

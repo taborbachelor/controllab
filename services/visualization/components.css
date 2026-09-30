@@ -167,4 +167,208 @@
 .c-maint__done { font-weight: 600; }
 .c-maint__done[hidden] { display: none; }
 
+
+/* ======== Step 7c: alarms, history, readings and test results. */
+
+/* Visually hidden, still read by screen readers (an ActionChip's kind, the
+   TestPanel's announcements). */
+.c-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%);
+        white-space: nowrap; border: 0; }
+
+/* AlarmMarker: octagon (trip) or triangle (warning), strongest while new;
+   never flashing (D7). Acknowledged: the outline in its class colour.
+   Cleared, not acknowledged: a muted outline. */
+.c-marker { width: var(--marker); height: var(--marker); flex: none; fill: none; stroke: var(--ink-muted); stroke-width: 1.5;
+            stroke-linejoin: miter; vertical-align: -3px; }  /* sharp corners: a hollow octagon must not read as a round switch indicator */
+.c-marker[hidden] { display: none; }
+.c-marker[data-class="trip"] { stroke: var(--trip); }
+.c-marker[data-class="warn"] { stroke: var(--warn); }
+.c-marker[data-class="trip"][data-lifecycle="new"] { fill: var(--trip); }
+.c-marker[data-class="warn"][data-lifecycle="new"] { fill: var(--warn-fill); }
+.c-marker[data-lifecycle="cleared"] { stroke: var(--ink-muted); }
+
+/* AlarmSummary: the status bar's count and its Show link. */
+.c-asum { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); white-space: nowrap; }
+.c-asum[data-state="none"] { color: var(--ink-muted); }
+.c-asum__counts { font-weight: 600; font-variant-numeric: tabular-nums; }
+.c-asum[data-state="none"] .c-asum__counts { font-weight: 400; }
+.c-asum__show { display: inline-flex; align-items: center; min-height: var(--target-min); color: var(--info); }
+.c-asum__show[hidden] { display: none; }
+
+/* AlarmList: a table, new trips and warnings on their tints, the lifecycle in words. */
+.c-alarms__empty { margin: 0; color: var(--ink-muted); font-size: var(--fs-sm); }
+.c-alarms__empty[hidden], .c-alarms__table[hidden] { display: none; }
+.c-alarms__table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.c-alarms__table th { padding: var(--sp-1) var(--sp-2); border-bottom: 1px solid var(--border-strong); color: var(--ink-muted);
+                      font-size: var(--fs-xs); font-weight: 600; text-align: left; }
+.c-alarms__table td { padding: var(--sp-2); border-bottom: 1px solid var(--border); vertical-align: top; }
+.c-alarms__table tr[data-lifecycle="new"][data-class="trip"] { background: var(--trip-tint); }
+.c-alarms__table tr[data-lifecycle="new"][data-class="warn"] { background: var(--warn-tint); }
+.c-alarms__table tr[data-lifecycle="cleared"] .c-alarms__text { color: var(--ink-muted); }
+.c-alarms__alarm { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); }
+.c-alarms__text { font-weight: 600; }
+.c-alarms__new { padding: 0 var(--sp-1); border: 1px solid currentColor; border-radius: var(--radius-sm);
+                 font-size: var(--fs-xs); font-weight: 700; letter-spacing: .04em; }
+tr[data-class="trip"] .c-alarms__new { color: var(--trip); }
+tr[data-class="warn"] .c-alarms__new { color: var(--warn); }
+.c-alarms__new[hidden], .c-alarms__first[hidden] { display: none; }
+.c-alarms__first { padding: 0 var(--sp-1); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+                   font-size: var(--fs-xs); font-weight: 600; cursor: help; }
+.c-alarms__help { display: none; flex-basis: 100%; color: var(--ink-muted); font-size: var(--fs-xs); }
+.c-alarms__first:hover + .c-alarms__help, .c-alarms__first:focus + .c-alarms__help { display: block; }
+.c-alarms__status { color: var(--ink-muted); }
+
+/* HistoryList: plain words, newest first live; in a replay the current moment
+   is marked "Now" and what is still to come is muted. */
+.c-history__empty { margin: 0; color: var(--ink-muted); font-size: var(--fs-sm); }
+.c-history__empty[hidden] { display: none; }
+.c-history__list { margin: 0; padding: 0; list-style: none; font-size: var(--fs-sm); }
+.c-history__list > li { border-bottom: 1px solid var(--border); }
+.c-history__list > li, .c-history__jump { display: flex; align-items: baseline; gap: var(--sp-2); padding: var(--sp-1) 0; }
+.c-history__jump { width: 100%; min-height: var(--target-min); margin: 0; border: 0; background: none; color: inherit;
+                   font: inherit; text-align: left; cursor: pointer; }
+.c-history[data-mode="replay"] .c-history__list > li { padding: 0; }
+.c-history__time { flex: none; min-width: 56px; color: var(--ink-muted); font-family: var(--font-mono); font-size: var(--fs-xs);
+                   font-variant-numeric: tabular-nums; text-align: right; }
+.c-history__text { flex: 1 1 auto; }
+.c-history__now { padding: 0 var(--sp-1); border: 1px solid var(--info); border-radius: var(--radius-sm); color: var(--info);
+                  font-size: var(--fs-xs); font-weight: 700; }
+.c-history__now[hidden] { display: none; }
+.c-history__list > li[aria-current="true"] { margin-left: calc(-1 * var(--sp-1)); border-left: var(--sp-1) solid var(--info); }
+.c-history__list > li[data-future] { color: var(--ink-muted); }
+
+/* Checklist: numbered recovery steps; done and blocked in words. */
+.c-checklist { margin: 0; padding-left: var(--sp-5); font-size: var(--fs-sm); }
+.c-checklist > li { padding: var(--sp-1) 0; }
+.c-checklist .c-icon { margin-right: var(--sp-1); }
+.c-checklist__state { margin-left: var(--sp-2); color: var(--ink-muted); }
+.c-checklist > li[data-state="done"] .c-checklist__text { color: var(--ink-muted); }
+.c-checklist > li[data-state="done"] .c-checklist__state { font-weight: 600; }
+.c-checklist > li[data-state="blocked"] .c-checklist__state { display: block; margin: var(--sp-1) 0 0; color: var(--warn); }
+
+/* AllNormalCard: nothing wrong; the next action. */
+.c-allnormal { display: grid; gap: var(--sp-2); justify-items: start; padding: var(--sp-4); border: 1px solid var(--border);
+               border-radius: var(--radius-md); background: var(--surface-raised); }
+.c-allnormal__title { margin: 0; color: var(--ink-muted); font: 600 var(--fs-sm)/1.2 var(--font-ui); }
+.c-allnormal__text { margin: 0; font-size: var(--fs-lg); }
+.c-allnormal > .c-cmd[hidden] { display: none; }
+
+/* Readout: label, value, unit. A faulted instrument gets the striped fill the
+   specification asks for (5.2): hard-edged stripes, not a shaded gradient. */
+.c-readout { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-2); padding: var(--sp-1) var(--sp-2);
+             border: 1px solid transparent; border-radius: var(--radius-sm); font-size: var(--fs-sm); }
+.c-readout__label { color: var(--ink-muted); }
+.c-readout__value { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.c-readout__health { color: var(--warn); font-weight: 700; }
+.c-readout__health[hidden] { display: none; }
+.c-readout[data-health="suspect"], .c-readout[data-health="lost"] {
+  border: 1px dashed var(--warn);
+  background: repeating-linear-gradient(135deg, var(--warn-tint) 0 6px, var(--surface-raised) 6px 12px); }
+
+/* Indicator: a switch. Reached: filled in its class colour, with a notch;
+   normal: hollow; faulted: a dashed outline. */
+.c-indicator { display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-sm); }
+.c-indicator__lamp { width: var(--indicator); height: var(--indicator); flex: none; }
+.c-indicator__lamp circle { fill: var(--equip-off); stroke: var(--equip-stroke); stroke-width: 1.5; }
+.c-indicator__lamp path { display: none; stroke-width: 1.5; stroke-linecap: round; }
+.c-indicator[data-state="reached"] path { display: inline; }
+.c-indicator[data-state="reached"][data-class="trip"] circle { fill: var(--trip); stroke: var(--trip); }
+.c-indicator[data-state="reached"][data-class="trip"] path { stroke: var(--ink-inverse); }
+.c-indicator[data-state="reached"][data-class="warn"] circle { fill: var(--warn-fill); stroke: var(--warn); }
+.c-indicator[data-state="reached"][data-class="warn"] path { stroke: var(--warn); }
+.c-indicator[data-state="reached"][data-class="on"] circle { fill: var(--equip-on); stroke: var(--equip-on); }
+.c-indicator[data-state="reached"][data-class="on"] path { stroke: var(--ink-inverse); }
+.c-indicator[data-state="faulted"] circle { stroke: var(--warn); stroke-dasharray: 2.5 2; }
+.c-indicator__text { color: var(--ink-muted); }
+.c-indicator__text[hidden] { display: none; }
+
+/* IOTable: the raw I/O, the row that changed this tick on the info tint. */
+.c-io { width: 100%; border-collapse: collapse; font-size: var(--fs-xs); }
+.c-io th, .c-io td { padding: 0 var(--sp-2); border-bottom: 1px solid var(--border); text-align: left; }
+.c-io thead th { color: var(--ink-muted); font-weight: 600; }
+.c-io tbody th { font-weight: 400; }
+.c-io tbody th code { font-family: var(--font-mono); }
+.c-io tr[hidden] { display: none; }
+.c-io tr[data-changed] { background: var(--info-tint); }
+.c-io__value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
+/* ActionChip: what a test stage does, marked by kind. */
+.c-chip { display: inline-flex; align-items: center; gap: var(--sp-1); padding: 0 var(--sp-2); line-height: 1.6; border: 1px solid var(--border-strong);
+          border-radius: var(--radius-sm); background: var(--surface-raised); color: var(--ink); font-size: var(--fs-sm); }
+.c-chip[data-kind="operator"] { border-color: var(--info); }
+.c-chip[data-kind="operator"] .c-icon { color: var(--info); }
+.c-chip[data-kind="fault"] { border: 1px solid var(--warn); }
+.c-chip[data-kind="fault"] .c-icon { color: var(--warn); }
+.c-chip[data-kind="process"] { border-style: dashed; }
+
+/* TestPanel: stages in order; the running one on the info tint, a failed one
+   on the trip tint; statuses in words (spec 5.3). */
+.c-test__stages { display: grid; gap: var(--sp-2); margin: 0; padding: 0; list-style: none; }
+.c-stage { padding: var(--sp-2) var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-raised); }
+.c-stage[data-status="running"] { border-color: var(--info); background: var(--info-tint); }
+.c-stage[data-status="failed"] { border-color: var(--trip); background: var(--trip-tint); }
+.c-stage[data-status="not_run"], .c-stage[data-status="pending"] { background: var(--surface); }
+.c-stage__head { display: grid; grid-template-columns: 16px 1fr fit-content(40%); align-items: baseline; gap: var(--sp-1) var(--sp-2); margin: 0; }
+.c-stage__head > .c-icon { align-self: start; margin-top: calc((1.45em - 16px) / 2); }
+.c-stage__head > .c-icon[hidden] { display: block; visibility: hidden; }  /* keeps its column when a stage has no mark */
+.c-stage__title { font-weight: 600; }
+.c-stage__status { color: var(--ink-muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; text-align: right; }
+@media (max-width: 700px) { .c-stage__status { grid-column: 2 / -1; text-align: left; } }
+.c-stage[data-status="running"] .c-stage__status, .c-stage[data-status="running"] .c-icon { color: var(--info); }
+.c-stage[data-status="failed"] .c-stage__status, .c-stage[data-status="failed"] .c-icon { color: var(--trip); font-weight: 600; }
+.c-stage__setup { margin: var(--sp-1) 0 0; padding-left: var(--sp-5); font-size: var(--fs-sm); }
+.c-stage__actions { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin: var(--sp-2) 0 0; }
+.c-stage__none { color: var(--ink-muted); font-size: var(--fs-sm); }
+.c-checks { width: 100%; margin-top: var(--sp-2); border-collapse: collapse; font-size: var(--fs-sm); }
+.c-checks th, .c-checks td { padding: var(--sp-1) var(--sp-2) var(--sp-1) 0; border-top: 1px solid var(--border); text-align: left; vertical-align: top; }
+.c-checks thead th { border-top: 0; color: var(--ink-muted); font-size: var(--fs-xs); font-weight: 600; }
+.c-checks tbody th { font-weight: 400; }
+.c-checks__result { white-space: nowrap; }
+.c-checks tr[data-status="match"] .c-checks__result { color: var(--ok); font-weight: 700; }
+.c-checks tr[data-status="mismatch"] .c-checks__result { color: var(--trip); font-weight: 700; white-space: normal; }
+.c-checks tr[data-status="not_reached"] .c-checks__result,
+.c-checks tr[data-status="not_run"] .c-checks__result,
+.c-checks tr[data-status="not_observed"] .c-checks__result { color: var(--ink-muted); }
+
+/* Verdict badge (VerdictBlock, RuntimeRow, ScenarioCard): PASS solid
+   equip-on, FAIL solid trip, never green (spec 5.3). */
+.c-vbadge { display: inline-block; padding: var(--sp-1) var(--sp-2); border: 2px solid var(--equip-stroke); border-radius: var(--radius-sm);
+            background: var(--surface-raised); color: var(--ink); font: 700 var(--fs-sm)/1.2 var(--font-ui); letter-spacing: .04em; white-space: nowrap; }
+.c-vbadge[data-verdict="pass"] { background: var(--equip-on); border-color: var(--equip-on); color: var(--ink-inverse); }
+.c-vbadge[data-verdict="fail"] { background: var(--trip); border-color: var(--trip); color: var(--ink-inverse); }
+.c-vbadge[hidden] { display: none; }
+
+/* VerdictBlock: the result, the count, the first divergence. */
+.c-verdict { display: grid; gap: var(--sp-2); }
+.c-verdict__head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: 0; font: 600 var(--fs-md)/1.2 var(--font-ui); }
+.c-verdict__head .c-vbadge { font-size: var(--fs-lg); }
+.c-verdict__where { margin: 0; font-size: var(--fs-sm); }
+.c-verdict[data-verdict="fail"] .c-verdict__where { color: var(--trip); font-weight: 600; }
+.c-verdict__unmet { margin: 0; padding-left: var(--sp-5); font-size: var(--fs-sm); }
+.c-verdict__where[hidden], .c-verdict__unmet[hidden] { display: none; }
+
+/* Runtime comparison: one row per runtime, each saying how it was compared. */
+.c-runtimes { width: 100%; min-width: 520px; border-collapse: collapse; font-size: var(--fs-sm); }  /* on a phone it scrolls sideways inside its container (spec 13.4) */
+.c-runtimes th, .c-runtimes td { padding: var(--sp-1) var(--sp-2) var(--sp-1) 0; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.c-runtimes thead th { color: var(--ink-muted); font-size: var(--fs-xs); font-weight: 600; }
+.c-runtimes tbody th { font-weight: 600; }
+.c-runtimes__agrees { white-space: nowrap; }
+.c-runtimes tr[data-agrees="no"] .c-runtimes__agrees { color: var(--trip); font-weight: 700; }
+.c-runtimes tr[data-agrees="reference"] .c-runtimes__agrees { color: var(--ink-muted); }
+
+/* ScenarioCard: a test to run. */
+.c-scenario { display: grid; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius-md);
+              background: var(--surface-raised); }
+.c-scenario[data-state="running"] { border-color: var(--info); }
+.c-scenario__title { margin: 0; font: 600 var(--fs-md)/1.2 var(--font-ui); }
+.c-scenario__text { margin: 0; font-size: var(--fs-sm); }
+.c-scenario__meta { margin: 0; color: var(--ink-muted); font-size: var(--fs-xs); }
+.c-scenario__result { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: 0; font-size: var(--fs-sm);
+                      font-variant-numeric: tabular-nums; }
+.c-scenario__result[hidden] { display: none; }
+.c-scenario[data-state="running"] .c-scenario__result { color: var(--info); font-weight: 600; }
+.c-scenario__buttons { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.c-scenario__watch { display: inline-flex; align-items: center; min-height: var(--target-min); color: var(--info); font-size: var(--fs-sm); }
+.c-scenario__watch[hidden] { display: none; }
+
 @media (prefers-reduced-motion: reduce) { .c-badge[data-fresh] { animation: none; } }
