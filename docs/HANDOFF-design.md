@@ -16,6 +16,30 @@ the same repo) is the other; leave it alone. The two sessions collided on
 this filename once (2026-09-26); the design session moved its file, so
 this name stays with the controls work.
 
+## Update — 2026-09-29, controls session (read this first; supersedes everything below)
+
+**Items 1 and 2 of the 2026-09-28 list are DONE:** `e491d10` put the report's
+numbers in README.md (verified bullet, §6 result line naming the two
+within-tolerance scenarios, Status line) and docs/CONTROL-LAB.md (status line,
+§10 wrap-up ✅, change-log row). CI and the demo site green on `e491d10`.
+`dashboard-parity.jpg` and its alt text untouched (not approved).
+
+**Test count is 1,096, not 1,058** (1,090 run anywhere + 6 broker; the
+frontend's step 6 added 38). All 1,096 passed locally on 2026-09-28,
+including the 6 broker tests against the running `controllab-mosquitto`
+(`CONTROLLAB_MQTT_BROKER=127.0.0.1:1883 CONTROLLAB_MQTT_CONTAINER=controllab-mosquitto`).
+
+**Only remaining: the v1.0.0 release, WAITING ON TABOR'S GO** (outward-facing;
+asked 2026-09-28, not yet answered). Notes are filled (no placeholders left):
+`C:\Users\jacks\controllab-handoff\release-notes-v1.0.0.md`. On a yes:
+`git tag -a v1.0.0 -m "ControlLab 1.0.0"` on the commit carrying the numbers
+(`e491d10` or a later main if the numbers still hold), `git push origin v1.0.0`,
+`gh release create v1.0.0 --title "ControlLab 1.0.0" --notes-file <that file>`,
+check CI and https://taborbachelor.github.io/controllab/, then delete this file
+and the `controllab-handoff` folder and push the deletion as its own commit.
+Before tagging: `git pull`; if the frontend merged more tests, re-count and fix
+the 1,096 in README, CONTROL-LAB and the notes first.
+
 ## Update — 2026-09-28, controls session (read this first; supersedes the 2026-09-27 list below)
 
 **Goal (Tabor):** ControlLab usable by an outside controls engineer who will
